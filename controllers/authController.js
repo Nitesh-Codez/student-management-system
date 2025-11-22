@@ -1,5 +1,6 @@
 const bcrypt = require("bcryptjs");
-const db = require("./db"); // Use existing connection
+const db = require("../db"); // ek folder upar jao → src/db.js
+ // Use existing connection
 
 async function loginController(req, res) {
   const { name, password } = req.body;

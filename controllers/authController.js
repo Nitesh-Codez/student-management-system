@@ -1,18 +1,5 @@
-const mysql = require("mysql2");
 const bcrypt = require("bcryptjs");
-
-// DB connection
-const db = mysql.createConnection({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME
-});
-
-db.connect((err) => {
-  if (err) console.log("DB Connection Error:", err);
-  else console.log("✅ MySQL Connected Successfully!");
-});
+const db = require("./db"); // Use existing connection
 
 async function loginController(req, res) {
   const { name, password } = req.body;

@@ -1,6 +1,5 @@
-// src/controllers/authController.js
 const bcrypt = require("bcryptjs");
-const db = require("../db"); // Promise DB
+const db = require("../db"); // Promise-based DB
 
 async function loginController(req, res) {
   const { name, password } = req.body;
@@ -10,6 +9,8 @@ async function loginController(req, res) {
 
     if (results.length > 0) {
       const user = results[0];
+
+      // Compare password
       const isMatch = await bcrypt.compare(password, user.password);
 
       if (isMatch) {

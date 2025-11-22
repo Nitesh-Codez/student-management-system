@@ -1,4 +1,3 @@
-// src/server.js
 const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
@@ -12,12 +11,12 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Root route for browser test
+// Root route
 app.get("/", (req, res) => {
   res.send("Server is running!");
 });
 
-// Test route for DB connection
+// Test DB route
 app.get("/test-db", async (req, res) => {
   try {
     const [rows] = await db.query("SELECT 1+1 AS result");
@@ -27,7 +26,7 @@ app.get("/test-db", async (req, res) => {
   }
 });
 
-// Login route
+// Auth routes
 app.use("/api/auth", authRoutes);
 
 // 404 handler

@@ -1,9 +1,10 @@
+// src/server.js
 const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
 
-const authRoutes = require("./routes/authRoutes"); // login ke liye
-const db = require("./db"); // DB connection
+const authRoutes = require("./routes/authRoutes");
+const db = require("./db"); // Promise-based DB
 
 const app = express();
 

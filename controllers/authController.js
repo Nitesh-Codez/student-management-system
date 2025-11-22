@@ -1,13 +1,12 @@
+// src/controllers/authController.js
 const bcrypt = require("bcryptjs");
-const db = require("../db"); // ek folder upar jao → src/db.js
- // Use existing connection
+const db = require("../db"); // Promise DB
 
 async function loginController(req, res) {
   const { name, password } = req.body;
 
-  const query = "SELECT * FROM students WHERE name = ?";
-  db.query(query, [name], async (err, results) => {
-    if (err) return res.status(500).json({ success: false, message: err.message });
+  try {
+    const [results] = await db.query("SELECT * FROM students WHERE name = ?", [name]);
 
     if (results.length > 0) {
       const user = results[0];
@@ -21,7 +20,9 @@ async function loginController(req, res) {
     } else {
       res.json({ success: false, message: "User not found" });
     }
-  });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
 }
 
 module.exports = { loginController };

@@ -3,6 +3,7 @@ const cors = require("cors");
 require("dotenv").config();
 
 const authRoutes = require("./routes/authRoutes"); // login ke liye
+const db = require("./db"); // DB connection
 
 const app = express();
 
@@ -10,8 +11,12 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Root route for browser test
+app.get("/", (req, res) => {
+  res.send("Server is running!");
+});
+
 // Test route for DB connection
-const db = require("./db"); // agar tumhara db.js bana hua hai
 app.get("/test-db", async (req, res) => {
   try {
     const [rows] = await db.query("SELECT 1+1 AS result");

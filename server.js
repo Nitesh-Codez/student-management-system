@@ -3,20 +3,18 @@ const cors = require("cors");
 require("dotenv").config();
 
 const authRoutes = require("./routes/authRoutes");
+const studentRoutes = require("./routes/studentRoutes"); // ⭐ ADD THIS
 const db = require("./db"); // Promise-based DB
 
 const app = express();
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 
-// Root route
 app.get("/", (req, res) => {
   res.send("Server is running!");
 });
 
-// Test DB route
 app.get("/test-db", async (req, res) => {
   try {
     const [rows] = await db.query("SELECT 1+1 AS result");
@@ -26,13 +24,13 @@ app.get("/test-db", async (req, res) => {
   }
 });
 
-// Auth routes
 app.use("/api/auth", authRoutes);
 
-// 404 handler
+// ⭐ Mount this route
+app.use("/api/students", studentRoutes);
+
 app.use((req, res) => res.status(404).json({ success: false, message: "Route not found" }));
 
-// Global error handler
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).json({ success: false, message: "Internal Server Error" });

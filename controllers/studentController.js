@@ -1,51 +1,50 @@
 const bcrypt = require("bcryptjs");
-const db = require("../db");
+const db = require("../db"); // Promise-based MySQL connection
 
 // Get all students
-exports.getStudents = (req, res) => {
-  db.query(
-    "SELECT id, name, `class`, mobile, address FROM students WHERE role='student'",
-    (err, results) => {
-      if (err) {
-        console.log("DB ERROR:", err);
-        return res.json({ success: false, message: err.message });
-      }
-      res.json({ success: true, students: results });
-    }
-  );
+exports.getStudents = async (req, res) => {
+  try {
+    const [results] = await db.query(
+      "SELECT id, name, `class`, mobile, address FROM students WHERE role='student'"
+    );
+    res.json({ success: true, students: results });
+  } catch (err) {
+    console.log("DB ERROR:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
 };
 
 // Add student
-exports.addStudent = (req, res) => {
-  const { name, class: studentClass, password, mobile, address } = req.body;
+exports.addStudent = async (req, res) => {
+  const { name, class: studentClass, password, mobile = null, address = null } = req.body;
 
-  if (!name || !studentClass || !password || !mobile || !address)
-    return res.json({ success: false, message: "All fields are required" });
+  if (!name || !studentClass || !password)
+    return res.json({ success: false, message: "Name, class and password are required" });
 
-  const hashedPassword = bcrypt.hashSync(password, 10);
+  try {
+    const hashedPassword = await bcrypt.hash(password, 10);
 
-  db.query(
-    "INSERT INTO students (name, `class`, password, mobile, address, role) VALUES (?, ?, ?, ?, ?, 'student')",
-    [name, studentClass, hashedPassword, mobile, address],
-    (err, result) => {
-      if (err) {
-        console.log("DB ERROR:", err);
-        return res.json({ success: false, message: err.message });
-      }
-      res.json({ success: true, message: "Student added successfully" });
-    }
-  );
+    const [result] = await db.query(
+      "INSERT INTO students (name, `class`, password, mobile, address, role) VALUES (?, ?, ?, ?, ?, 'student')",
+      [name, studentClass, hashedPassword, mobile, address]
+    );
+
+    res.json({ success: true, message: "Student added successfully" });
+  } catch (err) {
+    console.log("DB ERROR:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
 };
 
 // Delete student
-exports.deleteStudent = (req, res) => {
+exports.deleteStudent = async (req, res) => {
   const { id } = req.params;
 
-  db.query("DELETE FROM students WHERE id = ?", [id], (err, result) => {
-    if (err) {
-      console.log("DB ERROR:", err);
-      return res.json({ success: false, message: err.message });
-    }
+  try {
+    const [result] = await db.query("DELETE FROM students WHERE id = ?", [id]);
     res.json({ success: true, message: "Student deleted successfully" });
-  });
+  } catch (err) {
+    console.log("DB ERROR:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
 };

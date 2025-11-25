@@ -1,19 +1,5 @@
-const mysql = require("mysql2");
 const bcrypt = require("bcryptjs");
-
-// DB connection
-const db = mysql.createConnection({
-  host: "localhost",
-  user: "root",
-  password: "nitesh123@",
-  database: "tuition_db",
-});
-
-db.connect((err) => {
-  if (err) console.log("DB Connection Error:", err);
-  else console.log("✅ MySQL Connected Successfully!");
-});
-
+const db = require("../db"); // Promise-based DB
 // Get all students
 exports.getStudents = (req, res) => {
   db.query(

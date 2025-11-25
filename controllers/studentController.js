@@ -1,11 +1,15 @@
 const bcrypt = require("bcryptjs");
-const db = require("../db"); // Promise-based DB
+const db = require("../db");
+
 // Get all students
 exports.getStudents = (req, res) => {
   db.query(
-    "SELECT id, name, class, mobile, address FROM students WHERE role='student'",
+    "SELECT id, name, `class`, mobile, address FROM students WHERE role='student'",
     (err, results) => {
-      if (err) return res.json({ success: false, message: err.message });
+      if (err) {
+        console.log("DB ERROR:", err);
+        return res.json({ success: false, message: err.message });
+      }
       res.json({ success: true, students: results });
     }
   );
@@ -21,10 +25,13 @@ exports.addStudent = (req, res) => {
   const hashedPassword = bcrypt.hashSync(password, 10);
 
   db.query(
-    "INSERT INTO students (name, class, password, mobile, address, role) VALUES (?, ?, ?, ?, ?, 'student')",
+    "INSERT INTO students (name, `class`, password, mobile, address, role) VALUES (?, ?, ?, ?, ?, 'student')",
     [name, studentClass, hashedPassword, mobile, address],
     (err, result) => {
-      if (err) return res.json({ success: false, message: err.message });
+      if (err) {
+        console.log("DB ERROR:", err);
+        return res.json({ success: false, message: err.message });
+      }
       res.json({ success: true, message: "Student added successfully" });
     }
   );
@@ -35,7 +42,10 @@ exports.deleteStudent = (req, res) => {
   const { id } = req.params;
 
   db.query("DELETE FROM students WHERE id = ?", [id], (err, result) => {
-    if (err) return res.json({ success: false, message: err.message });
+    if (err) {
+      console.log("DB ERROR:", err);
+      return res.json({ success: false, message: err.message });
+    }
     res.json({ success: true, message: "Student deleted successfully" });
   });
 };

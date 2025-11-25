@@ -3,7 +3,8 @@ const cors = require("cors");
 require("dotenv").config();
 
 const authRoutes = require("./routes/authRoutes");
-const studentRoutes = require("./routes/studentRoutes"); // ⭐ ADD THIS
+const studentRoutes = require("./routes/studentRoutes"); 
+const attendanceRoutes = require("./routes/attendanceRoutes"); // ✅ Add this
 const db = require("./db"); // Promise-based DB
 
 const app = express();
@@ -25,12 +26,13 @@ app.get("/test-db", async (req, res) => {
 });
 
 app.use("/api/auth", authRoutes);
-
-// ⭐ Mount this route
 app.use("/api/students", studentRoutes);
+app.use("/api/attendance", attendanceRoutes); // ✅ Mount attendance route
 
+// 404 handler
 app.use((req, res) => res.status(404).json({ success: false, message: "Route not found" }));
 
+// Error handler
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).json({ success: false, message: "Internal Server Error" });

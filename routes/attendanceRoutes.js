@@ -7,10 +7,10 @@ const {
   getAllAttendance
 } = require("../controllers/attendanceController");
 
-// GET all students attendance with percentage (admin)
+// Admin: all students attendance %
 router.get("/all", getAllAttendance);
 
-// GET attendance by date (optional ?class=10TH)
+// GET attendance by date
 router.get("/", getAttendanceByDate);
 
 // GET attendance by student ID

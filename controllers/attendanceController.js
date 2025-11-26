@@ -10,7 +10,6 @@ function getAttendanceByDate(req, res) {
     FROM students s
     LEFT JOIN attendance a
     ON s.id = a.student_id AND a.date = ?
-    WHERE s.role='student'
     ORDER BY s.id ASC
   `;
 
@@ -37,7 +36,8 @@ function markAttendance(req, res) {
   const values = attendance.map(a => [a.studentId, date, a.status]);
 
   const sql = `
-    INSERT INTO attendance (student_id, date, status) VALUES ?
+    INSERT INTO attendance (student_id, date, status)
+    VALUES ?
     ON DUPLICATE KEY UPDATE status=VALUES(status)
   `;
 
@@ -53,6 +53,7 @@ function getAttendanceByStudent(req, res) {
   if (!studentId) return res.status(400).json({ success: false, message: "Student ID is required" });
 
   const sql = `SELECT * FROM attendance WHERE student_id = ? ORDER BY date ASC`;
+
   db.query(sql, [studentId], (err, results) => {
     if (err) return res.status(500).json({ success: false, message: err.message });
     res.json({ success: true, attendance: results });
@@ -62,12 +63,13 @@ function getAttendanceByStudent(req, res) {
 // GET all attendance %
 function getAllAttendance(req, res) {
   const sql = `
-    SELECT s.id, s.name, s.class,
+    SELECT 
+      s.id, s.name, s.class,
       SUM(a.status='Present') AS presentCount,
       COUNT(a.id) AS totalCount
     FROM students s
-    LEFT JOIN attendance a ON s.id = a.student_id
-    WHERE s.role='student'
+    LEFT JOIN attendance a 
+    ON s.id = a.student_id
     GROUP BY s.id
     ORDER BY s.id ASC
   `;
@@ -81,7 +83,9 @@ function getAllAttendance(req, res) {
       class: r.class,
       present: r.presentCount,
       total: r.totalCount,
-      percentage: r.totalCount ? ((r.presentCount / r.totalCount) * 100).toFixed(2) : "0.00"
+      percentage: r.totalCount
+        ? ((r.presentCount / r.totalCount) * 100).toFixed(2)
+        : "0.00"
     }));
 
     res.json({ success: true, records });

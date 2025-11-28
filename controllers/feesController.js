@@ -22,6 +22,42 @@ async function addFee(req, res) {
   }
 }
 
+// Admin: Update fee record
+async function updateFee(req, res) {
+  const feeId = req.params.id;
+  const { student_id, student_name, class_name, amount, payment_date, payment_time, status } = req.body;
+  if (!student_id || !amount || !payment_date || !payment_time || !student_name || !class_name) {
+    return res.status(400).json({ success: false, message: "All fields are required" });
+  }
+
+  try {
+    const sql = `UPDATE fees 
+      SET student_id = ?, student_name = ?, class_name = ?, amount = ?, payment_date = ?, payment_time = ?, status = ? 
+      WHERE id = ?`;
+
+    const [result] = await db.query(sql, [
+      student_id, student_name, class_name, amount, payment_date, payment_time, status, feeId
+    ]);
+
+    res.json({ success: true, message: "Fee record updated successfully!" });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+// Admin: Delete fee record
+async function deleteFee(req, res) {
+  const feeId = req.params.id;
+  try {
+    const sql = `DELETE FROM fees WHERE id = ?`;
+    const [result] = await db.query(sql, [feeId]);
+
+    res.json({ success: true, message: "Fee record deleted successfully!" });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
 // Student: Get their fees
 async function getStudentFees(req, res) {
   const studentId = req.params.id;
@@ -45,4 +81,4 @@ async function getAllFees(req, res) {
   }
 }
 
-module.exports = { addFee, getStudentFees, getAllFees };
+module.exports = { addFee, updateFee, deleteFee, getStudentFees, getAllFees };

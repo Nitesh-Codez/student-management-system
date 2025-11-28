@@ -27,6 +27,7 @@ exports.getStudentsList = async (req, res) => {
       FROM students s
       LEFT JOIN attendance a
         ON s.id = a.student_id AND a.date = ?
+      WHERE s.role = 'student'
       ORDER BY s.id
     `;
 
@@ -95,7 +96,7 @@ exports.markAttendance = async (req, res) => {
 };
 
 // --------------------------------------------------
-// 3) NEW — GET INDIVIDUAL STUDENT FULL ATTENDANCE
+// 3) GET INDIVIDUAL STUDENT FULL ATTENDANCE HISTORY
 // --------------------------------------------------
 exports.getStudentAttendance = async (req, res) => {
   try {

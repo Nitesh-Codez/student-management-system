@@ -1,10 +1,13 @@
 const db = require("../db");
 
-// GET students + attendance for a date
+// -------------------------------------------
+// 1) GET all students + attendance for a date
+// -------------------------------------------
 exports.getStudentsList = async (req, res) => {
   try {
-    // Agar date na mile, default today ki date set karo
     let { date } = req.query;
+
+    // Default → today's date
     if (!date) {
       const today = new Date();
       date =
@@ -15,7 +18,6 @@ exports.getStudentsList = async (req, res) => {
         String(today.getDate()).padStart(2, "0");
     }
 
-    // Fetch all students and their attendance for the given date
     const sql = `
       SELECT 
         s.id AS studentId,
@@ -32,22 +34,26 @@ exports.getStudentsList = async (req, res) => {
 
     return res.json({
       success: true,
-      date: date,
+      date,
       students: rows,
     });
 
   } catch (error) {
     console.error("Error fetching students:", error);
-    return res.status(500).json({ success: false, message: "Server error" });
+    return res
+      .status(500)
+      .json({ success: false, message: "Server error while fetching students" });
   }
 };
 
-// MARK or UPDATE Attendance
+// -------------------------------------------
+// 2) MARK or UPDATE attendance
+// -------------------------------------------
 exports.markAttendance = async (req, res) => {
   try {
     let { date, attendance } = req.body;
 
-    // Default date = today if not provided
+    // Default → today's date
     if (!date) {
       const today = new Date();
       date =
@@ -59,11 +65,11 @@ exports.markAttendance = async (req, res) => {
     }
 
     if (!attendance || !Array.isArray(attendance)) {
-      attendance = []; // empty array if nothing sent
+      attendance = [];
     }
 
     for (const item of attendance) {
-      if (!item.studentId || !item.status) continue; // skip invalid items
+      if (!item.studentId || !item.status) continue;
 
       await db.query(
         `
@@ -75,10 +81,49 @@ exports.markAttendance = async (req, res) => {
       );
     }
 
-    return res.json({ success: true, message: "Attendance saved!" });
+    return res.json({
+      success: true,
+      message: "Attendance saved successfully!",
+    });
 
   } catch (error) {
     console.error("Error saving attendance:", error);
-    return res.status(500).json({ success: false, message: "Server error" });
+    return res
+      .status(500)
+      .json({ success: false, message: "Server error while saving attendance" });
+  }
+};
+
+// --------------------------------------------------
+// 3) NEW — GET INDIVIDUAL STUDENT FULL ATTENDANCE
+// --------------------------------------------------
+exports.getStudentAttendance = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!id)
+      return res.status(400).json({ success: false, message: "Student ID required" });
+
+    const sql = `
+      SELECT 
+        date,
+        status
+      FROM attendance
+      WHERE student_id = ?
+      ORDER BY date DESC
+    `;
+
+    const [rows] = await db.query(sql, [id]);
+
+    return res.json({
+      success: true,
+      attendance: rows,
+    });
+
+  } catch (error) {
+    console.error("Error fetching student attendance:", error);
+    return res
+      .status(500)
+      .json({ success: false, message: "Server error while fetching records" });
   }
 };

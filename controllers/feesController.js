@@ -11,7 +11,7 @@ function addFee(req, res) {
     return res.status(400).json({ success: false, message: "All fields are required" });
   }
 
-  const sql = `INSERT INTO fees (student_id, student_name, class, amount, payment_date, payment_time, status)
+  const sql = `INSERT INTO fees (student_id, student_name, class_name, amount, payment_date, payment_time, status)
                VALUES (?, ?, ?, ?, ?, ?, ?)`;
 
   db.query(sql, [student_id, student_name, class_name, amount, payment_date, payment_time, status || "On Time"], (err, result) => {

@@ -25,10 +25,8 @@ app.use("/api/students", studentRoutes);
 app.use("/api/attendance", attendanceRoutes);
 app.use("/api/fees", feesRoutes); // ✅ Fees routes mounted
 
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({ success: false, message: "Route not found" });
-});
+// 404 handler (last)
+app.use((req, res) => res.status(404).json({ success: false, message: "Route not found" }));
 
 // Start server
 const PORT = process.env.PORT || 5000;

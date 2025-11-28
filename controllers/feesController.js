@@ -1,42 +1,48 @@
-const db = require("../db");
-db.connect(err => {
-  if (err) console.log("DB Connection Error:", err);
-  else console.log("✅ MySQL Connected Successfully!");
-});
+const db = require("../db"); // promise-based pool
 
 // Admin: Add fee record
-function addFee(req, res) {
+async function addFee(req, res) {
   const { student_id, student_name, class_name, amount, payment_date, payment_time, status } = req.body;
   if (!student_id || !amount || !payment_date || !payment_time || !student_name || !class_name) {
     return res.status(400).json({ success: false, message: "All fields are required" });
   }
 
-  const sql = `INSERT INTO fees (student_id, student_name, class_name, amount, payment_date, payment_time, status)
-               VALUES (?, ?, ?, ?, ?, ?, ?)`;
+  try {
+    const sql = `INSERT INTO fees 
+      (student_id, student_name, class_name, amount, payment_date, payment_time, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`;
 
-  db.query(sql, [student_id, student_name, class_name, amount, payment_date, payment_time, status || "On Time"], (err, result) => {
-    if (err) return res.status(500).json({ success: false, message: err.message });
+    const [result] = await db.query(sql, [
+      student_id, student_name, class_name, amount, payment_date, payment_time, status || "On Time"
+    ]);
+
     res.json({ success: true, message: "Fee record added successfully!" });
-  });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
 }
 
 // Student: Get their fees
-function getStudentFees(req, res) {
+async function getStudentFees(req, res) {
   const studentId = req.params.id;
-  const sql = `SELECT * FROM fees WHERE student_id = ? ORDER BY payment_date DESC`;
-  db.query(sql, [studentId], (err, results) => {
-    if (err) return res.status(500).json({ success: false, message: err.message });
+  try {
+    const sql = `SELECT * FROM fees WHERE student_id = ? ORDER BY payment_date DESC`;
+    const [results] = await db.query(sql, [studentId]);
     res.json({ success: true, fees: results });
-  });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
 }
 
 // Admin: Get all fees
-function getAllFees(req, res) {
-  const sql = `SELECT * FROM fees ORDER BY payment_date DESC`;
-  db.query(sql, (err, results) => {
-    if (err) return res.status(500).json({ success: false, message: err.message });
+async function getAllFees(req, res) {
+  try {
+    const sql = `SELECT * FROM fees ORDER BY payment_date DESC`;
+    const [results] = await db.query(sql);
     res.json({ success: true, fees: results });
-  });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
 }
 
 module.exports = { addFee, getStudentFees, getAllFees };

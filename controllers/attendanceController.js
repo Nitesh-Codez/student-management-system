@@ -7,7 +7,6 @@ exports.getStudentsList = async (req, res) => {
   try {
     let { date } = req.query;
 
-    // Default → today's date
     if (!date) {
       const today = new Date();
       date =
@@ -26,24 +25,17 @@ exports.getStudentsList = async (req, res) => {
         COALESCE(a.status, "Absent") AS status
       FROM students s
       LEFT JOIN attendance a
-        ON s.id = a.student_id AND a.date = ?
+        ON s.id = a.student_id AND DATE(a.date) = ?
       WHERE s.role = 'student'
       ORDER BY s.id
     `;
 
     const [rows] = await db.query(sql, [date]);
 
-    return res.json({
-      success: true,
-      date,
-      students: rows,
-    });
-
+    return res.json({ success: true, date, students: rows });
   } catch (error) {
     console.error("Error fetching students:", error);
-    return res
-      .status(500)
-      .json({ success: false, message: "Server error while fetching students" });
+    return res.status(500).json({ success: false, message: "Server error while fetching students" });
   }
 };
 
@@ -54,7 +46,6 @@ exports.markAttendance = async (req, res) => {
   try {
     let { date, attendance } = req.body;
 
-    // Default → today's date
     if (!date) {
       const today = new Date();
       date =
@@ -65,9 +56,7 @@ exports.markAttendance = async (req, res) => {
         String(today.getDate()).padStart(2, "0");
     }
 
-    if (!attendance || !Array.isArray(attendance)) {
-      attendance = [];
-    }
+    if (!attendance || !Array.isArray(attendance)) attendance = [];
 
     for (const item of attendance) {
       if (!item.studentId || !item.status) continue;
@@ -82,16 +71,10 @@ exports.markAttendance = async (req, res) => {
       );
     }
 
-    return res.json({
-      success: true,
-      message: "Attendance saved successfully!",
-    });
-
+    return res.json({ success: true, message: "Attendance saved successfully!" });
   } catch (error) {
     console.error("Error saving attendance:", error);
-    return res
-      .status(500)
-      .json({ success: false, message: "Server error while saving attendance" });
+    return res.status(500).json({ success: false, message: "Server error while saving attendance" });
   }
 };
 
@@ -102,13 +85,10 @@ exports.getStudentAttendance = async (req, res) => {
   try {
     const { id } = req.params;
 
-    if (!id)
-      return res.status(400).json({ success: false, message: "Student ID required" });
+    if (!id) return res.status(400).json({ success: false, message: "Student ID required" });
 
     const sql = `
-      SELECT 
-        date,
-        status
+      SELECT date, status
       FROM attendance
       WHERE student_id = ?
       ORDER BY date DESC
@@ -116,15 +96,49 @@ exports.getStudentAttendance = async (req, res) => {
 
     const [rows] = await db.query(sql, [id]);
 
-    return res.json({
-      success: true,
-      attendance: rows,
-    });
-
+    return res.json({ success: true, attendance: rows });
   } catch (error) {
     console.error("Error fetching student attendance:", error);
-    return res
-      .status(500)
-      .json({ success: false, message: "Server error while fetching records" });
+    return res.status(500).json({ success: false, message: "Server error while fetching records" });
+  }
+};
+
+// --------------------------------------------------
+// 4) GET ALL STUDENTS FULL ATTENDANCE SUMMARY (Admin)
+// --------------------------------------------------
+exports.getTodayAttendancePercent = async (req, res) => {
+  try {
+    const today = new Date();
+    const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
+
+    const sql = `
+      SELECT 
+        s.id AS studentId,
+        s.name AS name,
+        COALESCE(SUM(CASE WHEN a.status='Present' THEN 1 ELSE 0 END), 0) AS present,
+        COUNT(a.date) AS total,
+        (COALESCE(SUM(CASE WHEN a.status='Present' THEN 1 ELSE 0 END),0) / NULLIF(COUNT(a.date),0) * 100) AS percentage
+      FROM students s
+      LEFT JOIN attendance a
+        ON s.id = a.student_id AND DATE(a.date) = ?
+      WHERE s.role='student'
+      GROUP BY s.id, s.name
+      ORDER BY s.id
+    `;
+
+    const [rows] = await db.query(sql, [dateStr]);
+
+    const result = rows.map(r => ({
+      studentId: r.studentId,
+      name: r.name,
+      present: r.present,
+      total: r.total,
+      percentage: r.total > 0 ? r.percentage.toFixed(2) : "0.00"
+    }));
+
+    return res.json({ success: true, date: dateStr, students: result });
+  } catch (error) {
+    console.error("Error fetching today attendance percent:", error);
+    return res.status(500).json({ success: false, message: "Server error" });
   }
 };

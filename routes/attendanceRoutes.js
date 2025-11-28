@@ -11,4 +11,9 @@ router.post("/mark", attendanceController.markAttendance);
 // GET full attendance of a student (Student)
 router.get("/:id", attendanceController.getStudentAttendance);
 
+const { getTodayAttendancePercent } = require("../controllers/attendanceController");
+
+// GET /api/attendance/today-percent
+router.get("/today-percent", attendanceController.getTodayAttendancePercent);
+
 module.exports = router;

@@ -1,49 +1,84 @@
 const db = require("../db");
 
-// GET attendance by date
-const getAttendanceByDate = (req, res) => {
-  const { date } = req.query;
-  if (!date) return res.status(400).json({ success: false, message: "Date required" });
+// GET students + attendance for a date
+exports.getStudentsList = async (req, res) => {
+  try {
+    // Agar date na mile, default today ki date set karo
+    let { date } = req.query;
+    if (!date) {
+      const today = new Date();
+      date =
+        today.getFullYear() +
+        "-" +
+        String(today.getMonth() + 1).padStart(2, "0") +
+        "-" +
+        String(today.getDate()).padStart(2, "0");
+    }
 
-  const sql = `
-    SELECT 
-      s.id, s.name, s.class,
-      (SELECT a.status FROM attendance a WHERE a.student_id=s.id AND a.date=?) AS status
-    FROM students s
-    ORDER BY s.id
-  `;
+    // Fetch all students and their attendance for the given date
+    const sql = `
+      SELECT 
+        s.id AS studentId,
+        s.name AS studentName,
+        s.class AS class,
+        COALESCE(a.status, "Absent") AS status
+      FROM students s
+      LEFT JOIN attendance a
+        ON s.id = a.student_id AND a.date = ?
+      ORDER BY s.id
+    `;
 
-  db.query(sql, [date], (err, results) => {
-    if (err) return res.status(500).json({ success: false, message: err.message });
-    const students = results.map(r => ({
-      studentId: r.id,
-      studentName: r.name,
-      class: r.class,
-      status: r.status || null
-    }));
-    res.json({ success: true, students });
-  });
+    const [rows] = await db.query(sql, [date]);
+
+    return res.json({
+      success: true,
+      date: date,
+      students: rows,
+    });
+
+  } catch (error) {
+    console.error("Error fetching students:", error);
+    return res.status(500).json({ success: false, message: "Server error" });
+  }
 };
 
-// POST: mark/update attendance
-const markAttendance = (req, res) => {
-  const { date, attendance } = req.body;
-  if (!date || !attendance || !attendance.length) return res.status(400).json({ success: false, message: "Data required" });
+// MARK or UPDATE Attendance
+exports.markAttendance = async (req, res) => {
+  try {
+    let { date, attendance } = req.body;
 
-  const promises = attendance.map(a => {
-    return new Promise((resolve, reject) => {
-      const sql = `
+    // Default date = today if not provided
+    if (!date) {
+      const today = new Date();
+      date =
+        today.getFullYear() +
+        "-" +
+        String(today.getMonth() + 1).padStart(2, "0") +
+        "-" +
+        String(today.getDate()).padStart(2, "0");
+    }
+
+    if (!attendance || !Array.isArray(attendance)) {
+      attendance = []; // empty array if nothing sent
+    }
+
+    for (const item of attendance) {
+      if (!item.studentId || !item.status) continue; // skip invalid items
+
+      await db.query(
+        `
         INSERT INTO attendance (student_id, date, status)
         VALUES (?, ?, ?)
-        ON DUPLICATE KEY UPDATE status=VALUES(status)
-      `;
-      db.query(sql, [a.studentId, date, a.status], (err) => err ? reject(err) : resolve());
-    });
-  });
+        ON DUPLICATE KEY UPDATE status = VALUES(status)
+        `,
+        [item.studentId, date, item.status]
+      );
+    }
 
-  Promise.all(promises)
-    .then(() => res.json({ success: true, message: "Attendance recorded successfully!" }))
-    .catch(err => res.status(500).json({ success: false, message: err.message }));
+    return res.json({ success: true, message: "Attendance saved!" });
+
+  } catch (error) {
+    console.error("Error saving attendance:", error);
+    return res.status(500).json({ success: false, message: "Server error" });
+  }
 };
-
-module.exports = { getAttendanceByDate, markAttendance };

@@ -5,7 +5,9 @@ require("dotenv").config();
 const authRoutes = require("./routes/authRoutes");
 const studentRoutes = require("./routes/studentRoutes");
 const attendanceRoutes = require("./routes/attendanceRoutes");
-const feesRoutes = require("./routes/feesRoutes"); // ✅ Add fees route
+const feesRoutes = require("./routes/feesRoutes"); 
+const homeworkRoutes = require("./routes/homeworkRoutes");
+const studentProfileRoutes = require("./routes/studentProfileRoutes");
 const db = require("./db");
 
 const app = express();
@@ -24,7 +26,9 @@ app.use("/api/auth", authRoutes);
 app.use("/api/students", studentRoutes);
 app.use("/api/attendance", attendanceRoutes);
 app.use("/api/fees", feesRoutes); // ✅ Fees routes mounted
-
+app.use("/api/homework", homeworkRoutes);
+app.use(express.json());
+app.use("/api/student-profile", studentProfileRoutes);
 // 404 handler (last)
 app.use((req, res) => res.status(404).json({ success: false, message: "Route not found" }));
 

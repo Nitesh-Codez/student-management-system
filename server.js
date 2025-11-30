@@ -14,7 +14,10 @@ const app = express();
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+
+// Increase JSON and URL-encoded payload limit to allow large profile uploads (like images)
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ limit: "10mb", extended: true }));
 
 // Test root route
 app.get("/", (req, res) => {
@@ -25,10 +28,10 @@ app.get("/", (req, res) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/students", studentRoutes);
 app.use("/api/attendance", attendanceRoutes);
-app.use("/api/fees", feesRoutes); // ✅ Fees routes mounted
+app.use("/api/fees", feesRoutes);
 app.use("/api/homework", homeworkRoutes);
-app.use(express.json());
 app.use("/api/student-profile", studentProfileRoutes);
+
 // 404 handler (last)
 app.use((req, res) => res.status(404).json({ success: false, message: "Route not found" }));
 

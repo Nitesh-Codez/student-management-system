@@ -1,6 +1,6 @@
-const db = require("../db"); // MySQL connection
+const db = require("../db");
 
-// Get student profile by studentCode
+// Get profile by studentCode
 exports.getProfile = (req, res) => {
   const { studentCode } = req.params;
   const sql = "SELECT * FROM student_profile WHERE studentCode = ?";
@@ -11,16 +11,15 @@ exports.getProfile = (req, res) => {
   });
 };
 
-// Create or update student profile
+// Create or update profile
 exports.saveProfile = (req, res) => {
   const profile = req.body;
-
   const checkSql = "SELECT * FROM student_profile WHERE studentCode = ?";
   db.query(checkSql, [profile.studentCode], (err, results) => {
     if (err) return res.status(500).json({ success: false, message: err.message });
 
     if (results.length > 0) {
-      // Update existing profile
+      // Update
       const updateSql = `
         UPDATE student_profile SET 
           name=?, class=?, email=?, photo=?, gender=?, category=?, dob=?,
@@ -38,12 +37,12 @@ exports.saveProfile = (req, res) => {
         res.json({ success: true, message: "Profile updated successfully" });
       });
     } else {
-      // Insert new profile
+      // Insert
       const insertSql = `
         INSERT INTO student_profile 
         (name,class,email,photo,gender,category,dob,fatherName,motherName,brotherName,sisterName,tuition,
         mobile,address,city,state,pincode,studentCode,aatu,extraNotes) 
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
       `;
       db.query(insertSql, [
         profile.name, profile.class, profile.email, profile.photo, profile.gender, profile.category, profile.dob,

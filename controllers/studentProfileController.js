@@ -1,56 +1,86 @@
 const db = require("../db");
+const bcrypt = require("bcrypt");
 
-// Get profile by studentCode
+// Get profile by password only
 exports.getProfile = (req, res) => {
-  const { studentCode } = req.params;
-  const sql = "SELECT * FROM student_profile WHERE studentCode = ?";
-  db.query(sql, [studentCode], (err, results) => {
+  const { password } = req.body;
+  if (!password) {
+    return res.status(400).json({ success: false, message: "Password is required" });
+  }
+
+  const sql = "SELECT * FROM students";
+  db.query(sql, async (err, results) => {
     if (err) return res.status(500).json({ success: false, message: err.message });
-    if (results.length === 0) return res.status(404).json({ success: false, message: "Profile not found" });
-    res.json({ success: true, profile: results[0] });
+
+    // Check password for each student
+    for (let user of results) {
+      const match = await bcrypt.compare(password, user.password);
+      if (match) {
+        return res.json({ success: true, profile: user });
+      }
+    }
+
+    return res.status(404).json({ success: false, message: "Invalid password" });
   });
 };
 
-// Create or update profile
+// Save or update profile by password only
 exports.saveProfile = (req, res) => {
   const profile = req.body;
-  const checkSql = "SELECT * FROM student_profile WHERE studentCode = ?";
-  db.query(checkSql, [profile.studentCode], (err, results) => {
+  const { password } = profile;
+
+  if (!password) {
+    return res.status(400).json({ success: false, message: "Password is required" });
+  }
+
+  const sql = "SELECT * FROM students";
+  db.query(sql, async (err, results) => {
     if (err) return res.status(500).json({ success: false, message: err.message });
 
-    if (results.length > 0) {
-      // Update
+    // Try to find user by password
+    let userFound = null;
+    for (let user of results) {
+      const match = await bcrypt.compare(password, user.password);
+      if (match) {
+        userFound = user;
+        break;
+      }
+    }
+
+    if (userFound) {
+      // Update profile
       const updateSql = `
-        UPDATE student_profile SET 
-          name=?, class=?, email=?, photo=?, gender=?, category=?, dob=?,
-          fatherName=?, motherName=?, brotherName=?, sisterName=?, tuition=?,
-          mobile=?, address=?, city=?, state=?, pincode=?, aatu=?, extraNotes=?, updatedAt=NOW()
-        WHERE studentCode=?
+        UPDATE students SET
+          name=?, class=?, role=?, mobile=?, address=?, photo=?, gender=?, category=?, dob=?,
+          fatherName=?, motherName=?, brotherName=?, sisterName=?, tuition=?, updatedAt=NOW()
+        WHERE id=?
       `;
       db.query(updateSql, [
-        profile.name, profile.class, profile.email, profile.photo, profile.gender, profile.category, profile.dob,
-        profile.fatherName, profile.motherName, profile.brotherName, profile.sisterName, profile.tuition,
-        profile.mobile, profile.address, profile.city, profile.state, profile.pincode, profile.aatu, profile.extraNotes,
-        profile.studentCode
+        profile.name, profile.class, profile.role || "student", profile.mobile, profile.address, profile.photo,
+        profile.gender, profile.category, profile.dob, profile.fatherName, profile.motherName, profile.brotherName,
+        profile.sisterName, profile.tuition, userFound.id
       ], (err2) => {
         if (err2) return res.status(500).json({ success: false, message: err2.message });
-        res.json({ success: true, message: "Profile updated successfully" });
+        res.json({ success: true, message: "Profile updated successfully", profile });
       });
     } else {
-      // Insert
-      const insertSql = `
-        INSERT INTO student_profile 
-        (name,class,email,photo,gender,category,dob,fatherName,motherName,brotherName,sisterName,tuition,
-        mobile,address,city,state,pincode,studentCode,aatu,extraNotes) 
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-      `;
-      db.query(insertSql, [
-        profile.name, profile.class, profile.email, profile.photo, profile.gender, profile.category, profile.dob,
-        profile.fatherName, profile.motherName, profile.brotherName, profile.sisterName, profile.tuition,
-        profile.mobile, profile.address, profile.city, profile.state, profile.pincode, profile.studentCode, profile.aatu, profile.extraNotes
-      ], (err3) => {
-        if (err3) return res.status(500).json({ success: false, message: err3.message });
-        res.json({ success: true, message: "Profile saved successfully" });
+      // Insert new user
+      bcrypt.hash(password, 10, (errHash, hashedPassword) => {
+        if (errHash) return res.status(500).json({ success: false, message: errHash.message });
+
+        const insertSql = `
+          INSERT INTO students
+          (name,class,role,mobile,address,photo,gender,category,dob,fatherName,motherName,brotherName,sisterName,tuition,password)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        `;
+        db.query(insertSql, [
+          profile.name, profile.class, profile.role || "student", profile.mobile, profile.address, profile.photo,
+          profile.gender, profile.category, profile.dob, profile.fatherName, profile.motherName, profile.brotherName,
+          profile.sisterName, profile.tuition, hashedPassword
+        ], (err3) => {
+          if (err3) return res.status(500).json({ success: false, message: err3.message });
+          res.json({ success: true, message: "Profile saved successfully", profile });
+        });
       });
     }
   });

@@ -15,9 +15,9 @@ const app = express();
 // Middleware
 app.use(cors());
 
-// Increase JSON and URL-encoded payload limit to allow large profile uploads (like images)
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ limit: "10mb", extended: true }));
+// Remove payload limit for fast testing
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // Test root route
 app.get("/", (req, res) => {

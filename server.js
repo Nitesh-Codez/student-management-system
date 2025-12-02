@@ -7,6 +7,7 @@ const studentRoutes = require("./routes/studentRoutes");
 const attendanceRoutes = require("./routes/attendanceRoutes");
 const feesRoutes = require("./routes/feesRoutes"); 
 const homeworkRoutes = require("./routes/homeworkRoutes");
+const profileRoutes = require("./routes/profileRoutes");
 
 const db = require("./db"); // MySQL connection
 
@@ -26,6 +27,7 @@ app.use("/api/students", studentRoutes);
 app.use("/api/attendance", attendanceRoutes);
 app.use("/api/fees", feesRoutes);
 app.use("/api/homework", homeworkRoutes);
+app.use("/api/student-profile", profileRoutes);
 
 
 

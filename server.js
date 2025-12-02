@@ -8,18 +8,16 @@ const attendanceRoutes = require("./routes/attendanceRoutes");
 const feesRoutes = require("./routes/feesRoutes"); 
 const homeworkRoutes = require("./routes/homeworkRoutes");
 const studentProfileRoutes = require("./routes/studentProfileRoutes");
-const db = require("./db");
+const db = require("./db"); // MySQL connection
 
 const app = express();
 
 // Middleware
 app.use(cors());
-
-// Remove payload limit for fast testing
-app.use(express.json());
+app.use(express.json()); // body parser for JSON
 app.use(express.urlencoded({ extended: true }));
 
-// Test root route
+// Root route (test)
 app.get("/", (req, res) => {
   res.send("Server is running!");
 });
@@ -32,7 +30,10 @@ app.use("/api/fees", feesRoutes);
 app.use("/api/homework", homeworkRoutes);
 app.use("/api/student-profile", studentProfileRoutes);
 
-// 404 handler (last)
+/**
+ * 404 handler
+ * This should always be last, to catch any undefined routes
+ */
 app.use((req, res) => res.status(404).json({ success: false, message: "Route not found" }));
 
 // Start server

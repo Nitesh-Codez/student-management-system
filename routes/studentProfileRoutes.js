@@ -1,11 +1,8 @@
 const express = require("express");
 const router = express.Router();
-const { getProfile, saveProfile } = require("../controllers/studentProfileController");
+const { getProfileById } = require("../controllers/studentProfileController");
 
-// Fetch profile using password only
-router.post("/get", getProfile);
-
-// Save or update profile using password only
-router.post("/save", saveProfile);
+// POST route
+router.post("/get", getProfileById);
 
 module.exports = router;

@@ -10,5 +10,7 @@ router.get("/students/:className", marksController.getStudentsByClass);
 
 // Add marks
 router.post("/add", marksController.addMarks);
+router.post("/check", marksController.checkMarks);
+
 
 module.exports = router;

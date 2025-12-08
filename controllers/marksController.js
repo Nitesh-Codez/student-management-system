@@ -50,3 +50,29 @@ exports.addMarks = async (req, res) => {
     res.json({ success: false, message: "Error adding marks" });
   }
 };
+// Check marks by student ID
+exports.checkMarks = async (req, res) => {
+  try {
+    const { studentId } = req.body;
+
+    if (!studentId) {
+      return res.json({ success: false, message: "Student ID required" });
+    }
+
+    const [rows] = await db.execute(
+      "SELECT id, subject AS subject_name, total_marks, obtained_marks, test_date, \
+      CASE WHEN obtained_marks >= total_marks * 0.33 THEN 'Pass' ELSE 'Fail' END AS status \
+      FROM marks WHERE student_id = ? ORDER BY test_date DESC",
+      [studentId]
+    );
+
+    if (rows.length === 0) {
+      return res.json({ success: false, message: "No marks found!" });
+    }
+
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error(error);
+    res.json({ success: false, message: "Error fetching marks" });
+  }
+};

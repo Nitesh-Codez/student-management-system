@@ -2,13 +2,13 @@ const express = require("express");
 const router = express.Router();
 const marksController = require("../controllers/marksController");
 
-// ADMIN ROUTES
-router.get("/admin/classes", marksController.getClasses);
-router.get("/admin/students/:className", marksController.getStudentsByClass);
-router.post("/admin/add", marksController.addMarks);
+// Get classes list
+router.get("/classes", marksController.getClasses);
 
-// STUDENT ROUTES
-router.get("/subjects", marksController.getSubjects);
-router.get("/student/:id/:subject", marksController.getMarksByStudent);
+// Get students by class
+router.get("/students/:className", marksController.getStudentsByClass);
+
+// Add marks
+router.post("/add", marksController.addMarks);
 
 module.exports = router;

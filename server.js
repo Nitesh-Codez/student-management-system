@@ -8,6 +8,8 @@ const attendanceRoutes = require("./routes/attendanceRoutes");
 const feesRoutes = require("./routes/feesRoutes");
 const homeworkRoutes = require("./routes/homeworkRoutes");
 const studentProfileRoute = require("./routes/studentProfileRoute");
+const marksRoutes = require("./routes/marksRoutes");
+
 
 const db = require("./db"); 
 
@@ -25,9 +27,13 @@ app.use("/api/students", studentRoutes);
 app.use("/api/attendance", attendanceRoutes);
 app.use("/api/fees", feesRoutes);
 app.use("/api/homework", homeworkRoutes);
+app.use("/api/marks", marksRoutes);
+
+
 
 // **IMPORTANT**
 app.use("/api/student-profile", studentProfileRoute);
+
 
 // 404
 app.use((req, res) =>

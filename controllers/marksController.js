@@ -53,12 +53,23 @@ exports.addMarks = async (req, res) => {
 // Check marks by student ID
 exports.checkMarks = async (req, res) => {
   try {
-    const { studentId } = req.body;
+    const { studentId, studentName } = req.body;
 
-    if (!studentId) {
-      return res.json({ success: false, message: "Student ID required" });
+    if (!studentId || !studentName) {
+      return res.json({ success: false, message: "Student ID and Name required" });
     }
 
+    // Step 1: Check student exists with SAME id and SAME name
+    const [student] = await db.execute(
+      "SELECT id FROM students WHERE id = ? AND name = ?",
+      [studentId, studentName]
+    );
+
+    if (student.length === 0) {
+      return res.json({ success: false, message: "Invalid Student ID or Name!" });
+    }
+
+    // Step 2: Fetch marks
     const [rows] = await db.execute(
       "SELECT id, subject AS subject_name, total_marks, obtained_marks, test_date, \
       CASE WHEN obtained_marks >= total_marks * 0.33 THEN 'Pass' ELSE 'Fail' END AS status \

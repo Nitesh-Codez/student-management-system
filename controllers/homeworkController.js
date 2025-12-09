@@ -12,7 +12,13 @@ exports.getClasses = (req, res) => {
 // ------------------ Get Homework by Class ------------------
 exports.getHomeworkByClass = (req, res) => {
   const className = req.params.class;
-  const sql = `SELECT * FROM homework WHERE class = ?`;
+  const sql = `
+    SELECT h.id, h.title, h.student_id, s.name AS student_name, h.class, h.status, h.date_assigned
+    FROM homework h
+    JOIN students s ON h.student_id = s.id
+    WHERE h.class = ?
+    ORDER BY h.date_assigned DESC
+  `;
   db.query(sql, [className], (err, results) => {
     if (err) return res.status(500).json({ success: false, message: err.message });
     res.json({ success: true, homework: results });
@@ -26,7 +32,6 @@ exports.addHomework = (req, res) => {
   if (!title || !className || !date_assigned)
     return res.status(400).json({ success: false, message: "All fields required" });
 
-  // Fetch all students of this class
   db.query(`SELECT id FROM students WHERE class = ?`, [className], (err, students) => {
     if (err) return res.status(500).json({ success: false, message: err.message });
     if (students.length === 0)
@@ -37,17 +42,7 @@ exports.addHomework = (req, res) => {
 
     db.query(sql, [values], (err2) => {
       if (err2) return res.status(500).json({ success: false, message: err2.message });
-
-      // Return inserted homework
-      const insertedHomework = values.map(v => ({
-        title: v[0],
-        student_id: v[1],
-        class: v[2],
-        status: v[3],
-        date_assigned: v[4]
-      }));
-
-      res.json({ success: true, message: "Homework assigned successfully", homework: insertedHomework });
+      res.json({ success: true, message: "Homework assigned successfully", homework: values });
     });
   });
 };

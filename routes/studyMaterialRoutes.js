@@ -1,36 +1,47 @@
-import express from "express";
-import multer from "multer";
-import {
+const express = require("express");
+const router = express.Router();
+const multer = require("multer");
+const path = require("path");
+const {
   uploadMaterial,
   getAllMaterials,
+  deleteMaterial,
   getSubjectsByClass,
-  getMaterialByClassAndSubject,
-  deleteMaterial
-} from "../controllers/studyMaterialController.js";
+  getMaterialByClassAndSubject
+} = require("../controllers/studyMaterialController");
 
-const router = express.Router();
-
-/* =========================
-   MULTER CONFIGURATION
-========================= */
+// =====================
+// MULTER SETUP FOR FILE UPLOAD
+// =====================
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, "uploads/"),
-  filename: (req, file, cb) => cb(null, Date.now() + "_" + file.originalname)
+  destination: (req, file, cb) => {
+    cb(null, "uploads/");
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  }
 });
 
 const upload = multer({ storage });
 
-/* =========================
-   ADMIN ROUTES
-========================= */
-router.post("/admin/upload", upload.single("file"), uploadMaterial);
-router.delete("/admin/:id", deleteMaterial);
-router.get("/admin/all", getAllMaterials); // GET all materials
+// =====================
+// ROUTES
+// =====================
 
-/* =========================
-   STUDENT ROUTES
-========================= */
+// Admin upload study material
+router.post("/admin/upload", upload.single("file"), uploadMaterial);
+
+// Admin get all materials
+router.get("/admin/materials", getAllMaterials);
+
+// Admin delete material
+router.delete("/admin/:id", deleteMaterial);
+
+// Get subjects by class
 router.get("/subjects/:class", getSubjectsByClass);
+
+// Get materials by class & subject (student view)
 router.get("/:class/:subject", getMaterialByClassAndSubject);
 
-export default router;
+module.exports = router;

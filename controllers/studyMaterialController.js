@@ -1,16 +1,21 @@
-import db from "../config/db.js";
+const db = require("../db"); 
 
 /* =========================
    ADMIN: UPLOAD MATERIAL
 ========================= */
 export const uploadMaterial = async (req, res) => {
-  const { className, subject, chapter, fileUrl, adminId } = req.body;
+  const { className: classValue, subject, chapter, adminId } = req.body;
+  const fileUrl = req.file ? `/uploads/${req.file.filename}` : null; // file URL
+
+  if (!classValue || !subject || !chapter || !fileUrl || !adminId) {
+    return res.status(400).json({ success: false, error: "All fields required" });
+  }
 
   try {
     await db.query(
       `INSERT INTO study_materials (class, subject, chapter, file_url, uploaded_by)
        VALUES (?, ?, ?, ?, ?)`,
-      [className, subject, chapter, fileUrl, adminId]
+      [classValue, subject, chapter, fileUrl, adminId]
     );
 
     res.json({ success: true, message: "Study material uploaded" });
@@ -20,7 +25,19 @@ export const uploadMaterial = async (req, res) => {
 };
 
 /* =========================
-   STUDENT: GET SUBJECTS
+   ADMIN: GET ALL MATERIALS
+========================= */
+export const getAllMaterials = async (req, res) => {
+  try {
+    const [rows] = await db.query("SELECT * FROM study_materials ORDER BY created_at DESC");
+    res.json({ success: true, materials: rows });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+/* =========================
+   STUDENT: GET SUBJECTS BY CLASS
 ========================= */
 export const getSubjectsByClass = async (req, res) => {
   const { class: studentClass } = req.params;
@@ -41,7 +58,7 @@ export const getSubjectsByClass = async (req, res) => {
 };
 
 /* =========================
-   STUDENT: GET CHAPTERS
+   STUDENT: GET MATERIAL BY CLASS & SUBJECT
 ========================= */
 export const getMaterialByClassAndSubject = async (req, res) => {
   const { class: studentClass, subject } = req.params;
@@ -67,11 +84,7 @@ export const deleteMaterial = async (req, res) => {
   const { id } = req.params;
 
   try {
-    await db.query(
-      `DELETE FROM study_materials WHERE id = ?`,
-      [id]
-    );
-
+    await db.query(`DELETE FROM study_materials WHERE id = ?`, [id]);
     res.json({ success: true, message: "Material deleted" });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

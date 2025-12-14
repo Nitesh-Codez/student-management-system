@@ -1,17 +1,38 @@
 const express = require("express");
 const router = express.Router();
-const homeworkController = require("../controllers/homeworkController");
+const multer = require("multer");
+const studyMaterialController = require("../controllers/studyMaterialController");
 
-// Get all students (frontend needs it for class & student select)
-router.get("/students", homeworkController.getAllStudents);
+// =========================
+// MULTER CONFIG
+// =========================
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, "uploads/"),
+  filename: (req, file, cb) => cb(null, Date.now() + "_" + file.originalname)
+});
+const upload = multer({ storage });
 
-// Get homework list by class
-router.get("/:class", homeworkController.getHomeworkByClass);
+// =========================
+// ADMIN ROUTES
+// =========================
 
-// Add homework
-router.post("/add", homeworkController.addHomework);
+// Upload study material
+router.post("/admin/upload", upload.single("file"), studyMaterialController.uploadMaterial);
 
-// Update homework status
-router.patch("/status", homeworkController.updateStatus);
+// Delete material
+router.delete("/admin/:id", studyMaterialController.deleteMaterial);
+
+// Get all materials
+router.get("/admin/all", studyMaterialController.getAllMaterials);
+
+// =========================
+// STUDENT ROUTES
+// =========================
+
+// Get subjects by class
+router.get("/subjects/:class", studyMaterialController.getSubjectsByClass);
+
+// Get materials by class and subject
+router.get("/:class/:subject", studyMaterialController.getMaterialByClassAndSubject);
 
 module.exports = router;

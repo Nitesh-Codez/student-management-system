@@ -15,4 +15,7 @@ router.get("/:id", attendanceController.getStudentAttendance);
 // GET /api/attendance/today-percent
 router.get("/today-percent", attendanceController.getTodayAttendancePercent);
 
+router.get("/attendance-marks", getAttendanceMarks);
+
+
 module.exports = router;

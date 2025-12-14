@@ -142,3 +142,44 @@ exports.getTodayAttendancePercent = async (req, res) => {
     return res.status(500).json({ success: false, message: "Server error" });
   }
 };
+// 5) GET ATTENDANCE MARKS (MONTHLY)
+exports.getAttendanceMarks = async (req, res) => {
+  try {
+    const { studentId, month } = req.query;
+
+    const [year, mon] = month.split("-").map(Number);
+
+    const sql = `
+      SELECT status
+      FROM attendance
+      WHERE student_id = ?
+      AND YEAR(date) = ?
+      AND MONTH(date) = ?
+    `;
+
+    const [rows] = await db.query(sql, [studentId, year, mon]);
+
+    const validDays = rows.filter(
+      r => r.status === "Present" || r.status === "Absent"
+    ).length;
+
+    const presentDays = rows.filter(r => r.status === "Present").length;
+
+    const percentage =
+      validDays === 0 ? 0 : (presentDays / validDays) * 100;
+
+    let marks = 0;
+    if (percentage > 75) {
+      marks = Math.ceil((percentage - 75) / 5);
+    }
+
+    res.json({
+      success: true,
+      percentage: percentage.toFixed(2),
+      attendanceMarks: marks
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false });
+  }
+};

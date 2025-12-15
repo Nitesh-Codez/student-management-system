@@ -10,6 +10,8 @@ const homeworkRoutes = require("./routes/homeworkRoutes");
 const studentProfileRoute = require("./routes/studentProfileRoute");
 const marksRoutes = require("./routes/marksRoutes");
 const studyMaterialRoutes = ("./routes/studyMaterialRoutes.");
+const newMarksRoutes = require("./routes/newMarksRoutes");
+
 
 
 const db = require("./db"); 
@@ -30,6 +32,8 @@ app.use("/api/fees", feesRoutes);
 app.use("/api/homework", homeworkRoutes);
 app.use("/api/marks", marksRoutes);
 app.use("/api/study-material", studyMaterialRoutes);
+app.use("/api/marks", newMarksRoutes);
+
 
 
 

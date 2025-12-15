@@ -145,16 +145,18 @@ exports.getTodayAttendancePercent = async (req, res) => {
 // // 5) GET ATTENDANCE MARKS (MONTHLY)
 exports.getAttendanceMarks = async (req, res) => {
   try {
-    const { studentId, month } = req.query; // month = "2025-11"
+    const { studentId, month } = req.query;
 
     if (!studentId || !month) {
       return res.status(400).json({ success: false, message: "studentId & month required" });
     }
 
-    // Format month correctly
-    const monthStr = month.padEnd(7, '0'); // "2025-11"
+    console.log("DEBUG:", studentId, month);
 
-    // Use LIKE to match month directly
+    // Ensure studentId is number
+    const id = Number(studentId);
+    const monthStr = month.trim(); // "2025-11"
+
     const sql = `
       SELECT status
       FROM attendance
@@ -162,16 +164,13 @@ exports.getAttendanceMarks = async (req, res) => {
       AND date LIKE ?
     `;
 
-    const [rows] = await db.query(sql, [studentId, `${monthStr}%`]);
+    const [rows] = await db.query(sql, [id, `${monthStr}%`]);
+    console.log("DEBUG rows:", rows);
 
-    const validDays = rows.filter(
-      r => r.status === "Present" || r.status === "Absent"
-    ).length;
-
+    const validDays = rows.filter(r => r.status === "Present" || r.status === "Absent").length;
     const presentDays = rows.filter(r => r.status === "Present").length;
 
-    const percentage =
-      validDays === 0 ? 0 : (presentDays / validDays) * 100;
+    const percentage = validDays === 0 ? 0 : (presentDays / validDays) * 100;
 
     let marks = 0;
     if (percentage > 75) {

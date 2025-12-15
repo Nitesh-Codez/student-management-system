@@ -142,22 +142,27 @@ exports.getTodayAttendancePercent = async (req, res) => {
     return res.status(500).json({ success: false, message: "Server error" });
   }
 };
-// 5) GET ATTENDANCE MARKS (MONTHLY)
+// // 5) GET ATTENDANCE MARKS (MONTHLY)
 exports.getAttendanceMarks = async (req, res) => {
   try {
-    const { studentId, month } = req.query;
+    const { studentId, month } = req.query; // month = "2025-11"
 
-    const [year, mon] = month.split("-").map(Number);
+    if (!studentId || !month) {
+      return res.status(400).json({ success: false, message: "studentId & month required" });
+    }
 
+    // Format month correctly
+    const monthStr = month.padEnd(7, '0'); // "2025-11"
+
+    // Use LIKE to match month directly
     const sql = `
       SELECT status
       FROM attendance
       WHERE student_id = ?
-      AND YEAR(date) = ?
-      AND MONTH(date) = ?
+      AND date LIKE ?
     `;
 
-    const [rows] = await db.query(sql, [studentId, year, mon]);
+    const [rows] = await db.query(sql, [studentId, `${monthStr}%`]);
 
     const validDays = rows.filter(
       r => r.status === "Present" || r.status === "Absent"

@@ -9,12 +9,10 @@ const feesRoutes = require("./routes/feesRoutes");
 const homeworkRoutes = require("./routes/homeworkRoutes");
 const studentProfileRoute = require("./routes/studentProfileRoute");
 const marksRoutes = require("./routes/marksRoutes");
-const studyMaterialRoutes = ("./routes/studyMaterialRoutes.");
+const studyMaterialRoutes = require("./routes/studyMaterialRoutes"); // ✅ FIXED
 const newMarksRoutes = require("./routes/newMarksRoutes");
 
-
-
-const db = require("./db"); 
+const db = require("./db");
 
 const app = express();
 
@@ -32,16 +30,12 @@ app.use("/api/fees", feesRoutes);
 app.use("/api/homework", homeworkRoutes);
 app.use("/api/marks", marksRoutes);
 app.use("/api/study-material", studyMaterialRoutes);
-app.use("/api/marks", newMarksRoutes);
+app.use("/api/new-marks", newMarksRoutes); // ✅ path separated
 
-
-
-
-// **IMPORTANT**
+// IMPORTANT
 app.use("/api/student-profile", studentProfileRoute);
 
-
-// 404
+// 404 handler
 app.use((req, res) =>
   res.status(404).json({ success: false, message: "Route not found" })
 );

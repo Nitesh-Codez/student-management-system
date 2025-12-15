@@ -140,34 +140,4 @@ exports.checkMarks = async (req, res) => {
   }
 };
 
-// ===============================
-// ✅ Get Attendance Marks (FIX)
-// ===============================
-exports.getAttendanceMarks = async (req, res) => {
-  try {
-    const { studentId } = req.query;
 
-    if (!studentId) {
-      return res.json({ success: false, message: "Student ID required" });
-    }
-
-    const [rows] = await db.execute(
-      `SELECT 
-        subject,
-        attendance_marks,
-        test_date
-      FROM marks_new
-      WHERE student_id = ?
-      ORDER BY test_date DESC`,
-      [studentId]
-    );
-
-    res.json({ success: true, data: rows });
-  } catch (err) {
-    console.error(err);
-    res.json({
-      success: false,
-      message: "Error fetching attendance marks"
-    });
-  }
-};

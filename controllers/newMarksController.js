@@ -1,6 +1,8 @@
 const db = require("../db"); // Promise-based DB
 
-// Get unique classes from students table
+// ===============================
+// Get unique classes
+// ===============================
 exports.getClasses = async (req, res) => {
   try {
     const [rows] = await db.execute(
@@ -13,7 +15,9 @@ exports.getClasses = async (req, res) => {
   }
 };
 
-// Get students list by class
+// ===============================
+// Get students by class
+// ===============================
 exports.getStudentsByClass = async (req, res) => {
   try {
     const { className } = req.params;
@@ -30,7 +34,9 @@ exports.getStudentsByClass = async (req, res) => {
   }
 };
 
-// ✅ Add marks (NEW TABLE STRUCTURE)
+// ===============================
+// Add marks
+// ===============================
 exports.addMarks = async (req, res) => {
   try {
     const {
@@ -49,7 +55,7 @@ exports.addMarks = async (req, res) => {
       theoryMarks == null ||
       vivaMarks == null ||
       attendanceMarks == null ||
-      !totalMarks ||
+      totalMarks == null ||
       !date
     ) {
       return res.json({ success: false, message: "Missing fields" });
@@ -59,7 +65,7 @@ exports.addMarks = async (req, res) => {
       Number(theoryMarks) + Number(vivaMarks) + Number(attendanceMarks);
 
     await db.execute(
-      `INSERT INTO marks_new 
+      `INSERT INTO marks_new
       (student_id, subject, theory_marks, viva_marks, attendance_marks, total_marks, obtained_marks, test_date)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
@@ -81,7 +87,9 @@ exports.addMarks = async (req, res) => {
   }
 };
 
-// ✅ Check marks by student ID & name
+// ===============================
+// Check marks (Student Panel)
+// ===============================
 exports.checkMarks = async (req, res) => {
   try {
     const { studentId, studentName } = req.body;
@@ -93,7 +101,6 @@ exports.checkMarks = async (req, res) => {
       });
     }
 
-    // Verify student
     const [student] = await db.execute(
       "SELECT id FROM students WHERE id = ? AND name = ?",
       [studentId, studentName]
@@ -106,7 +113,6 @@ exports.checkMarks = async (req, res) => {
       });
     }
 
-    // Fetch marks
     const [rows] = await db.execute(
       `SELECT 
         subject,
@@ -131,5 +137,37 @@ exports.checkMarks = async (req, res) => {
   } catch (error) {
     console.error(error);
     res.json({ success: false, message: "Error fetching marks" });
+  }
+};
+
+// ===============================
+// ✅ Get Attendance Marks (FIX)
+// ===============================
+exports.getAttendanceMarks = async (req, res) => {
+  try {
+    const { studentId } = req.query;
+
+    if (!studentId) {
+      return res.json({ success: false, message: "Student ID required" });
+    }
+
+    const [rows] = await db.execute(
+      `SELECT 
+        subject,
+        attendance_marks,
+        test_date
+      FROM marks_new
+      WHERE student_id = ?
+      ORDER BY test_date DESC`,
+      [studentId]
+    );
+
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error(err);
+    res.json({
+      success: false,
+      message: "Error fetching attendance marks"
+    });
   }
 };

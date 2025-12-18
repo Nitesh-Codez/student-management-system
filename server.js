@@ -11,6 +11,7 @@ const studentProfileRoute = require("./routes/studentProfileRoute");
 const marksRoutes = require("./routes/marksRoutes");
 const studyMaterialRoutes = require("./routes/studyMaterialRoutes"); // ✅ FIXED
 const newMarksRoutes = require("./routes/newMarksRoutes");
+const uploadStudentPhoto = require("./routes/uploadStudentPhoto");
 
 const db = require("./db");
 
@@ -30,9 +31,8 @@ app.use("/api/fees", feesRoutes);
 app.use("/api/homework", homeworkRoutes);
 app.use("/api/marks", marksRoutes);
 app.use("/api/study-material", studyMaterialRoutes);
-app.use("/api/new-marks", newMarksRoutes); // ✅ path separated
-
-// IMPORTANT
+app.use("/api/new-marks", newMarksRoutes); 
+app.use("/api/upload", uploadStudentPhoto);
 app.use("/api/student-profile", studentProfileRoute);
 
 // 404 handler

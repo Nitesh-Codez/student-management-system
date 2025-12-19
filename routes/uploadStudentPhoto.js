@@ -28,28 +28,12 @@ const storage = multer.diskStorage({
     cb(null, uploadPath);
   },
   filename: (req, file, cb) => {
-    let cleanName = file.originalname
-      .replace(/\s+/g, "-")         // spaces -> dash
+    // ✅ original filename, number nahi lagega
+    const cleanName = file.originalname
+      .replace(/\s+/g, "-")          // spaces -> dash
       .replace(/[^a-zA-Z0-9.-]/g, ""); // remove special chars
 
-    const uploadDir = path.join(
-      "uploads",
-      "study-material",
-      `class-${req.body.class_name}`
-    );
-
-    let finalName = cleanName;
-    let counter = 1;
-
-    // 🔥 overwrite-safe check
-    while (fs.existsSync(path.join(uploadDir, finalName))) {
-      const ext = path.extname(cleanName);
-      const base = path.basename(cleanName, ext);
-      finalName = `${base}(${counter})${ext}`;
-      counter++;
-    }
-
-    cb(null, finalName);
+    cb(null, cleanName);
   },
 });
 

@@ -2,7 +2,7 @@ const db = require("../db");
 const fs = require("fs");
 const path = require("path");
 
-// ================= UPLOAD STUDY MATERIAL =================
+// ================= UPLOAD =================
 async function uploadStudyMaterial(req, res) {
   const { title, class_name, subject } = req.body;
 
@@ -16,34 +16,25 @@ async function uploadStudyMaterial(req, res) {
   try {
     const filePath = req.file.path.replace(/\\/g, "/");
 
-    const sql = `
-      INSERT INTO study_material (title, class_name, subject, file_path)
-      VALUES (?, ?, ?, ?)
-    `;
+    await db.query(
+      `INSERT INTO study_material (title, class_name, subject, file_path)
+       VALUES (?, ?, ?, ?)`,
+      [title, class_name, subject, filePath]
+    );
 
-    await db.query(sql, [title, class_name, subject, filePath]);
-
-    res.json({
-      success: true,
-      message: "Study material uploaded successfully",
-    });
+    res.json({ success: true, message: "Study material uploaded" });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 }
 
-// ================= GET MATERIAL BY CLASS =================
+// ================= GET BY CLASS =================
 async function getMaterialByClass(req, res) {
-  const className = req.params.className;
-
   try {
-    const sql = `
-      SELECT * FROM study_material
-      WHERE class_name = ?
-      ORDER BY uploaded_at DESC
-    `;
-
-    const [rows] = await db.query(sql, [className]);
+    const [rows] = await db.query(
+      "SELECT * FROM study_material WHERE class_name = ? ORDER BY uploaded_at DESC",
+      [req.params.className]
+    );
 
     res.json({ success: true, materials: rows });
   } catch (err) {
@@ -51,38 +42,49 @@ async function getMaterialByClass(req, res) {
   }
 }
 
-// ================= DELETE MATERIAL =================
-async function deleteMaterial(req, res) {
-  const materialId = req.params.id;
-
+// ================= DOWNLOAD (🔥 MAIN PART) =================
+async function downloadMaterial(req, res) {
   try {
-    // get file path
     const [rows] = await db.query(
       "SELECT file_path FROM study_material WHERE id = ?",
-      [materialId]
+      [req.params.id]
     );
 
     if (rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Material not found",
-      });
+      return res.status(404).json({ success: false, message: "File not found" });
+    }
+
+    const filePath = path.join(process.cwd(), rows[0].file_path);
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ success: false, message: "File missing" });
+    }
+
+    res.download(filePath); // ✅ FORCE DOWNLOAD
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+// ================= DELETE =================
+async function deleteMaterial(req, res) {
+  try {
+    const [rows] = await db.query(
+      "SELECT file_path FROM study_material WHERE id = ?",
+      [req.params.id]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Material not found" });
     }
 
     const filePath = rows[0].file_path;
 
-    // delete DB record
-    await db.query("DELETE FROM study_material WHERE id = ?", [materialId]);
+    await db.query("DELETE FROM study_material WHERE id = ?", [req.params.id]);
 
-    // delete file from storage
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-    }
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
 
-    res.json({
-      success: true,
-      message: "Study material deleted successfully",
-    });
+    res.json({ success: true, message: "Material deleted" });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -91,5 +93,6 @@ async function deleteMaterial(req, res) {
 module.exports = {
   uploadStudyMaterial,
   getMaterialByClass,
+  downloadMaterial,
   deleteMaterial,
 };

@@ -28,7 +28,7 @@ router.post("/student-photo", upload.single("photo"), async (req, res) => {
     const photoUrl = `/private_uploads/students/${req.file.filename}`;
 
     // DB update
-    const sql = "UPDATE student SET photo = ? WHERE id = ?";
+    const sql = "UPDATE students SET photo = ? WHERE id = ?";
     db.query(sql, [photoUrl, req.body.studentId], (err, result) => {
       if (err) throw err;
       res.json({ message: "Photo uploaded successfully", photoUrl });

@@ -14,6 +14,7 @@ async function uploadStudyMaterial(req, res) {
   }
 
   try {
+    // 🔥 uploads path fix
     const filePath = req.file.path.replace(/\\/g, "/");
 
     await db.query(
@@ -42,7 +43,7 @@ async function getMaterialByClass(req, res) {
   }
 }
 
-// ================= DOWNLOAD (🔥 MAIN PART) =================
+// ================= DOWNLOAD =================
 async function downloadMaterial(req, res) {
   try {
     const [rows] = await db.query(
@@ -54,13 +55,18 @@ async function downloadMaterial(req, res) {
       return res.status(404).json({ success: false, message: "File not found" });
     }
 
-    const filePath = path.join(process.cwd(), rows[0].file_path);
+    // 🔥 absolute path correct
+    const absolutePath = path.join(process.cwd(), rows[0].file_path);
 
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ success: false, message: "File missing" });
+    if (!fs.existsSync(absolutePath)) {
+      return res.status(404).json({
+        success: false,
+        message: "File missing",
+        path: absolutePath,
+      });
     }
 
-    res.download(filePath); // ✅ FORCE DOWNLOAD
+    res.download(absolutePath);
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -78,11 +84,13 @@ async function deleteMaterial(req, res) {
       return res.status(404).json({ success: false, message: "Material not found" });
     }
 
-    const filePath = rows[0].file_path;
+    const absolutePath = path.join(process.cwd(), rows[0].file_path);
 
     await db.query("DELETE FROM study_material WHERE id = ?", [req.params.id]);
 
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    if (fs.existsSync(absolutePath)) {
+      fs.unlinkSync(absolutePath);
+    }
 
     res.json({ success: true, message: "Material deleted" });
   } catch (err) {

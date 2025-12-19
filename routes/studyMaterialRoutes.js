@@ -15,20 +15,20 @@ const router = express.Router();
 // ================= MULTER =================
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadPath = path.join(
-      "uploads",
-      "study-material",
-      `class-${req.body.class_name}`
-    );
-
+    // Absolute path using __dirname
+    const uploadPath = path.join(__dirname, "..", "uploads", "study-material", `class-${req.body.class_name}`);
+    
+    // Folder auto create if not exists
     if (!fs.existsSync(uploadPath)) {
       fs.mkdirSync(uploadPath, { recursive: true });
+      console.log("Folder created:", uploadPath);
     }
 
     cb(null, uploadPath);
   },
   filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname));
+    // Keep original file name
+    cb(null, file.originalname);
   },
 });
 
@@ -44,7 +44,7 @@ const upload = multer({
 
 // ================= ROUTES =================
 router.post("/upload", upload.single("file"), uploadStudyMaterial);
-router.get("/download/:id", downloadMaterial); // 🔥 DOWNLOAD
+router.get("/download/:id", downloadMaterial);
 router.get("/:className", getMaterialByClass);
 router.delete("/:id", deleteMaterial);
 

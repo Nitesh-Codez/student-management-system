@@ -1,42 +1,42 @@
+// backend/server.js ya app.js
+
 const express = require("express");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
-const db = require("../db"); // MySQL connection
 
-const router = express.Router();
+const app = express();
 
+// Upload folder
+const uploadDir = path.join(__dirname, "private_uploads/students");
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+
+// Multer setup
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const dir = path.join(__dirname, "../private_uploads/students");
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
+    cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
-    if (!req.body.studentId) return cb(new Error("studentId missing"));
+    const studentId = req.body.studentId;
     const ext = path.extname(file.originalname);
-    cb(null, req.body.studentId + ext);
+    cb(null, `${studentId}${ext}`);
   },
 });
 
 const upload = multer({ storage });
 
-router.post("/student-photo", upload.single("photo"), async (req, res) => {
-  try {
-    if (!req.file) throw new Error("File upload failed");
-
-    const photoUrl = `/private_uploads/students/${req.file.filename}`;
-
-    // DB update
-    const sql = "UPDATE students SET photo = ? WHERE id = ?";
-    db.query(sql, [photoUrl, req.body.studentId], (err, result) => {
-      if (err) throw err;
-      res.json({ message: "Photo uploaded successfully", photoUrl });
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
+// Route
+app.post("/api/upload/student-photo", upload.single("photo"), (req, res) => {
+  if (!req.file || !req.body.studentId) {
+    return res.status(400).json({ error: "Photo or studentId missing" });
   }
+
+  const photoUrl = `/private_uploads/students/${req.file.filename}`;
+  // DB update logic here if needed
+  res.json({ photoUrl });
 });
 
-module.exports = router;
+// Static folder for serving images
+app.use("/private_uploads", express.static(path.join(__dirname, "private_uploads")));
+
+app.listen(5000, () => console.log("Server running on port 5000"));

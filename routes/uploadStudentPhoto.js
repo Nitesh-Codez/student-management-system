@@ -12,31 +12,57 @@ const {
 
 const router = express.Router();
 
-// ================= MULTER =================
+// ================= MULTER STORAGE =================
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
+    // 🔥 Absolute path use kar rahe
     const uploadPath = path.join(
+      __dirname, "..",
       "uploads",
       "study-material",
       `class-${req.body.class_name}`
     );
 
+    console.log("Upload path:", uploadPath);
+
     if (!fs.existsSync(uploadPath)) {
       fs.mkdirSync(uploadPath, { recursive: true });
+      console.log("Folder created:", uploadPath);
     }
 
     cb(null, uploadPath);
   },
   filename: (req, file, cb) => {
-    // ✅ original filename, number nahi lagega
-    const cleanName = file.originalname
-      .replace(/\s+/g, "-")          // spaces -> dash
-      .replace(/[^a-zA-Z0-9.-]/g, ""); // remove special chars
+    // ✅ Original filename use hoga
+    let cleanName = file.originalname
+      .replace(/\s+/g, "-")            // spaces -> dash
+      .replace(/[^a-zA-Z0-9.-]/g, ""); // special chars remove
 
-    cb(null, cleanName);
+    console.log("Uploading file:", cleanName);
+
+    // 🔥 overwrite check
+    const uploadDir = path.join(
+      __dirname, "..",
+      "uploads",
+      "study-material",
+      `class-${req.body.class_name}`
+    );
+
+    let finalName = cleanName;
+    let counter = 1;
+
+    while (fs.existsSync(path.join(uploadDir, finalName))) {
+      const ext = path.extname(cleanName);
+      const base = path.basename(cleanName, ext);
+      finalName = `${base}(${counter})${ext}`;
+      counter++;
+    }
+
+    cb(null, finalName);
   },
 });
 
+// ================= MULTER UPLOAD =================
 const upload = multer({
   storage,
   fileFilter: (req, file, cb) => {

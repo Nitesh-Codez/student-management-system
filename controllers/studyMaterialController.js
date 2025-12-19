@@ -14,7 +14,7 @@ async function uploadStudyMaterial(req, res) {
   }
 
   try {
-    // 🔥 uploads path fix
+    // 🔥 use the uploaded file path as it is
     const filePath = req.file.path.replace(/\\/g, "/");
 
     await db.query(
@@ -55,7 +55,6 @@ async function downloadMaterial(req, res) {
       return res.status(404).json({ success: false, message: "File not found" });
     }
 
-    // 🔥 absolute path correct
     const absolutePath = path.join(process.cwd(), rows[0].file_path);
 
     if (!fs.existsSync(absolutePath)) {

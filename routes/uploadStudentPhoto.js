@@ -1,7 +1,7 @@
 const express = require("express");
-const router = express.Router();
 const multer = require("multer");
 const path = require("path");
+const fs = require("fs");
 
 const {
   uploadStudyMaterial,
@@ -10,21 +10,46 @@ const {
   deleteMaterial,
 } = require("../controllers/studyMaterialController");
 
-// ========== MULTER ==========
+const router = express.Router();
+
+// ================= MULTER =================
 const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, "uploads/study_materials"); // 🔥 FIXED
+  destination: (req, file, cb) => {
+    const uploadPath = path.join(
+      "uploads",
+      "study-material",
+      `class-${req.body.class_name}`
+    );
+
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath, { recursive: true });
+    }
+
+    cb(null, uploadPath);
   },
-  filename: function (req, file, cb) {
-    cb(null, Date.now() + "-" + file.originalname);
+  filename: (req, file, cb) => {
+    // ✅ use original filename
+    const cleanName = file.originalname
+      .replace(/\s+/g, "-")         // space -> dash
+      .replace(/[^a-zA-Z0-9.-]/g, ""); // remove special chars
+
+    cb(null, cleanName);
   },
 });
 
-const upload = multer({ storage });
+const upload = multer({
+  storage,
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype !== "application/pdf") {
+      return cb(new Error("Only PDF allowed"));
+    }
+    cb(null, true);
+  },
+});
 
-// 🔥 ROUTE ORDER MAT CHANGE KARNA
-router.get("/download/:id", downloadMaterial);
+// ================= ROUTES =================
 router.post("/upload", upload.single("file"), uploadStudyMaterial);
+router.get("/download/:id", downloadMaterial);
 router.get("/:className", getMaterialByClass);
 router.delete("/:id", deleteMaterial);
 

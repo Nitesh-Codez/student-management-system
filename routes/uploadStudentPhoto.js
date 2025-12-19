@@ -1,22 +1,11 @@
 const express = require("express");
+const router = express.Router();
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
-const mysql = require("mysql2/promise");
+const db = require("../db"); // ✅ yahan import
 
-const router = express.Router();
-
-// MySQL connection
-const pool = mysql.createPool({
-  host: "crossover.proxy.rlwy.net",
-  user: "your_mysql_user",
-  password: "your_mysql_password",
-  database: "your_db_name",
-  port: 58959,
-  ssl: true,
-});
-
-// Upload folder
+// Create folder if not exists
 const uploadDir = path.join(__dirname, "../private_uploads/students");
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
@@ -29,26 +18,24 @@ const storage = multer.diskStorage({
     cb(null, `${studentId}${ext}`);
   },
 });
-
 const upload = multer({ storage });
 
-// POST route
+// POST route for student photo
 router.post("/student-photo", upload.single("photo"), async (req, res) => {
+  const { studentId } = req.body;
+  if (!req.file || !studentId) {
+    return res.status(400).json({ error: "Photo or studentId missing" });
+  }
+
+  const photoUrl = `/private_uploads/students/${req.file.filename}`;
+
   try {
-    const { studentId } = req.body;
-    if (!req.file || !studentId)
-      return res.status(400).json({ error: "Photo or studentId missing" });
-
-    const photoUrl = `/private_uploads/students/${req.file.filename}`;
-
-    // Update MySQL students table
-    const sql = "UPDATE students SET photo = ? WHERE id = ?";
-    await pool.query(sql, [photoUrl, studentId]);
-
+    // Update DB
+    await db.query("UPDATE students SET photo = ? WHERE id = ?", [photoUrl, studentId]);
     res.json({ photoUrl });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Server error" });
+    console.error("DB Error:", err.message);
+    res.status(500).json({ error: "Database error" });
   }
 });
 

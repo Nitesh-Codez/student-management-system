@@ -1,47 +1,53 @@
 const express = require("express");
-const router = express.Router();
 const multer = require("multer");
 const path = require("path");
+const fs = require("fs");
+
 const {
-  uploadMaterial,
-  getAllMaterials,
+  uploadStudyMaterial,
+  getMaterialByClass,
   deleteMaterial,
-  getSubjectsByClass,
-  getMaterialByClassAndSubject
 } = require("../controllers/studyMaterialController");
 
-// =====================
-// MULTER SETUP FOR FILE UPLOAD
-// =====================
+const router = express.Router();
+
+// ================= MULTER CONFIG =================
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, "uploads/");
+    const className = req.body.class_name;
+    const uploadPath = path.join(
+      "uploads",
+      "study-material",
+      `class-${className}`
+    );
+
+    // auto-create folder
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath, { recursive: true });
+    }
+
+    cb(null, uploadPath);
   },
+
   filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  }
+    cb(null, Date.now() + path.extname(file.originalname));
+  },
 });
 
-const upload = multer({ storage });
+// only PDF allowed
+const upload = multer({
+  storage,
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype !== "application/pdf") {
+      return cb(new Error("Only PDF files are allowed"));
+    }
+    cb(null, true);
+  },
+});
 
-// =====================
-// ROUTES
-// =====================
-
-// Admin upload study material
-router.post("/admin/upload", upload.single("file"), uploadMaterial);
-
-// Admin get all materials
-router.get("/admin/materials", getAllMaterials);
-
-// Admin delete material
-router.delete("/admin/:id", deleteMaterial);
-
-// Get subjects by class
-router.get("/subjects/:class", getSubjectsByClass);
-
-// Get materials by class & subject (student view)
-router.get("/:class/:subject", getMaterialByClassAndSubject);
+// ================= ROUTES =================
+router.post("/upload", upload.single("file"), uploadStudyMaterial);
+router.get("/:className", getMaterialByClass);
+router.delete("/:id", deleteMaterial);
 
 module.exports = router;

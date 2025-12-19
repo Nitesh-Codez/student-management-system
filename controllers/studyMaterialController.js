@@ -1,81 +1,95 @@
 const db = require("../db");
+const fs = require("fs");
+const path = require("path");
 
-/* =========================
-   ADMIN: UPLOAD MATERIAL
-========================= */
-exports.uploadMaterial = async (req, res) => {
-  const { className: classValue, subject, chapter, adminId } = req.body;
-  const fileUrl = req.file ? `/uploads/${req.file.filename}` : null;
+// ================= UPLOAD STUDY MATERIAL =================
+async function uploadStudyMaterial(req, res) {
+  const { title, class_name, subject } = req.body;
 
-  if (!classValue || !subject || !chapter || !fileUrl || !adminId) {
-    return res.status(400).json({ success: false, error: "All fields required" });
+  if (!title || !class_name || !subject || !req.file) {
+    return res.status(400).json({
+      success: false,
+      message: "Title, class, subject and PDF file are required",
+    });
   }
 
   try {
-    await db.query(
-      `INSERT INTO study_materials (class, subject, chapter, file_url, uploaded_by)
-       VALUES (?, ?, ?, ?, ?)`,
-      [classValue, subject, chapter, fileUrl, adminId]
-    );
-    res.json({ success: true, message: "Study material uploaded" });
+    const filePath = req.file.path.replace(/\\/g, "/");
+
+    const sql = `
+      INSERT INTO study_material (title, class_name, subject, file_path)
+      VALUES (?, ?, ?, ?)
+    `;
+
+    await db.query(sql, [title, class_name, subject, filePath]);
+
+    res.json({
+      success: true,
+      message: "Study material uploaded successfully",
+    });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, message: err.message });
   }
-};
+}
 
-/* =========================
-   ADMIN: GET ALL MATERIALS
-========================= */
-exports.getAllMaterials = async (req, res) => {
+// ================= GET MATERIAL BY CLASS =================
+async function getMaterialByClass(req, res) {
+  const className = req.params.className;
+
   try {
-    const [rows] = await db.query("SELECT * FROM study_materials ORDER BY created_at DESC");
+    const sql = `
+      SELECT * FROM study_material
+      WHERE class_name = ?
+      ORDER BY uploaded_at DESC
+    `;
+
+    const [rows] = await db.query(sql, [className]);
+
     res.json({ success: true, materials: rows });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, message: err.message });
   }
-};
+}
 
-/* =========================
-   ADMIN: DELETE MATERIAL
-========================= */
-exports.deleteMaterial = async (req, res) => {
-  const { id } = req.params;
-  try {
-    await db.query(`DELETE FROM study_materials WHERE id = ?`, [id]);
-    res.json({ success: true, message: "Material deleted" });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-};
+// ================= DELETE MATERIAL =================
+async function deleteMaterial(req, res) {
+  const materialId = req.params.id;
 
-/* =========================
-   STUDENT: GET SUBJECTS BY CLASS
-========================= */
-exports.getSubjectsByClass = async (req, res) => {
-  const { class: studentClass } = req.params;
   try {
+    // get file path
     const [rows] = await db.query(
-      `SELECT DISTINCT subject FROM study_materials WHERE class = ?`,
-      [studentClass]
+      "SELECT file_path FROM study_material WHERE id = ?",
+      [materialId]
     );
-    res.json({ success: true, subjects: rows.map(r => r.subject) });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-};
 
-/* =========================
-   STUDENT: GET MATERIAL BY CLASS & SUBJECT
-========================= */
-exports.getMaterialByClassAndSubject = async (req, res) => {
-  const { class: studentClass, subject } = req.params;
-  try {
-    const [rows] = await db.query(
-      `SELECT id, chapter, file_url FROM study_materials WHERE class = ? AND subject = ?`,
-      [studentClass, subject]
-    );
-    res.json({ success: true, materials: rows });
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Material not found",
+      });
+    }
+
+    const filePath = rows[0].file_path;
+
+    // delete DB record
+    await db.query("DELETE FROM study_material WHERE id = ?", [materialId]);
+
+    // delete file from storage
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+
+    res.json({
+      success: true,
+      message: "Study material deleted successfully",
+    });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, message: err.message });
   }
+}
+
+module.exports = {
+  uploadStudyMaterial,
+  getMaterialByClass,
+  deleteMaterial,
 };

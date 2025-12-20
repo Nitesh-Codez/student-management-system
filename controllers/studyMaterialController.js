@@ -1,5 +1,6 @@
 const db = require("../db");
 const cloudinary = require("cloudinary").v2;
+const fs = require("fs");
 
 // Configure Cloudinary
 cloudinary.config({
@@ -20,13 +21,18 @@ async function uploadStudyMaterial(req, res) {
   }
 
   try {
+    // Upload PDF to Cloudinary as 'document' so browser can preview
     const result = await cloudinary.uploader.upload(req.file.path, {
-      resource_type: "raw",
+      resource_type: "auto", // auto detect type, PDF will be 'document'
       folder: `study-material/class-${class_name}`,
       use_filename: true,
       unique_filename: false,
     });
 
+    // Delete local temp file
+    fs.unlinkSync(req.file.path);
+
+    // Insert into DB
     await db.query(
       `INSERT INTO study_material (title, class_name, subject, file_path)
        VALUES (?, ?, ?, ?)`,
@@ -61,15 +67,17 @@ async function downloadMaterial(req, res) {
       [req.params.id]
     );
 
-    if (rows.length === 0) return res.status(404).json({ success: false, message: "File not found" });
+    if (rows.length === 0)
+      return res.status(404).json({ success: false, message: "File not found" });
 
+    // Direct download
     res.redirect(rows[0].file_path);
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 }
 
-// ================= VIEW (NEW) =================
+// ================= VIEW =================
 async function viewMaterial(req, res) {
   try {
     const [rows] = await db.query(
@@ -77,13 +85,11 @@ async function viewMaterial(req, res) {
       [req.params.id]
     );
 
-    if (rows.length === 0) return res.status(404).json({ success: false, message: "File not found" });
+    if (rows.length === 0)
+      return res.status(404).json({ success: false, message: "File not found" });
 
-    // Cloudinary fetch URL
-    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
-    const fetchUrl = `https://res.cloudinary.com/${cloudName}/raw/fetch/${encodeURIComponent(rows[0].file_path)}`;
-
-    res.json({ success: true, view_url: fetchUrl });
+    // Directly return Cloudinary URL (auto type, browser preview possible)
+    res.json({ success: true, view_url: rows[0].file_path });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -97,15 +103,18 @@ async function deleteMaterial(req, res) {
       [req.params.id]
     );
 
-    if (rows.length === 0) return res.status(404).json({ success: false, message: "Material not found" });
+    if (rows.length === 0)
+      return res.status(404).json({ success: false, message: "Material not found" });
 
     await db.query("DELETE FROM study_material WHERE id = ?", [req.params.id]);
 
+    // Cloudinary delete
     const publicId = rows[0].file_path
       .split("/")
       .slice(-2)
       .join("/")
       .split(".")[0];
+
     await cloudinary.uploader.destroy(publicId, { resource_type: "raw" });
 
     res.json({ success: true, message: "Material deleted" });
@@ -119,5 +128,5 @@ module.exports = {
   getMaterialByClass,
   downloadMaterial,
   deleteMaterial,
-  viewMaterial, // 🔥 new export
+  viewMaterial,
 };

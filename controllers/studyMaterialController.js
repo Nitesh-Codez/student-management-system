@@ -1,6 +1,12 @@
 const db = require("../db");
-const fs = require("fs");
-const path = require("path");
+const cloudinary = require("cloudinary").v2;
+
+// Configure Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
 // ================= UPLOAD =================
 async function uploadStudyMaterial(req, res) {
@@ -14,16 +20,21 @@ async function uploadStudyMaterial(req, res) {
   }
 
   try {
-    // 🔥 use the uploaded file path as it is
-    const filePath = req.file.path.replace(/\\/g, "/");
+    // Upload PDF to Cloudinary
+    const result = await cloudinary.uploader.upload(req.file.path, {
+      resource_type: "raw", // PDF/other files
+      folder: `study-material/class-${class_name}`,
+      use_filename: true,
+      unique_filename: false,
+    });
 
     await db.query(
       `INSERT INTO study_material (title, class_name, subject, file_path)
        VALUES (?, ?, ?, ?)`,
-      [title, class_name, subject, filePath]
+      [title, class_name, subject, result.secure_url] // 🔥 Cloudinary URL
     );
 
-    res.json({ success: true, message: "Study material uploaded" });
+    res.json({ success: true, message: "Study material uploaded", url: result.secure_url });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -51,21 +62,10 @@ async function downloadMaterial(req, res) {
       [req.params.id]
     );
 
-    if (rows.length === 0) {
-      return res.status(404).json({ success: false, message: "File not found" });
-    }
+    if (rows.length === 0) return res.status(404).json({ success: false, message: "File not found" });
 
-    const absolutePath = path.join(process.cwd(), rows[0].file_path);
-
-    if (!fs.existsSync(absolutePath)) {
-      return res.status(404).json({
-        success: false,
-        message: "File missing",
-        path: absolutePath,
-      });
-    }
-
-    res.download(absolutePath);
+    // Redirect to Cloudinary URL
+    res.redirect(rows[0].file_path);
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -79,17 +79,18 @@ async function deleteMaterial(req, res) {
       [req.params.id]
     );
 
-    if (rows.length === 0) {
-      return res.status(404).json({ success: false, message: "Material not found" });
-    }
+    if (rows.length === 0) return res.status(404).json({ success: false, message: "Material not found" });
 
-    const absolutePath = path.join(process.cwd(), rows[0].file_path);
-
+    // Delete from DB
     await db.query("DELETE FROM study_material WHERE id = ?", [req.params.id]);
 
-    if (fs.existsSync(absolutePath)) {
-      fs.unlinkSync(absolutePath);
-    }
+    // 🔥 Optional: Delete from Cloudinary
+    const publicId = rows[0].file_path
+      .split("/")
+      .slice(-2)
+      .join("/")
+      .split(".")[0]; // simple public_id extraction
+    await cloudinary.uploader.destroy(publicId, { resource_type: "raw" });
 
     res.json({ success: true, message: "Material deleted" });
   } catch (err) {

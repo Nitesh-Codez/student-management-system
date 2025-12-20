@@ -20,9 +20,8 @@ async function uploadStudyMaterial(req, res) {
   }
 
   try {
-    // Upload PDF to Cloudinary
     const result = await cloudinary.uploader.upload(req.file.path, {
-      resource_type: "raw", // PDF/other files
+      resource_type: "raw",
       folder: `study-material/class-${class_name}`,
       use_filename: true,
       unique_filename: false,
@@ -31,7 +30,7 @@ async function uploadStudyMaterial(req, res) {
     await db.query(
       `INSERT INTO study_material (title, class_name, subject, file_path)
        VALUES (?, ?, ?, ?)`,
-      [title, class_name, subject, result.secure_url] // 🔥 Cloudinary URL
+      [title, class_name, subject, result.secure_url]
     );
 
     res.json({ success: true, message: "Study material uploaded", url: result.secure_url });
@@ -64,8 +63,27 @@ async function downloadMaterial(req, res) {
 
     if (rows.length === 0) return res.status(404).json({ success: false, message: "File not found" });
 
-    // Redirect to Cloudinary URL
     res.redirect(rows[0].file_path);
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+// ================= VIEW (NEW) =================
+async function viewMaterial(req, res) {
+  try {
+    const [rows] = await db.query(
+      "SELECT file_path FROM study_material WHERE id = ?",
+      [req.params.id]
+    );
+
+    if (rows.length === 0) return res.status(404).json({ success: false, message: "File not found" });
+
+    // Cloudinary fetch URL
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+    const fetchUrl = `https://res.cloudinary.com/${cloudName}/raw/fetch/${encodeURIComponent(rows[0].file_path)}`;
+
+    res.json({ success: true, view_url: fetchUrl });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -81,15 +99,13 @@ async function deleteMaterial(req, res) {
 
     if (rows.length === 0) return res.status(404).json({ success: false, message: "Material not found" });
 
-    // Delete from DB
     await db.query("DELETE FROM study_material WHERE id = ?", [req.params.id]);
 
-    // 🔥 Optional: Delete from Cloudinary
     const publicId = rows[0].file_path
       .split("/")
       .slice(-2)
       .join("/")
-      .split(".")[0]; // simple public_id extraction
+      .split(".")[0];
     await cloudinary.uploader.destroy(publicId, { resource_type: "raw" });
 
     res.json({ success: true, message: "Material deleted" });
@@ -103,4 +119,5 @@ module.exports = {
   getMaterialByClass,
   downloadMaterial,
   deleteMaterial,
+  viewMaterial, // 🔥 new export
 };

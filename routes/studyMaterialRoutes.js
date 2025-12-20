@@ -1,12 +1,11 @@
 const express = require("express");
 const multer = require("multer");
-const fs = require("fs");
-const path = require("path");
 const {
   uploadStudyMaterial,
   getMaterialByClass,
   downloadMaterial,
   deleteMaterial,
+  viewMaterial, // 🔥 new controller
 } = require("../controllers/studyMaterialController");
 
 const router = express.Router();
@@ -17,6 +16,7 @@ const upload = multer({ dest: "temp/" }); // Temporary local upload
 // ================= ROUTES =================
 router.post("/upload", upload.single("file"), uploadStudyMaterial);
 router.get("/download/:id", downloadMaterial);
+router.get("/view/:id", viewMaterial); // 🔥 NEW route for View in browser
 router.get("/:className", getMaterialByClass);
 router.delete("/:id", deleteMaterial);
 

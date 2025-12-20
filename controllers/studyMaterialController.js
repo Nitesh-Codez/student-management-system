@@ -21,12 +21,13 @@ async function uploadStudyMaterial(req, res) {
   }
 
   try {
-    // Upload PDF to Cloudinary as 'document' so browser can preview
+    // Upload PDF to Cloudinary as 'raw' with correct access
     const result = await cloudinary.uploader.upload(req.file.path, {
-      resource_type: "auto", // auto detect type, PDF will be 'document'
+      resource_type: "raw", // ensures browser can preview/download
       folder: `study-material/class-${class_name}`,
       use_filename: true,
       unique_filename: false,
+      overwrite: true,
     });
 
     // Delete local temp file
@@ -70,8 +71,9 @@ async function downloadMaterial(req, res) {
     if (rows.length === 0)
       return res.status(404).json({ success: false, message: "File not found" });
 
-    // Direct download
-    res.redirect(rows[0].file_path);
+    // Force download in browser
+    const fileUrl = rows[0].file_path;
+    res.redirect(fileUrl); // Cloudinary raw file
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -88,7 +90,7 @@ async function viewMaterial(req, res) {
     if (rows.length === 0)
       return res.status(404).json({ success: false, message: "File not found" });
 
-    // Directly return Cloudinary URL (auto type, browser preview possible)
+    // Directly return Cloudinary raw URL for browser preview
     res.json({ success: true, view_url: rows[0].file_path });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });

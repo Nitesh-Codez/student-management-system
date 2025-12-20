@@ -8,7 +8,6 @@ const authRoutes = require("./routes/authRoutes");
 const studentRoutes = require("./routes/studentRoutes");
 const attendanceRoutes = require("./routes/attendanceRoutes");
 const feesRoutes = require("./routes/feesRoutes");
-const studentProfileRoute = require("./routes/studentProfileRoute");
 const marksRoutes = require("./routes/marksRoutes");
 const studyMaterialRoutes = require("./routes/studyMaterialRoutes");
 const newMarksRoutes = require("./routes/newMarksRoutes");
@@ -37,7 +36,6 @@ app.use("/api/fees", feesRoutes);
 app.use("/api/marks", marksRoutes);
 app.use("/api/study-material", studyMaterialRoutes);
 app.use("/api/new-marks", newMarksRoutes);
-app.use("/api/student-profile", studentProfileRoute);
 app.use("/api/upload", studentRoutes);
 
 

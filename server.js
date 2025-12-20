@@ -11,7 +11,6 @@ const feesRoutes = require("./routes/feesRoutes");
 const marksRoutes = require("./routes/marksRoutes");
 const studyMaterialRoutes = require("./routes/studyMaterialRoutes");
 const newMarksRoutes = require("./routes/newMarksRoutes");
-const studentPhotoRoutes = require("./routes/studentRoutes");
 
 // Initialize DB (connection only)
 require("./db");

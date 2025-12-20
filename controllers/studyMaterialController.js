@@ -21,14 +21,14 @@ async function uploadStudyMaterial(req, res) {
   }
 
   try {
-    const result = await cloudinary.uploader.upload(req.file.path, {
-      resource_type: "auto",           // ✅ IMPORTANT
-      folder: `study-material/class-${class_name}`,
-      use_filename: true,
-      unique_filename: false,
-      overwrite: true,
-    });
-
+  const result = await cloudinary.uploader.upload(req.file.path, {
+    resource_type: "auto",     // PDF automatically detect
+    folder: `study-material/class-${class_name}`,
+    use_filename: true,
+    unique_filename: false,
+    overwrite: true,
+    type: "upload",            // ✅ Make file public for direct access
+  });
     fs.unlinkSync(req.file.path);
 
     await db.query(

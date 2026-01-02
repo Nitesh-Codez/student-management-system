@@ -8,11 +8,11 @@ const db = mysql.createPool({
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
   port: process.env.DB_PORT,
-
   ssl: {
     ca: fs.readFileSync(path.join(__dirname, "tidb-ca.pem")),
-    rejectUnauthorized: true
-  }
+  },
+  waitForConnections: true,
+  connectionLimit: 10,
 });
 
 db.getConnection()

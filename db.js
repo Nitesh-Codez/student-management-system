@@ -1,4 +1,6 @@
 const mysql = require("mysql2/promise");
+const fs = require("fs");
+const path = require("path");
 
 const db = mysql.createPool({
   host: process.env.DB_HOST,
@@ -8,11 +10,9 @@ const db = mysql.createPool({
   port: process.env.DB_PORT,
 
   ssl: {
-    rejectUnauthorized: false   // 🔥 THIS FIXES YOUR ERROR
-  },
-
-  waitForConnections: true,
-  connectionLimit: 10
+    ca: fs.readFileSync(path.join(__dirname, "tidb-ca.pem")),
+    rejectUnauthorized: true
+  }
 });
 
 db.getConnection()

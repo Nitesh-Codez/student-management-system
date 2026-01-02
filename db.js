@@ -5,18 +5,27 @@ const db = mysql.createPool({
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
-  port: process.env.DB_PORT,
+  port: 3306,
+
   waitForConnections: true,
   connectionLimit: 10,
+  queueLimit: 0,
+
+  ssl: {
+    rejectUnauthorized: false
+  },
+
+  connectTimeout: 10000
 });
 
-db.getConnection()
-  .then(conn => {
+(async () => {
+  try {
+    const connection = await db.getConnection();
     console.log("✅ MySQL Connected Successfully!");
-    conn.release();
-  })
-  .catch(err => {
-    console.error("❌ DB Connection Error:", err.message);
-  });
+    connection.release();
+  } catch (error) {
+    console.error("❌ DB Connection Error:", error.message);
+  }
+})();
 
 module.exports = db;

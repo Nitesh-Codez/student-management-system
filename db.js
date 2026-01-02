@@ -1,15 +1,18 @@
-// src/db.js
-const mysql = require("mysql2/promise"); // Promise-based
+const mysql = require("mysql2/promise");
 
 const db = mysql.createPool({
   host: process.env.DB_HOST,
-  port: process.env.DB_PORT || 3306,
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
+  port: process.env.DB_PORT,
+
+  ssl: {
+    rejectUnauthorized: false   // 🔥 THIS FIXES YOUR ERROR
+  },
+
   waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
+  connectionLimit: 10
 });
 
 db.getConnection()
@@ -18,7 +21,7 @@ db.getConnection()
     conn.release();
   })
   .catch(err => {
-    console.error("DB Connection Error:", err);
+    console.error("❌ DB Connection Error:", err.message);
   });
 
 module.exports = db;

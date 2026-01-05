@@ -1,4 +1,4 @@
-const db = require("../db"); // promise-based pool
+const db = require("../db"); // promise-based PostgreSQL pool
 
 // Admin: Add fee record
 async function addFee(req, res) {
@@ -10,9 +10,9 @@ async function addFee(req, res) {
   try {
     const sql = `INSERT INTO fees 
       (student_id, student_name, class_name, amount, payment_date, payment_time, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?)`;
+      VALUES ($1, $2, $3, $4, $5, $6, $7)`;
 
-    const [result] = await db.query(sql, [
+    await db.query(sql, [
       student_id, student_name, class_name, amount, payment_date, payment_time, status || "On Time"
     ]);
 
@@ -32,10 +32,10 @@ async function updateFee(req, res) {
 
   try {
     const sql = `UPDATE fees 
-      SET student_id = ?, student_name = ?, class_name = ?, amount = ?, payment_date = ?, payment_time = ?, status = ? 
-      WHERE id = ?`;
+      SET student_id = $1, student_name = $2, class_name = $3, amount = $4, payment_date = $5, payment_time = $6, status = $7
+      WHERE id = $8`;
 
-    const [result] = await db.query(sql, [
+    await db.query(sql, [
       student_id, student_name, class_name, amount, payment_date, payment_time, status, feeId
     ]);
 
@@ -49,8 +49,8 @@ async function updateFee(req, res) {
 async function deleteFee(req, res) {
   const feeId = req.params.id;
   try {
-    const sql = `DELETE FROM fees WHERE id = ?`;
-    const [result] = await db.query(sql, [feeId]);
+    const sql = `DELETE FROM fees WHERE id = $1`;
+    await db.query(sql, [feeId]);
 
     res.json({ success: true, message: "Fee record deleted successfully!" });
   } catch (err) {
@@ -62,9 +62,9 @@ async function deleteFee(req, res) {
 async function getStudentFees(req, res) {
   const studentId = req.params.id;
   try {
-    const sql = `SELECT * FROM fees WHERE student_id = ? ORDER BY payment_date DESC`;
-    const [results] = await db.query(sql, [studentId]);
-    res.json({ success: true, fees: results });
+    const sql = `SELECT * FROM fees WHERE student_id = $1 ORDER BY payment_date DESC`;
+    const { rows } = await db.query(sql, [studentId]);
+    res.json({ success: true, fees: rows });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -74,8 +74,8 @@ async function getStudentFees(req, res) {
 async function getAllFees(req, res) {
   try {
     const sql = `SELECT * FROM fees ORDER BY payment_date DESC`;
-    const [results] = await db.query(sql);
-    res.json({ success: true, fees: results });
+    const { rows } = await db.query(sql);
+    res.json({ success: true, fees: rows });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

@@ -1,11 +1,10 @@
-const db = require("../db"); // Promise-based DB
+const db = require("../db"); // Promise-based PostgreSQL pool
 
 // Get unique classes from students table
 exports.getClasses = async (req, res) => {
   try {
-    const [rows] = await db.execute(
-      "SELECT DISTINCT class FROM students ORDER BY class"
-    );
+    const sql = `SELECT DISTINCT "class" FROM students ORDER BY "class"`;
+    const { rows } = await db.query(sql);
     res.json({ success: true, classes: rows });
   } catch (err) {
     console.error(err);
@@ -17,12 +16,8 @@ exports.getClasses = async (req, res) => {
 exports.getStudentsByClass = async (req, res) => {
   try {
     const { className } = req.params;
-
-    const [rows] = await db.execute(
-      "SELECT id, name FROM students WHERE class = ?",
-      [className]
-    );
-
+    const sql = `SELECT id, name FROM students WHERE "class" = $1`;
+    const { rows } = await db.query(sql, [className]);
     res.json({ success: true, students: rows });
   } catch (err) {
     console.error(err);
@@ -39,10 +34,11 @@ exports.addMarks = async (req, res) => {
       return res.json({ success: false, message: "Missing fields" });
     }
 
-    await db.execute(
-      "INSERT INTO marks (student_id, subject, total_marks, obtained_marks, test_date) VALUES (?, ?, ?, ?, ?)",
-      [studentId, subject, maxMarks, marks, date]
-    );
+    const sql = `
+      INSERT INTO marks (student_id, subject, total_marks, obtained_marks, test_date)
+      VALUES ($1, $2, $3, $4, $5)
+    `;
+    await db.query(sql, [studentId, subject, maxMarks, marks, date]);
 
     res.json({ success: true, message: "Marks added successfully" });
   } catch (err) {
@@ -50,6 +46,7 @@ exports.addMarks = async (req, res) => {
     res.json({ success: false, message: "Error adding marks" });
   }
 };
+
 // Check marks by student ID
 exports.checkMarks = async (req, res) => {
   try {
@@ -60,22 +57,22 @@ exports.checkMarks = async (req, res) => {
     }
 
     // Step 1: Check student exists with SAME id and SAME name
-    const [student] = await db.execute(
-      "SELECT id FROM students WHERE id = ? AND name = ?",
-      [studentId, studentName]
-    );
+    const studentSql = `SELECT id FROM students WHERE id = $1 AND name = $2`;
+    const { rows: studentRows } = await db.query(studentSql, [studentId, studentName]);
 
-    if (student.length === 0) {
+    if (studentRows.length === 0) {
       return res.json({ success: false, message: "Invalid Student ID or Name!" });
     }
 
     // Step 2: Fetch marks
-    const [rows] = await db.execute(
-      "SELECT id, subject AS subject_name, total_marks, obtained_marks, test_date, \
-      CASE WHEN obtained_marks >= total_marks * 0.33 THEN 'Pass' ELSE 'Fail' END AS status \
-      FROM marks WHERE student_id = ? ORDER BY test_date DESC",
-      [studentId]
-    );
+    const marksSql = `
+      SELECT id, subject AS subject_name, total_marks, obtained_marks, test_date,
+      CASE WHEN obtained_marks >= total_marks * 0.33 THEN 'Pass' ELSE 'Fail' END AS status
+      FROM marks
+      WHERE student_id = $1
+      ORDER BY test_date DESC
+    `;
+    const { rows } = await db.query(marksSql, [studentId]);
 
     if (rows.length === 0) {
       return res.json({ success: false, message: "No marks found!" });

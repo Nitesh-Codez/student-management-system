@@ -9,28 +9,23 @@ exports.getStudentsList = async (req, res) => {
 
     if (!date) {
       const today = new Date();
-      date =
-        today.getFullYear() +
-        "-" +
-        String(today.getMonth() + 1).padStart(2, "0") +
-        "-" +
-        String(today.getDate()).padStart(2, "0");
+      date = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
     }
 
     const sql = `
       SELECT 
-        s.id AS studentId,
-        s.name AS studentName,
-        s.class AS class,
-        COALESCE(a.status, "Absent") AS status
+        s.id AS "studentId",
+        s.name AS "studentName",
+        s."class" AS "class",
+        COALESCE(a.status, 'Absent') AS status
       FROM students s
       LEFT JOIN attendance a
-        ON s.id = a.student_id AND DATE(a.date) = ?
+        ON s.id = a.student_id AND a.date::date = $1
       WHERE s.role = 'student'
       ORDER BY s.id
     `;
 
-    const [rows] = await db.query(sql, [date]);
+    const { rows } = await db.query(sql, [date]);
 
     return res.json({ success: true, date, students: rows });
   } catch (error) {
@@ -48,12 +43,7 @@ exports.markAttendance = async (req, res) => {
 
     if (!date) {
       const today = new Date();
-      date =
-        today.getFullYear() +
-        "-" +
-        String(today.getMonth() + 1).padStart(2, "0") +
-        "-" +
-        String(today.getDate()).padStart(2, "0");
+      date = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
     }
 
     if (!attendance || !Array.isArray(attendance)) attendance = [];
@@ -64,8 +54,9 @@ exports.markAttendance = async (req, res) => {
       await db.query(
         `
         INSERT INTO attendance (student_id, date, status)
-        VALUES (?, ?, ?)
-        ON DUPLICATE KEY UPDATE status = VALUES(status)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (student_id, date)
+        DO UPDATE SET status = EXCLUDED.status
         `,
         [item.studentId, date, item.status]
       );
@@ -90,11 +81,11 @@ exports.getStudentAttendance = async (req, res) => {
     const sql = `
       SELECT date, status
       FROM attendance
-      WHERE student_id = ?
+      WHERE student_id = $1
       ORDER BY date DESC
     `;
 
-    const [rows] = await db.query(sql, [id]);
+    const { rows } = await db.query(sql, [id]);
 
     return res.json({ success: true, attendance: rows });
   } catch (error) {
@@ -113,20 +104,20 @@ exports.getTodayAttendancePercent = async (req, res) => {
 
     const sql = `
       SELECT 
-        s.id AS studentId,
+        s.id AS "studentId",
         s.name AS name,
         COALESCE(SUM(CASE WHEN a.status='Present' THEN 1 ELSE 0 END), 0) AS present,
         COUNT(a.date) AS total,
         (COALESCE(SUM(CASE WHEN a.status='Present' THEN 1 ELSE 0 END),0) / NULLIF(COUNT(a.date),0) * 100) AS percentage
       FROM students s
       LEFT JOIN attendance a
-        ON s.id = a.student_id AND DATE(a.date) = ?
+        ON s.id = a.student_id AND a.date::date = $1
       WHERE s.role='student'
       GROUP BY s.id, s.name
       ORDER BY s.id
     `;
 
-    const [rows] = await db.query(sql, [dateStr]);
+    const { rows } = await db.query(sql, [dateStr]);
 
     const result = rows.map(r => ({
       studentId: r.studentId,
@@ -142,7 +133,10 @@ exports.getTodayAttendancePercent = async (req, res) => {
     return res.status(500).json({ success: false, message: "Server error" });
   }
 };
-// // 5) GET ATTENDANCE MARKS (MONTHLY)
+
+// --------------------------------------------------
+// 5) GET ATTENDANCE MARKS (MONTHLY)
+// --------------------------------------------------
 exports.getAttendanceMarks = async (req, res) => {
   try {
     const { studentId, month } = req.query;
@@ -151,21 +145,17 @@ exports.getAttendanceMarks = async (req, res) => {
       return res.status(400).json({ success: false, message: "studentId & month required" });
     }
 
-    console.log("DEBUG:", studentId, month);
-
-    // Ensure studentId is number
     const id = Number(studentId);
     const monthStr = month.trim(); // "2025-11"
 
     const sql = `
       SELECT status
       FROM attendance
-      WHERE student_id = ?
-      AND date LIKE ?
+      WHERE student_id = $1
+      AND date::text LIKE $2
     `;
 
-    const [rows] = await db.query(sql, [id, `${monthStr}%`]);
-    console.log("DEBUG rows:", rows);
+    const { rows } = await db.query(sql, [id, `${monthStr}%`]);
 
     const validDays = rows.filter(r => r.status === "Present" || r.status === "Absent").length;
     const presentDays = rows.filter(r => r.status === "Present").length;

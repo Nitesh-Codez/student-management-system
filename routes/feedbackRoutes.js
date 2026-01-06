@@ -2,13 +2,13 @@ const express = require("express");
 const router = express.Router();
 const { submitFeedback, getStudentFeedback, getAllFeedback } = require("../controllers/feedbackController");
 
-// Student submits feedback
+// POST feedback (student)
 router.post("/student/submit", submitFeedback);
 
-// Student views their own feedback (optional)
+// GET feedback for a single student
 router.get("/student/:studentId", getStudentFeedback);
 
-// Admin views all feedback
-router.get("/admin/all", getAllFeedback);
+// GET all feedback (admin)
+router.get("/all", getAllFeedback);
 
 module.exports = router;

@@ -11,7 +11,9 @@ const feesRoutes = require("./routes/feesRoutes");
 const marksRoutes = require("./routes/marksRoutes");
 const studyMaterialRoutes = require("./routes/studyMaterialRoutes");
 const newMarksRoutes = require("./routes/newMarksRoutes");
-
+// Routes
+const feedbackRoutes = require("./routes/feedbackRoutes");
+const assignmentRoutes = require("./routes/assignmentRoutes");
 // Initialize DB (connection only)
 require("./db");
 
@@ -36,6 +38,8 @@ app.use("/api/marks", marksRoutes);
 app.use("/api/study-material", studyMaterialRoutes);
 app.use("/api/new-marks", newMarksRoutes);
 app.use("/api/upload", studentRoutes);
+app.use("/api/feedback", feedbackRoutes);
+app.use("/api/assignments", assignmentRoutes);
 
 
 // ============ STATIC FILES (UPLOADS) ============

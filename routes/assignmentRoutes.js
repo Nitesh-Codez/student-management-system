@@ -1,8 +1,6 @@
 const express = require("express");
 const router = express.Router();
 const multer = require("multer");
-
-// Multer config for temporary local storage
 const upload = multer({ dest: "uploads/" });
 
 const {
@@ -11,18 +9,16 @@ const {
   deleteAssignment,
 } = require("../controllers/assignmentController");
 
-// ================= UPLOAD =================
-// Admin or Student upload
-// FormData fields:
-// file, role, userId, studentId, class_name, subject, task_title, task_id, deadline
-router.post("/upload", upload.single("file"), uploadAssignment);
+// Admin upload
+router.post("/admin/upload", upload.single("file"), uploadAssignment);
 
-// ================= GET ASSIGNMENTS BY CLASS =================
-// className param used to fetch all tasks/submissions for that class
+// Student upload
+router.post("/student/upload", upload.single("file"), uploadAssignment);
+
+// Get assignments/submissions by class
 router.get("/class/:className", getAssignmentsByClass);
 
-// ================= DELETE =================
-// Delete assignment by ID
+// Delete assignment
 router.delete("/:id", deleteAssignment);
 
 module.exports = router;

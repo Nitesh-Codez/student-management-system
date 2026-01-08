@@ -67,6 +67,24 @@ async function getAssignmentsByClass(req, res) {
   }
 }
 
+// ================= GET ADMIN TASKS BY CLASS =================
+async function getAdminTasksByClass(req, res) {
+  try {
+    const { className } = req.params;
+    const sql = `
+      SELECT DISTINCT task_title
+      FROM assignment_uploads
+      WHERE class = $1 AND uploader_role='admin'
+      ORDER BY uploaded_at DESC
+    `;
+    const { rows } = await db.query(sql, [className]);
+    res.json({ success: true, tasks: rows });
+  } catch (err) {
+    console.error("FETCH TASKS ERROR:", err.message);
+    res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
+}
+
 // ================= DELETE ASSIGNMENT =================
 async function deleteAssignment(req, res) {
   try {
@@ -119,6 +137,7 @@ async function getSubmissionsByTask(req, res) {
 module.exports = {
   uploadAssignment,
   getAssignmentsByClass,
+  getAdminTasksByClass, // added for dropdown
   deleteAssignment,
   getSubmissionsByTask,
 };

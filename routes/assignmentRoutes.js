@@ -13,6 +13,8 @@ const {
   getAssignmentsByClass,
   deleteAssignment,
 } = require("../controllers/assignmentController");
+const { getSubmissionsByTask } = require("../controllers/assignmentController");
+
 
 // Admin upload
 router.post(
@@ -30,6 +32,9 @@ router.post(
 
 // Get by class
 router.get("/class/:className", getAssignmentsByClass);
+router.get("/assignments/admin/submissions/:task_title", getSubmissionsByTask);
+
+
 
 // Delete
 router.delete("/:id", deleteAssignment);

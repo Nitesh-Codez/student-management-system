@@ -1,7 +1,12 @@
 const express = require("express");
 const router = express.Router();
 const multer = require("multer");
-const upload = multer({ dest: "uploads/" });
+
+// ✅ admin ke liye admin folder
+const adminUpload = multer({ dest: "assignments/admin/" });
+
+// ✅ student ke liye student folder
+const studentUpload = multer({ dest: "assignments/student/" });
 
 const {
   uploadAssignment,
@@ -10,15 +15,23 @@ const {
 } = require("../controllers/assignmentController");
 
 // Admin upload
-router.post("/admin/upload", upload.single("file"), uploadAssignment);
+router.post(
+  "/admin/upload",
+  adminUpload.single("file"),
+  uploadAssignment
+);
 
 // Student upload
-router.post("/student/upload", upload.single("file"), uploadAssignment);
+router.post(
+  "/student/upload",
+  studentUpload.single("file"),
+  uploadAssignment
+);
 
-// Get assignments/submissions by class
+// Get by class
 router.get("/class/:className", getAssignmentsByClass);
 
-// Delete assignment
+// Delete
 router.delete("/:id", deleteAssignment);
 
 module.exports = router;

@@ -137,7 +137,7 @@ async function getSubmissionsByTask(req, res) {
 module.exports = {
   uploadAssignment,
   getAssignmentsByClass,
-  getAdminTasksByClass, // added for dropdown
+  getTasksByClass, // added for dropdown
   deleteAssignment,
   getSubmissionsByTask,
 };

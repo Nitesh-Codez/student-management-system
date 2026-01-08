@@ -2,36 +2,30 @@ const express = require("express");
 const router = express.Router();
 const multer = require("multer");
 
-// ✅ admin ke liye admin folder
 const adminUpload = multer({ dest: "assignments/admin/" });
-
-// ✅ student ke liye student folder
 const studentUpload = multer({ dest: "assignments/student/" });
 
 const {
   uploadAssignment,
-  getAssignmentsByClass,
+  getAllAssignments,
+  submitAssignment,
+  getSubmissions,
   deleteAssignment,
 } = require("../controllers/assignmentController");
 
-// Admin upload
-router.post(
-  "/admin/upload",
-  adminUpload.single("file"),
-  uploadAssignment
-);
+/* Admin */
+router.post("/admin/upload", adminUpload.single("file"), uploadAssignment);
+router.get("/admin/all", getAllAssignments);
+router.get("/admin/:assignmentId/submissions", getSubmissions);
 
-// Student upload
+/* Student */
 router.post(
-  "/student/upload",
+  "/student/submit",
   studentUpload.single("file"),
-  uploadAssignment
+  submitAssignment
 );
 
-// Get by class
-router.get("/class/:className", getAssignmentsByClass);
-
-// Delete
+/* Delete */
 router.delete("/:id", deleteAssignment);
 
 module.exports = router;

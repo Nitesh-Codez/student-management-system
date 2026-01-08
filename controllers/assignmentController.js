@@ -12,6 +12,7 @@ cloudinary.config({
 // ================= UPLOAD ASSIGNMENT =================
 async function uploadAssignment(req, res) {
   try {
+    // 🔹 body se exact wahi fields lo jo frontend bhej raha hai
     const {
       uploader_id,
       uploader_role,
@@ -22,7 +23,7 @@ async function uploadAssignment(req, res) {
       deadline,
     } = req.body;
 
-    // 🔴 validation
+    // 🔴 basic validation
     if (!uploader_id || !uploader_role || !className || !req.file) {
       return res.status(400).json({
         success: false,
@@ -30,22 +31,22 @@ async function uploadAssignment(req, res) {
       });
     }
 
-    // 🔹 cloudinary folder
+    // 🔹 cloudinary folder decide
     const folder =
       uploader_role === "admin"
         ? `assignments/admin/class-${className}`
         : `assignments/student/class-${className}`;
 
-    // 🔹 upload
+    // 🔹 upload to cloudinary
     const result = await cloudinary.uploader.upload(req.file.path, {
       resource_type: "auto",
       folder,
     });
 
-    // 🔹 delete local file
+    // 🔹 local file delete
     fs.unlinkSync(req.file.path);
 
-    // 🔹 DB insert
+    // 🔹 DB insert (EXACT table columns)
     const sql = `
       INSERT INTO assignment_uploads
       (uploader_id, uploader_role, student_id, task_title, subject, class, deadline, file_path, status)
@@ -62,7 +63,7 @@ async function uploadAssignment(req, res) {
       className,
       deadline || null,
       result.secure_url,
-      uploader_role === "student" ? "SUBMITTED" : "UPLOADED", // ✅ FIX
+      uploader_role === "student" ? "SUBMITTED" : null,
     ];
 
     const { rows } = await db.query(sql, values);
@@ -114,6 +115,7 @@ async function deleteAssignment(req, res) {
   try {
     const { id } = req.params;
 
+    // 🔹 get file path
     const findSql = `SELECT file_path FROM assignment_uploads WHERE id = $1`;
     const { rows } = await db.query(findSql, [id]);
 
@@ -124,16 +126,19 @@ async function deleteAssignment(req, res) {
       });
     }
 
+    // 🔹 extract public_id safely
     const fileUrl = rows[0].file_path;
     const parts = fileUrl.split("/");
     const fileName = parts.pop().split(".")[0];
     const folder = parts.slice(parts.indexOf("assignments")).join("/");
     const publicId = `${folder}/${fileName}`;
 
+    // 🔹 delete from cloudinary
     await cloudinary.uploader.destroy(publicId, {
       resource_type: "auto",
     });
 
+    // 🔹 delete from DB
     await db.query(`DELETE FROM assignment_uploads WHERE id = $1`, [id]);
 
     res.json({

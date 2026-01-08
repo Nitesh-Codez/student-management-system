@@ -68,17 +68,17 @@ async function getAssignmentsByClass(req, res) {
 }
 
 // ================= GET ADMIN TASKS BY CLASS =================
-async function getAdminTasksByClass(req, res) {
+async function getTasksByClass(req, res) {
   try {
     const { className } = req.params;
     const sql = `
       SELECT DISTINCT task_title
       FROM assignment_uploads
-      WHERE class = $1 AND uploader_role='admin'
+      WHERE class = $1 AND uploader_role = 'admin'
       ORDER BY uploaded_at DESC
     `;
     const { rows } = await db.query(sql, [className]);
-    res.json({ success: true, tasks: rows });
+    res.json({ success: true, tasks: rows }); // rows = [{ task_title: 'Task 2' }, ...]
   } catch (err) {
     console.error("FETCH TASKS ERROR:", err.message);
     res.status(500).json({ success: false, message: "Internal Server Error" });

@@ -11,7 +11,7 @@ const studentUpload = multer({ dest: "assignments/student/" });
 const {
   uploadAssignment,
   getAssignmentsByClass,
-  getAdminTasksByClass,
+  getTasksByClass,
   deleteAssignment,
   getSubmissionsByTask
 } = require("../controllers/assignmentController");
@@ -26,7 +26,7 @@ router.post("/student/upload", studentUpload.single("file"), uploadAssignment);
 router.get("/class/:className", getAssignmentsByClass);
 
 // Get admin tasks by class (for dropdown)
-router.get("/admin/tasks/:className", getAdminTasksByClass);
+router.get("/admin/tasks/:className", getTasksByClass);
 
 // Get submissions for a task
 router.get("/admin/submissions/:task_title", getSubmissionsByTask);

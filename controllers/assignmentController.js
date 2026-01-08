@@ -2,45 +2,51 @@ const db = require("../db");
 const cloudinary = require("cloudinary").v2;
 const fs = require("fs");
 
-/* ================= CLOUDINARY ================= */
+// ================= CLOUDINARY CONFIG =================
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-/* ================= ADMIN / STUDENT UPLOAD ================= */
+// ================= UPLOAD ASSIGNMENT =================
 async function uploadAssignment(req, res) {
   try {
+    // 🔹 body se exact wahi fields lo jo frontend bhej raha hai
     const {
-      userId,          // 👈 frontend se
-      role,            // 👈 frontend se
+      uploader_id,
+      uploader_role,
       student_id,
       task_title,
       subject,
-      class_name,      // 👈 frontend se
+      class: className,
       deadline,
     } = req.body;
 
-    if (!userId || !role || !class_name || !req.file) {
+    // 🔴 basic validation
+    if (!uploader_id || !uploader_role || !className || !req.file) {
       return res.status(400).json({
         success: false,
         message: "Required fields missing",
       });
     }
 
+    // 🔹 cloudinary folder decide
     const folder =
-      role === "admin"
-        ? `assignments/admin/class-${class_name}`
-        : `assignments/student/class-${class_name}`;
+      uploader_role === "admin"
+        ? `assignments/admin/class-${className}`
+        : `assignments/student/class-${className}`;
 
+    // 🔹 upload to cloudinary
     const result = await cloudinary.uploader.upload(req.file.path, {
       resource_type: "auto",
       folder,
     });
 
+    // 🔹 local file delete
     fs.unlinkSync(req.file.path);
 
+    // 🔹 DB insert (EXACT table columns)
     const sql = `
       INSERT INTO assignment_uploads
       (uploader_id, uploader_role, student_id, task_title, subject, class, deadline, file_path, status)
@@ -49,104 +55,108 @@ async function uploadAssignment(req, res) {
     `;
 
     const values = [
-      userId,
-      role,
-      role === "student" ? userId : null,
-      role === "admin" ? task_title : null,
+      uploader_id,
+      uploader_role,
+      uploader_role === "student" ? student_id : null,
+      uploader_role === "admin" ? task_title : null,
       subject || null,
-      class_name,
+      className,
       deadline || null,
       result.secure_url,
-      role === "student" ? "SUBMITTED" : "ACTIVE",
+      uploader_role === "student" ? "SUBMITTED" : null,
     ];
 
     const { rows } = await db.query(sql, values);
 
     res.json({
       success: true,
-      message: "Uploaded successfully",
+      message: "Assignment uploaded successfully",
       data: rows[0],
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
-}
-
-/* ================= GET TASKS (ADMIN) ================= */
-async function getAllAssignments(req, res) {
-  try {
-    const { rows } = await db.query(
-      "SELECT * FROM assignment_uploads ORDER BY uploaded_at DESC"
-    );
-
-    res.json({ success: true, assignments: rows });
-  } catch (err) {
-    res.status(500).json({ success: false, message: "DB error" });
-  }
-}
-
-/* ================= STUDENT SUBMIT ================= */
-async function submitAssignment(req, res) {
-  try {
-    const { assignment_id, student_id } = req.body;
-    if (!assignment_id || !student_id || !req.file) {
-      return res.status(400).json({ success: false, message: "Missing data" });
-    }
-
-    const result = await cloudinary.uploader.upload(req.file.path, {
-      folder: "assignments/student/submissions",
-      resource_type: "auto",
+    console.error("UPLOAD ERROR:", err.message);
+    console.error(err.stack);
+    res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
     });
-
-    fs.unlinkSync(req.file.path);
-
-    await db.query(
-      `INSERT INTO assignment_submissions
-       (assignment_id, student_id, file_path)
-       VALUES ($1,$2,$3)`,
-      [assignment_id, student_id, result.secure_url]
-    );
-
-    res.json({ success: true, message: "Submitted successfully" });
-  } catch (err) {
-    res.status(500).json({ success: false, message: "Submit failed" });
   }
 }
 
-/* ================= VIEW SUBMISSIONS (ADMIN) ================= */
-async function getSubmissions(req, res) {
+// ================= GET ASSIGNMENTS BY CLASS =================
+async function getAssignmentsByClass(req, res) {
   try {
-    const { assignmentId } = req.params;
+    const { className } = req.params;
 
-    const { rows } = await db.query(
-      `SELECT * FROM assignment_submissions
-       WHERE assignment_id = $1
-       ORDER BY submitted_at DESC`,
-      [assignmentId]
-    );
+    const sql = `
+      SELECT *
+      FROM assignment_uploads
+      WHERE class = $1
+      ORDER BY uploaded_at DESC
+    `;
 
-    res.json({ success: true, submissions: rows });
+    const { rows } = await db.query(sql, [className]);
+
+    res.json({
+      success: true,
+      assignments: rows,
+    });
   } catch (err) {
-    res.status(500).json({ success: false, message: "DB error" });
+    console.error("FETCH ERROR:", err.message);
+    res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+    });
   }
 }
 
-/* ================= DELETE ================= */
+// ================= DELETE ASSIGNMENT =================
 async function deleteAssignment(req, res) {
   try {
     const { id } = req.params;
-    await db.query("DELETE FROM assignment_uploads WHERE id=$1", [id]);
-    res.json({ success: true, message: "Deleted" });
+
+    // 🔹 get file path
+    const findSql = `SELECT file_path FROM assignment_uploads WHERE id = $1`;
+    const { rows } = await db.query(findSql, [id]);
+
+    if (!rows.length) {
+      return res.status(404).json({
+        success: false,
+        message: "Assignment not found",
+      });
+    }
+
+    // 🔹 extract public_id safely
+    const fileUrl = rows[0].file_path;
+    const parts = fileUrl.split("/");
+    const fileName = parts.pop().split(".")[0];
+    const folder = parts.slice(parts.indexOf("assignments")).join("/");
+    const publicId = `${folder}/${fileName}`;
+
+    // 🔹 delete from cloudinary
+    await cloudinary.uploader.destroy(publicId, {
+      resource_type: "auto",
+    });
+
+    // 🔹 delete from DB
+    await db.query(`DELETE FROM assignment_uploads WHERE id = $1`, [id]);
+
+    res.json({
+      success: true,
+      message: "Assignment deleted successfully",
+    });
   } catch (err) {
-    res.status(500).json({ success: false, message: "Delete failed" });
+    console.error("DELETE ERROR:", err.message);
+    res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+    });
   }
 }
 
+// ================= EXPORT =================
 module.exports = {
   uploadAssignment,
-  getAllAssignments,
-  submitAssignment,
-  getSubmissions,
+  getAssignmentsByClass,
   deleteAssignment,
 };

@@ -56,9 +56,35 @@ async function uploadAssignment(req, res) {
 // ================= GET ASSIGNMENTS BY CLASS =================
 async function getAssignmentsByClass(req, res) {
   try {
-    const { className } = req.params;
-    const sql = `SELECT * FROM assignment_uploads WHERE class = $1 ORDER BY uploaded_at DESC`;
-    const { rows } = await db.query(sql, [className]);
+    const { className, studentId } = req.params;
+
+    const sql = `
+      SELECT 
+        a.id,
+        a.task_title,
+        a.subject,
+        a.class,
+        a.deadline,
+        a.uploaded_at,
+        CASE 
+          WHEN EXISTS (
+            SELECT 1 
+            FROM assignment_uploads s
+            WHERE s.uploader_role = 'student'
+              AND s.student_id = $2
+              AND s.class = a.class
+              AND s.subject = a.subject
+          )
+          THEN 'SUBMITTED'
+          ELSE 'NOT SUBMITTED'
+        END AS status
+      FROM assignment_uploads a
+      WHERE a.uploader_role = 'admin'
+        AND a.class = $1
+      ORDER BY a.uploaded_at DESC
+    `;
+
+    const { rows } = await db.query(sql, [className, studentId]);
 
     res.json({ success: true, assignments: rows });
   } catch (err) {

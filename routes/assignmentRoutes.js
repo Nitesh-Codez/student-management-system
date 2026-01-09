@@ -23,7 +23,8 @@ router.post("/admin/upload", adminUpload.single("file"), uploadAssignment);
 router.post("/student/upload", studentUpload.single("file"), uploadAssignment);
 
 // Get assignments by class
-router.get("/class/:className", getAssignmentsByClass);
+router.get("/class/:className/:studentId", getAssignmentsByClass);
+
 
 // Get admin tasks by class (for dropdown)
 router.get("/admin/tasks/:className", getTasksByClass);

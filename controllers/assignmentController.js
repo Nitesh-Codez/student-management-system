@@ -98,10 +98,12 @@ async function getTasksByClass(req, res) {
   try {
     const { className } = req.params;
     const sql = `
-      SELECT DISTINCT task_title
-      FROM assignment_uploads
-      WHERE class = $1 AND uploader_role = 'admin'
-      ORDER BY uploaded_at DESC
+      SELECT task_title
+FROM assignment_uploads
+WHERE class = $1 AND uploader_role = 'admin'
+GROUP BY task_title
+ORDER BY MAX(uploaded_at) DESC
+
     `;
     const { rows } = await db.query(sql, [className]);
     res.json({ success: true, tasks: rows }); // rows = [{ task_title: 'Task 2' }, ...]

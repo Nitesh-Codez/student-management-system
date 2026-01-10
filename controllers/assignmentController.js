@@ -54,17 +54,17 @@ async function uploadAssignment(req, res) {
     `;
 
     const values = [
-      uploader_id,                       // Who uploaded
-      uploader_role,                      // 'admin' or 'student'
-      uploader_role === "student" ? student_id : null, // Student ID only
-      task_title,                         // Task title for both admin & student
-      subject || null,
-      className,
-      deadline || null,
-      result.secure_url,
-      uploader_role === "student" ? statusMessage || "SUBMITTED" : null, // Status only for students
-      uploader_role === "student" ? null : uploader_id // Admin ID for admin upload
-    ];
+  uploader_id,                        // Who uploaded (admin/student)
+  uploader_role,                       // 'admin' or 'student'
+  uploader_role === "student" ? student_id : null, // student_id only
+  task_title,                          // Task title for both
+  subject || null,
+  className,
+  deadline || null,
+  result.secure_url,
+  uploader_role === "student" ? (statusMessage || "SUBMITTED") : null,
+  uploader_role === "admin" ? uploader_id : null  // admin_id only for admin
+];
 
     console.log("UPLOAD DATA:", values); // Debugging
     const { rows } = await db.query(sql, values);

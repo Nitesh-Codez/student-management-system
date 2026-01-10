@@ -14,17 +14,16 @@ async function uploadAssignment(req, res) {
   try {
     const { uploader_id, uploader_role, student_id, task_title, subject, class: className, deadline } = req.body;
 
-    // ❌ Required fields check
+    // Required fields check
     if (!uploader_id || !uploader_role || !className || !req.file) {
       return res.status(400).json({ success: false, message: "Required fields missing" });
     }
 
-    // ❌ Extra check for admin: task_title must not be empty
     if (uploader_role === "admin" && !task_title) {
       return res.status(400).json({ success: false, message: "Admin must provide a task title" });
     }
 
-    // Upload to Cloudinary
+    // Cloudinary upload
     const folder = uploader_role === "admin"
       ? `assignments/admin/class-${className}`
       : `assignments/student/class-${className}`;
@@ -43,17 +42,16 @@ async function uploadAssignment(req, res) {
     const values = [
       uploader_id,
       uploader_role,
-      uploader_role === "student" ? student_id : null,      // Student ka id
-      uploader_role === "admin" ? task_title : null,        // Admin ka task_title
+      uploader_role === "student" ? student_id : null, // Student ID
+      uploader_role === "admin" ? task_title : null,   // Admin task_title
       subject || null,
       className,
       deadline || null,
       result.secure_url,
-      uploader_role === "student" ? "SUBMITTED" : null,    // Student ka status
+      uploader_role === "student" ? "SUBMITTED" : null, // Student status
     ];
 
-    console.log("UPLOAD DATA:", values); // ✅ Debugging: DB me kya ja raha hai
-
+    console.log("UPLOAD DATA:", values); // Debugging
     const { rows } = await db.query(sql, values);
 
     res.json({ success: true, message: "Assignment uploaded successfully", data: rows[0] });
@@ -62,7 +60,6 @@ async function uploadAssignment(req, res) {
     res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
-
 
 // ================= GET ASSIGNMENTS BY CLASS =================
 async function getAssignmentsByClass(req, res) {

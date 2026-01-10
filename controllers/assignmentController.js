@@ -14,10 +14,17 @@ async function uploadAssignment(req, res) {
   try {
     const { uploader_id, uploader_role, student_id, task_title, subject, class: className, deadline } = req.body;
 
+    // ❌ Required fields check
     if (!uploader_id || !uploader_role || !className || !req.file) {
       return res.status(400).json({ success: false, message: "Required fields missing" });
     }
 
+    // ❌ Extra check for admin: task_title must not be empty
+    if (uploader_role === "admin" && !task_title) {
+      return res.status(400).json({ success: false, message: "Admin must provide a task title" });
+    }
+
+    // Upload to Cloudinary
     const folder = uploader_role === "admin"
       ? `assignments/admin/class-${className}`
       : `assignments/student/class-${className}`;
@@ -25,6 +32,7 @@ async function uploadAssignment(req, res) {
     const result = await cloudinary.uploader.upload(req.file.path, { resource_type: "auto", folder });
     fs.unlinkSync(req.file.path);
 
+    // DB Insert
     const sql = `
       INSERT INTO assignment_uploads
       (uploader_id, uploader_role, student_id, task_title, subject, class, deadline, file_path, status)
@@ -35,14 +43,16 @@ async function uploadAssignment(req, res) {
     const values = [
       uploader_id,
       uploader_role,
-      uploader_role === "student" ? student_id : null,
-      uploader_role === "admin" ? task_title : null,
+      uploader_role === "student" ? student_id : null,      // Student ka id
+      uploader_role === "admin" ? task_title : null,        // Admin ka task_title
       subject || null,
       className,
       deadline || null,
       result.secure_url,
-      uploader_role === "student" ? "SUBMITTED" : null,
+      uploader_role === "student" ? "SUBMITTED" : null,    // Student ka status
     ];
+
+    console.log("UPLOAD DATA:", values); // ✅ Debugging: DB me kya ja raha hai
 
     const { rows } = await db.query(sql, values);
 
@@ -52,6 +62,7 @@ async function uploadAssignment(req, res) {
     res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
+
 
 // ================= GET ASSIGNMENTS BY CLASS =================
 async function getAssignmentsByClass(req, res) {

@@ -40,17 +40,18 @@ async function uploadAssignment(req, res) {
       RETURNING *;
     `;
 
-    const values = [
-      uploader_id,
-      uploader_role,
-      uploader_role === "student" ? student_id : null,      // Student ka id
-      uploader_role === "admin" ? task_title : null,        // Admin ka task_title
-      subject || null,
-      className,
-      deadline || null,
-      result.secure_url,
-      uploader_role === "student" ? "SUBMITTED" : null,    // Student ka status
-    ];
+   const values = [
+  uploader_id,                                      // $1
+  uploader_role,                                    // $2
+  uploader_role === "student" ? student_id : null, // $3
+  task_title,                                       // $4 ✅ admin + student dono
+  subject || null,                                  // $5
+  className,                                        // $6
+  deadline || null,                                 // $7
+  result.secure_url,                                // $8
+  uploader_role === "student" ? "SUBMITTED" : null // $9
+];
+
 
     console.log("UPLOAD DATA:", values); // ✅ Debugging: DB me kya ja raha hai
 

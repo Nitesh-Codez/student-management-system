@@ -129,26 +129,49 @@ ORDER BY MAX(uploaded_at) DESC
 async function deleteAssignment(req, res) {
   try {
     const { id } = req.params;
-    const findSql = `SELECT file_path FROM assignment_uploads WHERE id = $1`;
+
+    // 1️⃣ Get public_id from DB
+    const findSql = `
+      SELECT public_id 
+      FROM assignment_uploads 
+      WHERE id = $1
+    `;
     const { rows } = await db.query(findSql, [id]);
 
-    if (!rows.length) return res.status(404).json({ success: false, message: "Assignment not found" });
+    if (!rows.length) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Assignment not found" });
+    }
 
-    const fileUrl = rows[0].file_path;
-    const parts = fileUrl.split("/");
-    const fileName = parts.pop().split(".")[0];
-    const folder = parts.slice(parts.indexOf("assignments")).join("/");
-    const publicId = `${folder}/${fileName}`;
+    const publicId = rows[0].public_id;
 
-    await cloudinary.uploader.destroy(publicId, { resource_type: "auto" });
-    await db.query(`DELETE FROM assignment_uploads WHERE id = $1`, [id]);
+    // 2️⃣ Delete from Cloudinary
+    if (publicId) {
+      await cloudinary.uploader.destroy(publicId, {
+        resource_type: "auto",
+      });
+    }
 
-    res.json({ success: true, message: "Assignment deleted successfully" });
+    // 3️⃣ Delete DB record
+    await db.query(
+      `DELETE FROM assignment_uploads WHERE id = $1`,
+      [id]
+    );
+
+    res.json({
+      success: true,
+      message: "Assignment deleted successfully",
+    });
   } catch (err) {
-    console.error("DELETE ERROR:", err.message);
-    res.status(500).json({ success: false, message: "Internal Server Error" });
+    console.error("DELETE ERROR:", err);
+    res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+    });
   }
 }
+
 
 // ================= GET SUBMISSIONS BY TASK =================
 async function getSubmissionsByTask(req, res) {

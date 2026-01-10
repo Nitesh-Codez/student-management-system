@@ -14,16 +14,17 @@ async function uploadAssignment(req, res) {
   try {
     const { uploader_id, uploader_role, student_id, task_title, subject, class: className, deadline } = req.body;
 
-    // Required fields check
+    // ❌ Required fields check
     if (!uploader_id || !uploader_role || !className || !req.file) {
       return res.status(400).json({ success: false, message: "Required fields missing" });
     }
 
+    // ❌ Extra check for admin: task_title must not be empty
     if (uploader_role === "admin" && !task_title) {
       return res.status(400).json({ success: false, message: "Admin must provide a task title" });
     }
 
-    // Cloudinary upload
+    // Upload to Cloudinary
     const folder = uploader_role === "admin"
       ? `assignments/admin/class-${className}`
       : `assignments/student/class-${className}`;
@@ -31,42 +32,28 @@ async function uploadAssignment(req, res) {
     const result = await cloudinary.uploader.upload(req.file.path, { resource_type: "auto", folder });
     fs.unlinkSync(req.file.path);
 
-    // Calculate early/late submission if student
-    let statusMessage = null;
-    if (uploader_role === "student" && deadline) {
-      const now = new Date();
-      const dl = new Date(deadline);
-      const diffMs = now - dl;
-      const diffMin = Math.abs(Math.floor(diffMs / 60000));
-      if (diffMs <= 0) {
-        statusMessage = `Submitted early by ${diffMin} min`;
-      } else {
-        statusMessage = `Submitted late by ${diffMin} min`;
-      }
-    }
-
     // DB Insert
     const sql = `
       INSERT INTO assignment_uploads
-      (uploader_id, uploader_role, student_id, task_title, subject, class, deadline, file_path, status, admin_id)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      (uploader_id, uploader_role, student_id, task_title, subject, class, deadline, file_path, status)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
       RETURNING *;
     `;
 
     const values = [
-  uploader_id,                        // Who uploaded (admin/student)
-  uploader_role,                       // 'admin' or 'student'
-  uploader_role === "student" ? student_id : null, // student_id only
-  task_title,                          // Task title for both
-  subject || null,
-  className,
-  deadline || null,
-  result.secure_url,
-  uploader_role === "student" ? (statusMessage || "SUBMITTED") : null,
-  uploader_role === "admin" ? uploader_id : null  // admin_id only for admin
-];
+      uploader_id,
+      uploader_role,
+      uploader_role === "student" ? student_id : null,      // Student ka id
+      uploader_role === "admin" ? task_title : null,        // Admin ka task_title
+      subject || null,
+      className,
+      deadline || null,
+      result.secure_url,
+      uploader_role === "student" ? "SUBMITTED" : null,    // Student ka status
+    ];
 
-    console.log("UPLOAD DATA:", values); // Debugging
+    console.log("UPLOAD DATA:", values); // ✅ Debugging: DB me kya ja raha hai
+
     const { rows } = await db.query(sql, values);
 
     res.json({ success: true, message: "Assignment uploaded successfully", data: rows[0] });
@@ -75,6 +62,7 @@ async function uploadAssignment(req, res) {
     res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
+
 
 // ================= GET ASSIGNMENTS BY CLASS =================
 async function getAssignmentsByClass(req, res) {

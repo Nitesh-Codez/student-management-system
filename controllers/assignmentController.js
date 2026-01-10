@@ -154,41 +154,35 @@ async function deleteAssignment(req, res) {
 async function getSubmissionsByTask(req, res) {
   try {
     const { task_title } = req.params;
-    if (!task_title)
-      return res.status(400).json({
-        success: false,
-        message: "Task title is required"
-      });
 
     const sql = `
       SELECT 
-        a.id,
-        a.task_title,
-        a.subject,
-        a.class,
-        a.file_path,
-        a.status,
-        a.uploaded_at,      -- ✅ submit time
-        a.deadline,         -- ✅ admin deadline
-        s.name AS student_name
-      FROM assignment_uploads a
-      JOIN students s ON a.student_id = s.id
-      WHERE a.task_title = $1
-      ORDER BY a.uploaded_at ASC
+        s.id,
+        s.task_title,
+        s.subject,
+        s.class,
+        s.file_path,
+        s.status,
+        s.uploaded_at,              -- student submit time
+        a.deadline,                 -- ✅ admin deadline
+        st.name AS student_name
+      FROM assignment_uploads s
+      JOIN students st ON s.student_id = st.id
+      JOIN assignment_uploads a
+        ON a.task_title = s.task_title
+       AND a.uploader_role = 'admin'
+       AND a.class = s.class
+      WHERE s.uploader_role = 'student'
+        AND s.task_title = $1
+      ORDER BY s.uploaded_at ASC
     `;
 
     const { rows } = await db.query(sql, [task_title]);
 
-    res.json({
-      success: true,
-      submissions: rows
-    });
+    res.json({ success: true, submissions: rows });
   } catch (err) {
     console.error("FETCH SUBMISSIONS ERROR:", err.message);
-    res.status(500).json({
-      success: false,
-      message: "Internal Server Error"
-    });
+    res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
 

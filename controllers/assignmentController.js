@@ -31,24 +31,39 @@ async function uploadAssignment(req, res) {
     const result = await cloudinary.uploader.upload(req.file.path, { resource_type: "auto", folder });
     fs.unlinkSync(req.file.path);
 
+    // Calculate early/late submission if student
+    let statusMessage = null;
+    if (uploader_role === "student" && deadline) {
+      const now = new Date();
+      const dl = new Date(deadline);
+      const diffMs = now - dl;
+      const diffMin = Math.abs(Math.floor(diffMs / 60000));
+      if (diffMs <= 0) {
+        statusMessage = `Submitted early by ${diffMin} min`;
+      } else {
+        statusMessage = `Submitted late by ${diffMin} min`;
+      }
+    }
+
     // DB Insert
     const sql = `
       INSERT INTO assignment_uploads
-      (uploader_id, uploader_role, student_id, task_title, subject, class, deadline, file_path, status)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      (uploader_id, uploader_role, student_id, task_title, subject, class, deadline, file_path, status, admin_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
       RETURNING *;
     `;
 
     const values = [
-      uploader_id,
-      uploader_role,
-      uploader_role === "student" ? student_id : null, // Student ID
-      uploader_role === "admin" ? task_title : null,   // Admin task_title
+      uploader_id,                       // Who uploaded
+      uploader_role,                      // 'admin' or 'student'
+      uploader_role === "student" ? student_id : null, // Student ID only
+      task_title,                         // Task title for both admin & student
       subject || null,
       className,
       deadline || null,
       result.secure_url,
-      uploader_role === "student" ? "SUBMITTED" : null, // Student status
+      uploader_role === "student" ? statusMessage || "SUBMITTED" : null, // Status only for students
+      uploader_role === "student" ? null : uploader_id // Admin ID for admin upload
     ];
 
     console.log("UPLOAD DATA:", values); // Debugging

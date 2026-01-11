@@ -183,6 +183,7 @@ async function deleteAssignment(req, res) {
 async function getSubmissionsByTask(req, res) {
   try {
     const { task_title } = req.params;
+    const className = req.query.class; // ✅ class filter
 
     const sql = `
       SELECT 
@@ -192,8 +193,8 @@ async function getSubmissionsByTask(req, res) {
         s.class,
         s.file_path,
         s.status,
-        s.uploaded_at,              -- student submit time
-        a.deadline,                 -- ✅ admin deadline
+        s.uploaded_at,
+        a.deadline,
         st.name AS student_name
       FROM assignment_uploads s
       JOIN students st ON s.student_id = st.id
@@ -203,17 +204,18 @@ async function getSubmissionsByTask(req, res) {
        AND a.class = s.class
       WHERE s.uploader_role = 'student'
         AND s.task_title = $1
+        AND s.class = $2   -- ✅ only this class
       ORDER BY s.uploaded_at ASC
     `;
 
-    const { rows } = await db.query(sql, [task_title]);
-
+    const { rows } = await db.query(sql, [task_title, className]);
     res.json({ success: true, submissions: rows });
   } catch (err) {
     console.error("FETCH SUBMISSIONS ERROR:", err.message);
     res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
+
 // ================= UPDATE RATING =================
 async function updateRating(req, res) {
   try {

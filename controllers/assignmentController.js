@@ -72,27 +72,28 @@ async function getAssignmentsByClass(req, res) {
 
     const sql = `
       SELECT 
-  a.id,
-  a.task_title,
-  a.subject,
-  a.class,
-  a.deadline,
-  a.uploaded_at,
-  s.uploaded_at AS student_uploaded_at,
-  s.rating,
-  CASE 
-    WHEN s.id IS NOT NULL THEN 'SUBMITTED'
-    ELSE 'NOT SUBMITTED'
-  END AS status
-FROM assignment_uploads a
-LEFT JOIN assignment_uploads s
-  ON s.task_title = a.task_title
-  AND s.uploader_role = 'student'
-  AND s.student_id = $2
-WHERE a.uploader_role = 'admin'
-  AND a.class = $1
-ORDER BY a.uploaded_at DESC
-
+        a.id,
+        a.task_title,
+        a.subject,
+        a.class,
+        a.deadline,
+        a.uploaded_at,
+        a.file_path AS task_file,        -- ✅ ADMIN TASK FILE (VIEW TASK)
+        s.id AS student_submission_id,   -- ✅ future use (delete / resubmit)
+        s.uploaded_at AS student_uploaded_at,
+        s.rating,
+        CASE 
+          WHEN s.id IS NOT NULL THEN 'SUBMITTED'
+          ELSE 'NOT SUBMITTED'
+        END AS status
+      FROM assignment_uploads a
+      LEFT JOIN assignment_uploads s
+        ON s.task_title = a.task_title
+        AND s.uploader_role = 'student'
+        AND s.student_id = $2
+      WHERE a.uploader_role = 'admin'
+        AND a.class = $1
+      ORDER BY a.uploaded_at DESC
     `;
 
     const { rows } = await db.query(sql, [className, studentId]);

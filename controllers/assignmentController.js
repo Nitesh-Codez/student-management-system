@@ -208,11 +208,40 @@ async function getSubmissionsByTask(req, res) {
     res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
+// ================= UPDATE RATING =================
+async function updateRating(req, res) {
+  try {
+    const { id } = req.params; // student submission id
+    const { rating } = req.body; // 1 to 5
 
+    if (!rating || rating < 1 || rating > 5) {
+      return res.status(400).json({ success: false, message: "Rating must be between 1 and 5" });
+    }
+
+    const sql = `
+      UPDATE assignment_uploads
+      SET rating = $1
+      WHERE id = $2 AND uploader_role = 'student'
+      RETURNING *;
+    `;
+
+    const { rows } = await db.query(sql, [rating, id]);
+
+    if (!rows.length) {
+      return res.status(404).json({ success: false, message: "Submission not found" });
+    }
+
+    res.json({ success: true, message: "Rating updated", data: rows[0] });
+  } catch (err) {
+    console.error("UPDATE RATING ERROR:", err.message);
+    res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
+}
 // ================= EXPORT =================
 module.exports = {
   uploadAssignment,
   getAssignmentsByClass,
+  updateRating,
   getTasksByClass, // added for dropdown
   deleteAssignment,
   getSubmissionsByTask,

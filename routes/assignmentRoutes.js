@@ -13,7 +13,8 @@ const {
   getAssignmentsByClass,
   getTasksByClass,
   deleteAssignment,
-  getSubmissionsByTask
+  getSubmissionsByTask,
+  updateRating // ✅ add this
 } = require("../controllers/assignmentController");
 
 // Admin upload
@@ -25,6 +26,8 @@ router.post("/student/upload", studentUpload.single("file"), uploadAssignment);
 // Get assignments by class
 router.get("/class/:className/:studentId", getAssignmentsByClass);
 
+// Update student rating
+router.put("/rating/:id", updateRating); // ✅ simplified path
 
 // Get admin tasks by class (for dropdown)
 router.get("/admin/tasks/:className", getTasksByClass);

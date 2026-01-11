@@ -78,10 +78,13 @@ async function getAssignmentsByClass(req, res) {
         a.class,
         a.deadline,
         a.uploaded_at,
-        a.file_path AS task_file,        -- ✅ ADMIN TASK FILE (VIEW TASK)
-        s.id AS student_submission_id,   -- ✅ future use (delete / resubmit)
+        a.file_path AS task_file,          -- ✅ admin task file
+
+        s.id AS student_submission_id,
         s.uploaded_at AS student_uploaded_at,
+        s.file_path AS student_file,       -- ✅ ADD THIS LINE
         s.rating,
+
         CASE 
           WHEN s.id IS NOT NULL THEN 'SUBMITTED'
           ELSE 'NOT SUBMITTED'
@@ -104,6 +107,7 @@ async function getAssignmentsByClass(req, res) {
     res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
+
 
 // ================= GET ADMIN TASKS BY CLASS =================
 async function getTasksByClass(req, res) {

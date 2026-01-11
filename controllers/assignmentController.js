@@ -10,21 +10,20 @@ cloudinary.config({
 });
 
 // ================= UPLOAD ASSIGNMENT =================
+// ================= UPLOAD ASSIGNMENT =================
 async function uploadAssignment(req, res) {
   try {
     const { uploader_id, uploader_role, student_id, task_title, subject, class: className, deadline } = req.body;
 
-    // ❌ Required fields check
     if (!uploader_id || !uploader_role || !className || !req.file) {
       return res.status(400).json({ success: false, message: "Required fields missing" });
     }
 
-    // ❌ Extra check for admin: task_title must not be empty
     if (uploader_role === "admin" && !task_title) {
       return res.status(400).json({ success: false, message: "Admin must provide a task title" });
     }
 
-    // Upload to Cloudinary
+    // Upload file to Cloudinary
     const folder = uploader_role === "admin"
       ? `assignments/admin/class-${className}`
       : `assignments/student/class-${className}`;
@@ -32,30 +31,31 @@ async function uploadAssignment(req, res) {
     const result = await cloudinary.uploader.upload(req.file.path, { resource_type: "auto", folder });
     fs.unlinkSync(req.file.path);
 
+    // ✅ uploaded_at define karna important hai
+    const uploadedAt = req.body.uploaded_at || new Date().toISOString();
+
     // DB Insert
     const sql = `
-  INSERT INTO assignment_uploads
-  (uploader_id, uploader_role, student_id, task_title, subject, class, deadline, file_path, status, uploaded_at)
-  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-  RETURNING *;
-`;
+      INSERT INTO assignment_uploads
+      (uploader_id, uploader_role, student_id, task_title, subject, class, deadline, file_path, status, uploaded_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      RETURNING *;
+    `;
 
-const values = [
-  uploader_id,                                      // $1
-  uploader_role,                                    // $2
-  uploader_role === "student" ? student_id : null, // $3
-  task_title,                                       // $4
-  subject || null,                                  // $5
-  className,                                        // $6
-  deadline || null,                                 // $7
-  result.secure_url,                                // $8
-  uploader_role === "student" ? "SUBMITTED" : null,// $9
-  uploadedAt                                        // $10 ✅ Correct timestamp
-];
+    const values = [
+      uploader_id,                                      // $1
+      uploader_role,                                    // $2
+      uploader_role === "student" ? student_id : null, // $3
+      task_title,                                       // $4
+      subject || null,                                  // $5
+      className,                                        // $6
+      deadline || null,                                 // $7
+      result.secure_url,                                // $8
+      uploader_role === "student" ? "SUBMITTED" : null,// $9
+      uploadedAt                                        // $10 ✅ uploaded_at timestamp
+    ];
 
-
-
-    console.log("UPLOAD DATA:", values); // ✅ Debugging: DB me kya ja raha hai
+    console.log("UPLOAD DATA:", values);
 
     const { rows } = await db.query(sql, values);
 

@@ -178,8 +178,6 @@ async function deleteAssignment(req, res) {
   }
 }
 
-
-// ================= GET SUBMISSIONS BY TASK =================
 // ================= GET SUBMISSIONS BY TASK =================
 async function getSubmissionsByTask(req, res) {
   try {

@@ -63,20 +63,41 @@ const getStudentFeedback = async (req, res) => {
 const getAllFeedback = async (req, res) => {
   try {
     const feedbacks = await pool.query(
-      `SELECT s.name, s.class, f.*,
-              COALESCE(json_agg(json_build_object('question_number', m.question_number, 'answer', m.answer)) 
-                       FILTER (WHERE m.id IS NOT NULL), '[]') AS mcq_answers
+      `SELECT 
+         s.name, 
+         s.class, 
+         f.id,
+         f.student_id,
+         f.month, 
+         f.year, 
+         f.suggestion, 
+         f.rating, 
+         f.problem,
+         COALESCE(
+           json_agg(
+             json_build_object(
+               'question_number', m.question_number, 
+               'answer', m.answer
+             )
+           ) FILTER (WHERE m.id IS NOT NULL), '[]'
+         ) AS mcq_answers
        FROM feedback f
        JOIN students s ON f.student_id = s.id
        LEFT JOIN feedback_mcq_answers m ON f.id = m.feedback_id
        GROUP BY s.id, f.id
        ORDER BY f.year DESC, f.month DESC`
     );
-    res.json({ success: true, feedbacks: feedbacks.rows });
+
+    // Convert mcq_answers string to array for safety
+    const parsedFeedbacks = feedbacks.rows.map(f => ({
+      ...f,
+      mcq_answers: Array.isArray(f.mcq_answers) ? f.mcq_answers : JSON.parse(f.mcq_answers)
+    }));
+
+    res.json({ success: true, feedbacks: parsedFeedbacks });
   } catch (err) {
     console.error("GET ALL FEEDBACK ERROR:", err);
     res.status(500).json({ error: "Server error" });
   }
 };
-
 module.exports = { submitFeedback, getStudentFeedback, getAllFeedback };

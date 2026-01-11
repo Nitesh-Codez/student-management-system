@@ -180,6 +180,7 @@ async function deleteAssignment(req, res) {
 
 
 // ================= GET SUBMISSIONS BY TASK =================
+// ================= GET SUBMISSIONS BY TASK =================
 async function getSubmissionsByTask(req, res) {
   try {
     const { task_title } = req.params;
@@ -192,10 +193,14 @@ async function getSubmissionsByTask(req, res) {
         s.subject,
         s.class,
         s.file_path,
-        s.status,
         s.uploaded_at,
+        s.rating,
         a.deadline,
-        st.name AS student_name
+        st.name AS student_name,
+        CASE
+          WHEN s.rating IS NOT NULL THEN 'GRADED'
+          ELSE 'NOT GRADED'
+        END AS grading_status
       FROM assignment_uploads s
       JOIN students st ON s.student_id = st.id
       JOIN assignment_uploads a
@@ -204,7 +209,7 @@ async function getSubmissionsByTask(req, res) {
        AND a.class = s.class
       WHERE s.uploader_role = 'student'
         AND s.task_title = $1
-        AND s.class = $2   -- ✅ only this class
+        AND s.class = $2
       ORDER BY s.uploaded_at ASC
     `;
 
@@ -215,6 +220,7 @@ async function getSubmissionsByTask(req, res) {
     res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }
+
 
 // ================= UPDATE RATING =================
 async function updateRating(req, res) {

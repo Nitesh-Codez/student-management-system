@@ -34,23 +34,25 @@ async function uploadAssignment(req, res) {
 
     // DB Insert
     const sql = `
-      INSERT INTO assignment_uploads
-      (uploader_id, uploader_role, student_id, task_title, subject, class, deadline, file_path, status)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-      RETURNING *;
-    `;
+  INSERT INTO assignment_uploads
+  (uploader_id, uploader_role, student_id, task_title, subject, class, deadline, file_path, status, uploaded_at)
+  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+  RETURNING *;
+`;
 
-   const values = [
+const values = [
   uploader_id,                                      // $1
   uploader_role,                                    // $2
   uploader_role === "student" ? student_id : null, // $3
-  task_title,                                       // $4 ✅ admin + student dono
+  task_title,                                       // $4
   subject || null,                                  // $5
   className,                                        // $6
   deadline || null,                                 // $7
   result.secure_url,                                // $8
-  uploader_role === "student" ? "SUBMITTED" : null // $9
+  uploader_role === "student" ? "SUBMITTED" : null,// $9
+  uploadedAt                                        // $10 ✅ Correct timestamp
 ];
+
 
 
     console.log("UPLOAD DATA:", values); // ✅ Debugging: DB me kya ja raha hai

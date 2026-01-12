@@ -38,8 +38,6 @@ app.use("/api/marks", marksRoutes);
 app.use("/api/study-material", studyMaterialRoutes);
 app.use("/api/new-marks", newMarksRoutes);
 app.use("/api/feedback", feedbackRoutes);
-
-// ✅ ASSIGNMENTS (admin + student upload)
 app.use("/api/assignments", assignmentRoutes);
 
 // ============ STATIC (optional) ============

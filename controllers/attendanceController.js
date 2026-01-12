@@ -107,8 +107,9 @@ exports.getTodayAttendancePercent = async (req, res) => {
         s.id AS "studentId",
         s.name AS name,
         COALESCE(SUM(CASE WHEN a.status='Present' THEN 1 ELSE 0 END), 0) AS present,
-        COUNT(a.date) AS total,
-        (COALESCE(SUM(CASE WHEN a.status='Present' THEN 1 ELSE 0 END),0) / NULLIF(COUNT(a.date),0) * 100) AS percentage
+        COUNT(CASE WHEN a.status IN ('Present','Absent') THEN 1 END) AS total,
+        (COALESCE(SUM(CASE WHEN a.status='Present' THEN 1 ELSE 0 END),0) 
+         / NULLIF(COUNT(CASE WHEN a.status IN ('Present','Absent') THEN 1 END),0) * 100) AS percentage
       FROM students s
       LEFT JOIN attendance a
         ON s.id = a.student_id AND a.date::date = $1
@@ -134,46 +135,3 @@ exports.getTodayAttendancePercent = async (req, res) => {
   }
 };
 
-// --------------------------------------------------
-// 5) GET ATTENDANCE MARKS (MONTHLY)
-// --------------------------------------------------
-exports.getAttendanceMarks = async (req, res) => {
-  try {
-    const { studentId, month } = req.query;
-
-    if (!studentId || !month) {
-      return res.status(400).json({ success: false, message: "studentId & month required" });
-    }
-
-    const id = Number(studentId);
-    const monthStr = month.trim(); // "2025-11"
-
-    const sql = `
-      SELECT status
-      FROM attendance
-      WHERE student_id = $1
-      AND date::text LIKE $2
-    `;
-
-    const { rows } = await db.query(sql, [id, `${monthStr}%`]);
-
-    const validDays = rows.filter(r => r.status === "Present" || r.status === "Absent").length;
-    const presentDays = rows.filter(r => r.status === "Present").length;
-
-    const percentage = validDays === 0 ? 0 : (presentDays / validDays) * 100;
-
-    let marks = 0;
-    if (percentage > 75) {
-      marks = Math.ceil((percentage - 75) / 5);
-    }
-
-    res.json({
-      success: true,
-      percentage: percentage.toFixed(2),
-      attendanceMarks: marks
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false });
-  }
-};

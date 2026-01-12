@@ -8,11 +8,11 @@ const {
   getAdminFeedbackSummary
 } = require("../controllers/feedbackController");
 
-// ✅ Student
+// Student
 router.post("/student/submit", submitFeedback);
 router.get("/student/:studentId", getStudentFeedback);
 
-// ✅ Admin
+// Admin
 router.get("/admin/all", getAllFeedback);
 router.get("/admin/summary", getAdminFeedbackSummary);
 

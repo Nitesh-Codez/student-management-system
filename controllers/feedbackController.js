@@ -100,4 +100,66 @@ const getAllFeedback = async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 };
-module.exports = { submitFeedback, getStudentFeedback, getAllFeedback };
+// ================= ADMIN FEEDBACK SUMMARY =================
+const getAdminFeedbackSummary = async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT 
+        f.id,
+        json_agg(
+          json_build_object(
+            'question_number', m.question_number,
+            'answer', m.answer
+          )
+        ) AS mcq_answers
+      FROM feedback f
+      JOIN feedback_mcq_answers m ON f.id = m.feedback_id
+      GROUP BY f.id
+    `);
+
+    let positive = 0;
+    let neutral = 0;
+    let negative = 0;
+
+    const scoringMap = [
+      [ 2, 1, 0, -2 ],
+      [ 2, 1, 0, -2 ],
+      [ 2, 1, 0, -2 ],
+      [ 2, 1, 0, -2 ],
+      [ 2, 1, -1, -2 ], // angry question
+      [ 2, 1, 0, -2 ],
+      [ 2, 1, 0, -2 ],
+      [ 2, 1, 0, -2 ],
+      [ 2, 1, 0, -2 ],
+      [ 2, 1, 0, -2 ],
+    ];
+
+    result.rows.forEach(feedback => {
+      feedback.mcq_answers.forEach(mcq => {
+        const qIndex = mcq.question_number - 1;
+        const ansIndex = mcq.answer - 1;
+        const score = scoringMap[qIndex][ansIndex];
+
+        if (score > 0) positive += score;
+        else if (score === 0) neutral += 1;
+        else negative += Math.abs(score);
+      });
+    });
+
+    res.json({
+      success: true,
+      total_feedbacks: result.rows.length,
+      summary: {
+        positive,
+        neutral,
+        negative
+      }
+    });
+
+  } catch (err) {
+    console.error("ADMIN FEEDBACK SUMMARY ERROR:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+};
+
+module.exports = { submitFeedback, getStudentFeedback, getAllFeedback, getAdminFeedbackSummary };

@@ -132,51 +132,41 @@ ORDER BY MAX(uploaded_at) DESC
 }
 
 // ================= DELETE ASSIGNMENT =================
+// ================= DELETE STUDENT SUBMISSION =================
 async function deleteAssignment(req, res) {
   try {
     const { id } = req.params;
 
-    // 1️⃣ Get public_id from DB
-    const findSql = `
-      SELECT public_id 
-      FROM assignment_uploads 
+    // ❗ Sirf student submission delete ho
+    const { rowCount } = await db.query(
+      `
+      DELETE FROM assignment_uploads
       WHERE id = $1
-    `;
-    const { rows } = await db.query(findSql, [id]);
-
-    if (!rows.length) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Assignment not found" });
-    }
-
-    const publicId = rows[0].public_id;
-
-    // 2️⃣ Delete from Cloudinary
-    if (publicId) {
-      await cloudinary.uploader.destroy(publicId, {
-        resource_type: "auto",
-      });
-    }
-
-    // 3️⃣ Delete DB record
-    await db.query(
-      `DELETE FROM assignment_uploads WHERE id = $1`,
+        AND uploader_role = 'student'
+      `,
       [id]
     );
 
+    if (rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Submission not found or not allowed",
+      });
+    }
+
     res.json({
       success: true,
-      message: "Assignment deleted successfully",
+      message: "Submission removed successfully",
     });
   } catch (err) {
-    console.error("DELETE ERROR:", err);
+    console.error("DELETE ERROR:", err.message);
     res.status(500).json({
       success: false,
       message: "Internal Server Error",
     });
   }
 }
+
 
 // ================= GET SUBMISSIONS BY TASK =================
 async function getSubmissionsByTask(req, res) {

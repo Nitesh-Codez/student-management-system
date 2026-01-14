@@ -145,6 +145,85 @@ async function getTasksByClass(req, res) {
   }
 }
 
+// ================= DELETE ASSIGNMENT =================
+// ================= DELETE STUDENT SUBMISSION =================
+async function deleteAssignment(req, res) {
+  try {
+    const { id } = req.params;
+
+    // ❗ Sirf student submission delete ho
+    const { rowCount } = await db.query(
+      `
+      DELETE FROM assignment_uploads
+      WHERE id = $1
+        AND uploader_role = 'student'
+      `,
+      [id]
+    );
+
+    if (rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Submission not found or not allowed",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Submission removed successfully",
+    });
+  } catch (err) {
+    console.error("DELETE ERROR:", err.message);
+    res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+    });
+  }
+}
+
+
+// ================= GET SUBMISSIONS BY TASK =================
+async function getSubmissionsByTask(req, res) {
+  try {
+    const { task_title } = req.params;
+    const className = req.query.class; // ✅ class filter
+
+    const sql = `
+      SELECT 
+        s.id,
+        s.task_title,
+        s.subject,
+        s.class,
+        s.file_path,
+        s.uploaded_at,
+        s.rating,
+        a.deadline,
+        st.name AS student_name,
+        CASE
+          WHEN s.rating IS NOT NULL THEN 'GRADED'
+          ELSE 'NOT GRADED'
+        END AS grading_status
+      FROM assignment_uploads s
+      JOIN students st ON s.student_id = st.id
+      JOIN assignment_uploads a
+        ON a.task_title = s.task_title
+       AND a.uploader_role = 'admin'
+       AND a.class = s.class
+      WHERE s.uploader_role = 'student'
+        AND s.task_title = $1
+        AND s.class = $2
+      ORDER BY s.uploaded_at ASC
+    `;
+
+    const { rows } = await db.query(sql, [task_title, className]);
+    res.json({ success: true, submissions: rows });
+  } catch (err) {
+    console.error("FETCH SUBMISSIONS ERROR:", err.message);
+    res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
+}
+
+
 // ================= UPDATE RATING =================
 async function updateRating(req, res) {
   try {

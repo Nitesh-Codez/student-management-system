@@ -184,11 +184,13 @@ async function deleteAssignment(req, res) {
 
 
 // ================= GET SUBMISSIONS BY TASK =================
+// ================= GET SUBMISSIONS BY TASK =================
 async function getSubmissionsByTask(req, res) {
   try {
     const { task_title } = req.params;
-    const className = req.query.class; // ✅ class filter
+    const className = req.query.class;
 
+    // ✅ Admin view: fetch all submissions for this task + class
     const sql = `
       SELECT 
         s.id,
@@ -217,6 +219,7 @@ async function getSubmissionsByTask(req, res) {
     `;
 
     const { rows } = await db.query(sql, [task_title, className]);
+
     res.json({ success: true, submissions: rows });
   } catch (err) {
     console.error("FETCH SUBMISSIONS ERROR:", err.message);

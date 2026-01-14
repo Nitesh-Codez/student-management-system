@@ -68,6 +68,7 @@ async function uploadAssignment(req, res) {
 
 
 // ================= GET ASSIGNMENTS BY CLASS =================
+// ================= GET ASSIGNMENTS BY CLASS =================
 async function getAssignmentsByClass(req, res) {
   try {
     const { className, studentId } = req.params;
@@ -84,7 +85,7 @@ async function getAssignmentsByClass(req, res) {
 
         s.id AS student_submission_id,
         s.uploaded_at AS student_uploaded_at,
-        s.file_path AS student_file,       -- ✅ ADD THIS LINE
+        s.file_path AS student_file,       -- ✅ student submission file
         s.rating,
 
         CASE 
@@ -94,6 +95,7 @@ async function getAssignmentsByClass(req, res) {
       FROM assignment_uploads a
       LEFT JOIN assignment_uploads s
         ON s.task_title = a.task_title
+        AND s.subject = a.subject         -- ✅ subject included
         AND s.uploader_role = 'student'
         AND s.student_id = $2
       WHERE a.uploader_role = 'admin'
@@ -110,8 +112,6 @@ async function getAssignmentsByClass(req, res) {
   }
 }
 
-
-// ================= GET ADMIN TASKS BY CLASS =================
 // ================= GET ADMIN TASKS BY CLASS =================
 async function getTasksByClass(req, res) {
   try {
@@ -120,22 +120,24 @@ async function getTasksByClass(req, res) {
     const sql = `
       SELECT 
         task_title,
+        subject,                         -- ✅ subject included
         deadline,
         MAX(uploaded_at) AS latest_upload
       FROM assignment_uploads
       WHERE uploader_role = 'admin'
         AND class = $1
-      GROUP BY task_title, deadline
+      GROUP BY task_title, subject, deadline
       ORDER BY latest_upload DESC
     `;
 
     const { rows } = await db.query(sql, [className]);
 
-    // Return tasks with title and deadline so frontend can distinguish
+    // Return tasks with title, subject, and deadline
     res.json({
       success: true,
       tasks: rows.map((r) => ({
         task_title: r.task_title,
+        subject: r.subject,              // ✅ return subject
         deadline: r.deadline,
       })),
     });
@@ -145,7 +147,6 @@ async function getTasksByClass(req, res) {
   }
 }
 
-// ================= DELETE ASSIGNMENT =================
 // ================= DELETE STUDENT SUBMISSION =================
 async function deleteAssignment(req, res) {
   try {

@@ -1,0 +1,68 @@
+const db = require("../db"); // Postgres connection
+const cloudinary = require("cloudinary").v2;
+const multer = require("multer");
+const path = require("path");
+
+// Multer config for file upload
+const storage = multer.diskStorage({});
+const upload = multer({ storage });
+
+cloudinary.config({
+  cloud_name: process.env.CLOUD_NAME,
+  api_key: process.env.CLOUD_API_KEY,
+  api_secret: process.env.CLOUD_API_SECRET,
+});
+
+// Send message (text or image)
+exports.sendMessage = async (req, res) => {
+  try {
+    const { from_user, to_user, text } = req.body;
+    let image_url = null;
+
+    if (req.file) {
+      const result = await cloudinary.uploader.upload(req.file.path, {
+        folder: "chat_images",
+      });
+      image_url = result.secure_url;
+    }
+
+    const msg = await db.query(
+      "INSERT INTO messages (from_user, to_user, text, image_url) VALUES ($1,$2,$3,$4) RETURNING *",
+      [from_user, to_user, text || null, image_url]
+    );
+
+    res.json({ success: true, message: msg.rows[0] });
+  } catch (err) {
+    console.error("Send Message Error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+// Get chat between 2 users
+exports.getChat = async (req, res) => {
+  try {
+    const { user1, user2 } = req.params;
+    const msgs = await db.query(
+      "SELECT * FROM messages WHERE (from_user=$1 AND to_user=$2) OR (from_user=$2 AND to_user=$1) ORDER BY timestamp ASC",
+      [user1, user2]
+    );
+    res.json({ success: true, messages: msgs.rows });
+  } catch (err) {
+    console.error("Get Chat Error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+// Admin: get all messages
+exports.getAllChats = async (req, res) => {
+  try {
+    const msgs = await db.query("SELECT * FROM messages ORDER BY timestamp ASC");
+    res.json({ success: true, messages: msgs.rows });
+  } catch (err) {
+    console.error("Admin Chat Error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+// Export multer
+exports.uploadMiddleware = upload;

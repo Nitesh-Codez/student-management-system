@@ -11,29 +11,15 @@ const {
   phonePeCallback
 } = require("../controllers/feesController");
 
-/* ================= CASH / MANUAL FEES ================= */
-
-// Admin: add fee (CASH / MANUAL)
+/* ===== MANUAL FEES ===== */
 router.post("/", addFee);
-
-// Admin: view all fees
 router.get("/", getAllFees);
-
-// Student: view own fees
 router.get("/student/:id", getStudentFees);
-
-// Admin: update fee record
 router.put("/:id", updateFee);
-
-// Admin: delete fee record
 router.delete("/:id", deleteFee);
 
-/* ================= PHONEPE PAYMENT ================= */
-
-// Create PhonePe payment
+/* ===== PHONEPE ===== */
 router.post("/phonepe/pay", createPhonePePayment);
-
-// PhonePe callback
 router.post("/phonepe/callback", phonePeCallback);
 
 module.exports = router;

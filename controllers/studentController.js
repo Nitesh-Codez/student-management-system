@@ -1,7 +1,7 @@
 const bcrypt = require("bcryptjs");
 const db = require("../db"); // PostgreSQL connection
 const multer = require("multer");
-const cloudinary = require("../config/cloudinary"); // cloudinary config
+const cloudinary = require("cloudinary").v2;
 const path = require("path");
 
 // --------------------- Multer Setup ---------------------

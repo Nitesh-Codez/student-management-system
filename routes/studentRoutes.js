@@ -1,14 +1,23 @@
 const express = require("express");
 const router = express.Router();
 const studentController = require("../controllers/studentController");
+const { verifyToken, isAdmin } = require("../middlewares/auth");
 
-// Get all students
+// CRUD
 router.get("/", studentController.getStudents);
-
-// Add new student
 router.post("/", studentController.addStudent);
-
-// Delete student by ID
 router.delete("/:id", studentController.deleteStudent);
+
+// Profile photo (Admin only upload)
+router.post(
+  "/:id/profile-photo",
+  verifyToken,
+  isAdmin,
+  studentController.uploadMiddleware.single("photo"),
+  studentController.uploadProfilePhoto
+);
+
+// Profile photo view (Admin + Student)
+router.get("/:id/profile-photo", verifyToken, studentController.getProfilePhoto);
 
 module.exports = router;

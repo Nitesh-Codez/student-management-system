@@ -9,7 +9,6 @@ const SALT_INDEX = "1";
 const PHONEPE_URL = "https://api-preprod.phonepe.com/apis/pg-sandbox";
 /* ================================================= */
 
-
 /* ================= ADD FEE (CASH / MANUAL) ================= */
 async function addFee(req, res) {
   const {
@@ -50,7 +49,6 @@ async function addFee(req, res) {
   }
 }
 
-
 /* ================= PHONEPE PAYMENT CREATE ================= */
 async function createPhonePePayment(req, res) {
   try {
@@ -65,7 +63,7 @@ async function createPhonePePayment(req, res) {
     const payload = {
       merchantId: MERCHANT_ID,
       merchantTransactionId,
-      amount: amount * 100,
+      amount: amount * 100, // in paise
       redirectUrl: `${process.env.BACKEND_URL}/api/fees/phonepe/callback`,
       redirectMode: "POST",
       paymentInstrument: { type: "PAY_PAGE" }
@@ -97,15 +95,13 @@ async function createPhonePePayment(req, res) {
 
     res.json({
       success: true,
-      redirectUrl:
-        phonepeRes.data.data.instrumentResponse.redirectInfo.url
+      redirectUrl: phonepeRes.data.data.instrumentResponse.redirectInfo.url
     });
   } catch (err) {
     console.error("PhonePe create error:", err);
     res.status(500).json({ success: false, message: "Payment init failed" });
   }
 }
-
 
 /* ================= PHONEPE CALLBACK ================= */
 async function phonePeCallback(req, res) {
@@ -148,7 +144,6 @@ async function phonePeCallback(req, res) {
   }
 }
 
-
 /* ================= UPDATE FEE ================= */
 async function updateFee(req, res) {
   try {
@@ -178,7 +173,6 @@ async function updateFee(req, res) {
   }
 }
 
-
 /* ================= DELETE FEE ================= */
 async function deleteFee(req, res) {
   try {
@@ -188,7 +182,6 @@ async function deleteFee(req, res) {
     res.status(500).json({ success: false, message: err.message });
   }
 }
-
 
 /* ================= GET STUDENT FEES ================= */
 async function getStudentFees(req, res) {
@@ -203,7 +196,6 @@ async function getStudentFees(req, res) {
   }
 }
 
-
 /* ================= GET ALL FEES ================= */
 async function getAllFees(req, res) {
   try {
@@ -215,7 +207,6 @@ async function getAllFees(req, res) {
     res.status(500).json({ success: false, message: err.message });
   }
 }
-
 
 module.exports = {
   addFee,

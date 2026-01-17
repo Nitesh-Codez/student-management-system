@@ -11,14 +11,14 @@ const {
   phonePeCallback
 } = require("../controllers/feesController");
 
-/* ===== MANUAL FEES ===== */
+/* ===== MANUAL FEE ROUTES ===== */
 router.post("/", addFee);
 router.get("/", getAllFees);
 router.get("/student/:id", getStudentFees);
 router.put("/:id", updateFee);
 router.delete("/:id", deleteFee);
 
-/* ===== PHONEPE ===== */
+/* ===== PHONEPE PAYMENT ROUTES ===== */
 router.post("/phonepe/pay", createPhonePePayment);
 router.post("/phonepe/callback", phonePeCallback);
 

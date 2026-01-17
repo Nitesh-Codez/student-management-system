@@ -101,25 +101,49 @@ const getAllFeedback = async (req, res) => {
   }
 };
 // ================= ADMIN FEEDBACK SUMMARY =================
+// ================= ADMIN FEEDBACK SUMMARY (WEIGHTED) =================
 const getAdminFeedbackSummary = async (req, res) => {
   try {
-    // Fetch all MCQ answers
-    const mcqRes = await pool.query(`SELECT answer FROM feedback_mcq_answers`);
-    const allAnswers = mcqRes.rows.map(r => r.answer);
+    const result = await pool.query(`
+      SELECT answer
+      FROM feedback_mcq_answers
+    `);
 
-    // Count based on positive/neutral/negative
-    let positive = 0, neutral = 0, negative = 0;
+    let totalScore = 0;
+    let maxScore = 0;
 
-    allAnswers.forEach(a => {
-      if ([1, 2].includes(a)) positive++;
-      else if ([3].includes(a)) neutral++;
-      else if ([4].includes(a)) negative++;
+    result.rows.forEach(row => {
+      const answer = row.answer; // 1 to 4
+
+      // Reverse weight: 1 is best
+      let score = 0;
+      if (answer === 1) score = 4;
+      else if (answer === 2) score = 3;
+      else if (answer === 3) score = 2;
+      else if (answer === 4) score = 1;
+
+      totalScore += score;
+      maxScore += 4;
     });
+
+    const percentage = maxScore === 0
+      ? 0
+      : Math.round((totalScore / maxScore) * 100);
 
     res.json({
       success: true,
-      summary: { positive, neutral, negative }
+      summary: {
+        percentage,
+        totalScore,
+        maxScore,
+        remark:
+          percentage >= 85 ? "Excellent" :
+          percentage >= 70 ? "Good" :
+          percentage >= 50 ? "Average" :
+          "Needs Improvement"
+      }
     });
+
   } catch (err) {
     console.error("ADMIN SUMMARY ERROR:", err);
     res.status(500).json({ success: false, error: "Server error" });

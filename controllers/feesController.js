@@ -2,35 +2,32 @@ const db = require("../db");
 const crypto = require("crypto");
 const axios = require("axios");
 
-/* ================= PHONEPE CONFIG ================= */
+/* ================= CONFIG ================= */
 const MERCHANT_ID = process.env.PHONEPE_MID;
 const SALT_KEY = process.env.PHONEPE_SALT;
 const SALT_INDEX = "1";
-const PHONEPE_URL = "https://api-preprod.phonepe.com/apis/pg-sandbox";
-/* ================================================= */
 
-/* ================= ADD FEE (CASH / MANUAL) ================= */
+const PHONEPE_BASE_URL =
+  "https://api-preprod.phonepe.com/apis/pg-sandbox";
+
+/* ================= ADD FEE (CASH) ================= */
 async function addFee(req, res) {
-  const {
-    student_id,
-    student_name,
-    class_name,
-    amount,
-    payment_date,
-    payment_time,
-    status,
-    payment_mode = "CASH"
-  } = req.body;
-
-  if (!student_id || !student_name || !class_name || !amount || !payment_date || !payment_time) {
-    return res.status(400).json({ success: false, message: "All fields are required" });
-  }
-
   try {
+    const {
+      student_id,
+      student_name,
+      class_name,
+      amount,
+      payment_date,
+      payment_time,
+      status,
+      payment_mode = "CASH"
+    } = req.body;
+
     await db.query(
       `INSERT INTO fees
-       (student_id, student_name, class_name, amount, payment_date, payment_time, status, payment_mode, payment_status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'SUCCESS')`,
+      (student_id, student_name, class_name, amount, payment_date, payment_time, status, payment_mode, payment_status)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'SUCCESS')`,
       [
         student_id,
         student_name,
@@ -43,33 +40,31 @@ async function addFee(req, res) {
       ]
     );
 
-    res.json({ success: true, message: "Fee record added successfully!" });
+    res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ success: false });
   }
 }
 
-/* ================= PHONEPE PAYMENT CREATE ================= */
+/* ================= CREATE PHONEPE PAYMENT ================= */
 async function createPhonePePayment(req, res) {
   try {
     const { student_id, student_name, class_name, amount } = req.body;
-
-    if (!student_id || !student_name || !class_name || !amount) {
-      return res.status(400).json({ success: false, message: "Missing fields" });
-    }
 
     const merchantTransactionId = "TXN_" + Date.now();
 
     const payload = {
       merchantId: MERCHANT_ID,
       merchantTransactionId,
-      amount: amount * 100, // in paise
+      amount: amount * 100,
       redirectUrl: `${process.env.BACKEND_URL}/api/fees/phonepe/callback`,
       redirectMode: "POST",
       paymentInstrument: { type: "PAY_PAGE" }
     };
 
-    const payloadBase64 = Buffer.from(JSON.stringify(payload)).toString("base64");
+    const payloadBase64 = Buffer.from(
+      JSON.stringify(payload)
+    ).toString("base64");
 
     const checksum =
       crypto
@@ -79,46 +74,66 @@ async function createPhonePePayment(req, res) {
       "###" +
       SALT_INDEX;
 
-    const phonepeRes = await axios.post(
-      `${PHONEPE_URL}/pg/v1/pay`,
+    const response = await axios.post(
+      `${PHONEPE_BASE_URL}/pg/v1/pay`,
       { request: payloadBase64 },
       { headers: { "X-VERIFY": checksum } }
     );
 
-    // Store pending transaction
     await db.query(
       `INSERT INTO fees
-       (student_id, student_name, class_name, amount, payment_mode, merchant_txn_id, payment_status)
-       VALUES ($1,$2,$3,$4,'PHONEPE',$5,'PENDING')`,
+      (student_id, student_name, class_name, amount, payment_mode, merchant_txn_id, payment_status)
+      VALUES ($1,$2,$3,$4,'PHONEPE',$5,'PENDING')`,
       [student_id, student_name, class_name, amount, merchantTransactionId]
     );
 
     res.json({
       success: true,
-      redirectUrl: phonepeRes.data.data.instrumentResponse.redirectInfo.url
+      redirectUrl:
+        response.data.data.instrumentResponse.redirectInfo.url
     });
   } catch (err) {
-    console.error("PhonePe create error:", err);
-    res.status(500).json({ success: false, message: "Payment init failed" });
+    console.error(err);
+    res.status(500).json({ success: false });
   }
 }
 
-/* ================= PHONEPE CALLBACK ================= */
+/* ================= PHONEPE CALLBACK (SECURE) ================= */
 async function phonePeCallback(req, res) {
   try {
     const merchantTransactionId =
-      req.body?.merchantTransactionId ||
       req.body?.data?.merchantTransactionId;
 
-    const state =
-      req.body?.code ||
-      req.body?.data?.state;
+    if (!merchantTransactionId)
+      return res.redirect(
+        `${process.env.FRONTEND_URL}/payment-failed`
+      );
 
-    if (!merchantTransactionId) {
-      return res.status(400).send("Invalid callback");
-    }
+    /* ===== STATUS API VERIFY ===== */
+    const statusPath = `/pg/v1/status/${MERCHANT_ID}/${merchantTransactionId}`;
 
-    if (state === "PAYMENT_SUCCESS" || state === "COMPLETED") {
+    const checksum =
+      crypto
+        .createHash("sha256")
+        .update(statusPath + SALT_KEY)
+        .digest("hex") +
+      "###" +
+      SALT_INDEX;
+
+    const statusRes = await axios.get(
+      `${PHONEPE_BASE_URL}${statusPath}`,
+      {
+        headers: {
+          "X-VERIFY": checksum,
+          "X-MERCHANT-ID": MERCHANT_ID
+        }
+      }
+    );
+
+    const paymentState =
+      statusRes.data.data.state;
+
+    if (paymentState === "COMPLETED") {
       await db.query(
         `UPDATE fees
          SET payment_status='SUCCESS',
@@ -128,6 +143,10 @@ async function phonePeCallback(req, res) {
          WHERE merchant_txn_id=$1`,
         [merchantTransactionId]
       );
+
+      return res.redirect(
+        `${process.env.FRONTEND_URL}/payment-success`
+      );
     } else {
       await db.query(
         `UPDATE fees
@@ -135,77 +154,50 @@ async function phonePeCallback(req, res) {
          WHERE merchant_txn_id=$1`,
         [merchantTransactionId]
       );
-    }
 
-    res.redirect(`${process.env.FRONTEND_URL}/payment-success`);
+      return res.redirect(
+        `${process.env.FRONTEND_URL}/payment-failed`
+      );
+    }
   } catch (err) {
     console.error("Callback error:", err);
-    res.status(500).send("Callback error");
+    res.redirect(`${process.env.FRONTEND_URL}/payment-failed`);
   }
 }
 
-/* ================= UPDATE FEE ================= */
+/* ================= CRUD ================= */
 async function updateFee(req, res) {
   try {
-    const feeId = req.params.id;
-    const { student_id, student_name, class_name, amount, payment_date, payment_time, status } = req.body;
-
     await db.query(
-      `UPDATE fees
-       SET student_id=$1, student_name=$2, class_name=$3,
-           amount=$4, payment_date=$5, payment_time=$6, status=$7
-       WHERE id=$8`,
-      [
-        student_id,
-        student_name,
-        class_name,
-        amount,
-        payment_date,
-        payment_time,
-        status,
-        feeId
-      ]
+      `UPDATE fees SET amount=$1 WHERE id=$2`,
+      [req.body.amount, req.params.id]
     );
-
-    res.json({ success: true, message: "Fee updated successfully" });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-}
-
-/* ================= DELETE FEE ================= */
-async function deleteFee(req, res) {
-  try {
-    await db.query("DELETE FROM fees WHERE id=$1", [req.params.id]);
     res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+  } catch {
+    res.status(500).json({ success: false });
   }
 }
 
-/* ================= GET STUDENT FEES ================= */
+async function deleteFee(req, res) {
+  await db.query("DELETE FROM fees WHERE id=$1", [
+    req.params.id
+  ]);
+  res.json({ success: true });
+}
+
 async function getStudentFees(req, res) {
-  try {
-    const { rows } = await db.query(
-      "SELECT * FROM fees WHERE student_id=$1 ORDER BY payment_date DESC",
-      [req.params.id]
-    );
-    res.json({ success: true, fees: rows });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
+  const { rows } = await db.query(
+    "SELECT * FROM fees WHERE student_id=$1 ORDER BY payment_date DESC",
+    [req.params.id]
+  );
+  res.json({ success: true, fees: rows });
 }
 
-/* ================= GET ALL FEES ================= */
 async function getAllFees(req, res) {
-  try {
-    const { rows } = await db.query(
-      "SELECT * FROM fees ORDER BY payment_date DESC"
-    );
-    res.json({ success: true, fees: rows });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
+  const { rows } = await db.query(
+    "SELECT * FROM fees ORDER BY payment_date DESC"
+  );
+  res.json({ success: true, fees: rows });
 }
 
 module.exports = {

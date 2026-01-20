@@ -3,7 +3,7 @@ const cors = require("cors");
 const path = require("path");
 require("dotenv").config();
 
-// Import routes
+// 1. Chat Route Import karo
 const authRoutes = require("./routes/authRoutes");
 const studentRoutes = require("./routes/studentRoutes");
 const attendanceRoutes = require("./routes/attendanceRoutes");
@@ -13,6 +13,7 @@ const studyMaterialRoutes = require("./routes/studyMaterialRoutes");
 const newMarksRoutes = require("./routes/newMarksRoutes");
 const feedbackRoutes = require("./routes/feedbackRoutes");
 const assignmentRoutes = require("./routes/assignmentRoutes");
+const chatRoutes = require("./routes/chatRoutes"); // <--- YE ADD KIYA
 
 // DB init
 require("./db");
@@ -39,8 +40,9 @@ app.use("/api/study-material", studyMaterialRoutes);
 app.use("/api/new-marks", newMarksRoutes);
 app.use("/api/feedback", feedbackRoutes);
 app.use("/api/assignments", assignmentRoutes);
+app.use("/api/chat", chatRoutes); // <--- YE SABSE ZAROORI HAI
 
-// ============ STATIC (optional) ============
+// ============ STATIC (Images dikhane ke liye) ============
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use("/private_uploads", express.static(path.join(__dirname, "private_uploads")));
 

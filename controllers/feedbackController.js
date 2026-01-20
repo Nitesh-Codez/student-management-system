@@ -1,6 +1,7 @@
 const pool = require("../db"); // PostgreSQL pool
 
-// ================= SUBMIT FEEDBACK =================
+// ================= 1. SUBMIT FEEDBACK =================
+// Student jab submit karega toh pichle month ka data isme jayega
 const submitFeedback = async (req, res) => {
   try {
     const { student_id, month, year, mcqAnswers, suggestion, rating, problem } = req.body;
@@ -12,18 +13,18 @@ const submitFeedback = async (req, res) => {
     // 1️⃣ Insert feedback row
     const feedbackResult = await pool.query(
       `INSERT INTO feedback (student_id, month, year, suggestion, rating, problem, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,NOW())
+       VALUES ($1, $2, $3, $4, $5, $6, NOW())
        RETURNING id`,
       [student_id, month, year, suggestion, rating, problem]
     );
 
     const feedbackId = feedbackResult.rows[0].id;
 
-    // 2️⃣ Insert MCQ answers
+    // 2️⃣ Insert MCQ answers (1 to 4 scaling)
     const mcqQuery = `INSERT INTO feedback_mcq_answers (feedback_id, question_number, answer) VALUES `;
     const values = [];
     const placeholders = mcqAnswers.map((ans, i) => {
-      values.push(feedbackId, i + 1, ans); // question_number = i+1
+      values.push(feedbackId, i + 1, ans);
       const idx = i * 3;
       return `($${idx + 1}, $${idx + 2}, $${idx + 3})`;
     }).join(",");
@@ -37,7 +38,7 @@ const submitFeedback = async (req, res) => {
   }
 };
 
-// ================= GET FEEDBACK FOR A STUDENT =================
+// ================= 2. GET FEEDBACK FOR A STUDENT =================
 const getStudentFeedback = async (req, res) => {
   try {
     const { studentId } = req.params;
@@ -59,28 +60,28 @@ const getStudentFeedback = async (req, res) => {
   }
 };
 
-// ================= GET ALL FEEDBACK FOR ADMIN =================
+// ================= 3. GET ALL FEEDBACK FOR ADMIN =================
 const getAllFeedback = async (req, res) => {
   try {
     const feedbacks = await pool.query(
       `SELECT 
-         s.name, 
-         s.class, 
-         f.id,
-         f.student_id,
-         f.month, 
-         f.year, 
-         f.suggestion, 
-         f.rating, 
-         f.problem,
-         COALESCE(
-           json_agg(
-             json_build_object(
-               'question_number', m.question_number, 
-               'answer', m.answer
-             )
-           ) FILTER (WHERE m.id IS NOT NULL), '[]'
-         ) AS mcq_answers
+          s.name, 
+          s.class, 
+          f.id,
+          f.student_id,
+          f.month, 
+          f.year, 
+          f.suggestion, 
+          f.rating, 
+          f.problem,
+          COALESCE(
+            json_agg(
+              json_build_object(
+                'question_number', m.question_number, 
+                'answer', m.answer
+              )
+            ) FILTER (WHERE m.id IS NOT NULL), '[]'
+          ) AS mcq_answers
        FROM feedback f
        JOIN students s ON f.student_id = s.id
        LEFT JOIN feedback_mcq_answers m ON f.id = m.feedback_id
@@ -88,7 +89,7 @@ const getAllFeedback = async (req, res) => {
        ORDER BY f.year DESC, f.month DESC`
     );
 
-    // Convert mcq_answers string to array for safety
+    // Parsing for safety
     const parsedFeedbacks = feedbacks.rows.map(f => ({
       ...f,
       mcq_answers: Array.isArray(f.mcq_answers) ? f.mcq_answers : JSON.parse(f.mcq_answers)
@@ -100,42 +101,31 @@ const getAllFeedback = async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 };
-// ================= ADMIN FEEDBACK SUMMARY =================
-// ================= ADMIN FEEDBACK SUMMARY (WEIGHTED) =================
+
+// ================= 4. ADMIN SUMMARY (SENTIMENT BASED) =================
 const getAdminFeedbackSummary = async (req, res) => {
   try {
-    const result = await pool.query(`
-      SELECT answer
-      FROM feedback_mcq_answers
-    `);
+    const result = await pool.query(`SELECT answer FROM feedback_mcq_answers`);
 
-    let totalScore = 0;
-    let maxScore = 0;
+    let positiveCount = 0;
+    let totalAnswers = result.rows.length;
 
     result.rows.forEach(row => {
-      const answer = row.answer; // 1 to 4
-
-      // Reverse weight: 1 is best
-      let score = 0;
-      if (answer === 1) score = 4;
-      else if (answer === 2) score = 3;
-      else if (answer === 3) score = 2;
-      else if (answer === 4) score = 1;
-
-      totalScore += score;
-      maxScore += 4;
+      // Logic: 1 (Best) and 2 (Good) are treated as Positive
+      if (row.answer <= 2) {
+        positiveCount++;
+      }
     });
 
-    const percentage = maxScore === 0
-      ? 0
-      : Math.round((totalScore / maxScore) * 100);
+    const percentage = totalAnswers === 0 
+      ? 0 
+      : Math.round((positiveCount / totalAnswers) * 100);
 
     res.json({
       success: true,
       summary: {
         percentage,
-        totalScore,
-        maxScore,
+        totalFeedback: totalAnswers,
         remark:
           percentage >= 85 ? "Excellent" :
           percentage >= 70 ? "Good" :
@@ -150,4 +140,9 @@ const getAdminFeedbackSummary = async (req, res) => {
   }
 };
 
-module.exports = { submitFeedback, getStudentFeedback, getAllFeedback, getAdminFeedbackSummary };
+module.exports = { 
+  submitFeedback, 
+  getStudentFeedback, 
+  getAllFeedback, 
+  getAdminFeedbackSummary 
+};

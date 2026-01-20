@@ -1,9 +1,7 @@
-const db = require("../db"); // Postgres connection
+const db = require("../db");
 const cloudinary = require("cloudinary").v2;
 const multer = require("multer");
-const path = require("path");
 
-// Multer config for file upload
 const storage = multer.diskStorage({});
 const upload = multer({ storage });
 
@@ -13,56 +11,68 @@ cloudinary.config({
   api_secret: process.env.CLOUD_API_SECRET,
 });
 
-// Send message (text or image)
+// 1. Send Message
 exports.sendMessage = async (req, res) => {
   try {
     const { from_user, to_user, text } = req.body;
     let image_url = null;
 
     if (req.file) {
-      const result = await cloudinary.uploader.upload(req.file.path, {
-        folder: "chat_images",
-      });
+      const result = await cloudinary.uploader.upload(req.file.path, { folder: "chat_images" });
       image_url = result.secure_url;
     }
 
     const msg = await db.query(
-      "INSERT INTO messages (from_user, to_user, text, image_url) VALUES ($1,$2,$3,$4) RETURNING *",
+      "INSERT INTO messages (from_user, to_user, text, image_url, is_read, timestamp) VALUES ($1,$2,$3,$4, FALSE, NOW()) RETURNING *",
       [from_user, to_user, text || null, image_url]
     );
 
     res.json({ success: true, message: msg.rows[0] });
   } catch (err) {
-    console.error("Send Message Error:", err);
+    console.error("Send Error:", err);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
-// Get chat between 2 users
+// 2. Get Chat & Mark as Read
 exports.getChat = async (req, res) => {
   try {
     const { user1, user2 } = req.params;
+    
+    // Mark messages as read when user opens the chat
+    await db.query(
+      "UPDATE messages SET is_read = TRUE WHERE from_user = $1 AND to_user = $2",
+      [user2, user1]
+    );
+
     const msgs = await db.query(
       "SELECT * FROM messages WHERE (from_user=$1 AND to_user=$2) OR (from_user=$2 AND to_user=$1) ORDER BY timestamp ASC",
       [user1, user2]
     );
     res.json({ success: true, messages: msgs.rows });
   } catch (err) {
-    console.error("Get Chat Error:", err);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
-// Admin: get all messages
+// 3. Delete Message
+exports.deleteMessage = async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.query("DELETE FROM messages WHERE id = $1", [id]);
+    res.json({ success: true, message: "Message deleted successfully" });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Delete error" });
+  }
+};
+
 exports.getAllChats = async (req, res) => {
   try {
     const msgs = await db.query("SELECT * FROM messages ORDER BY timestamp ASC");
     res.json({ success: true, messages: msgs.rows });
   } catch (err) {
-    console.error("Admin Chat Error:", err);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
-// Export multer
 exports.uploadMiddleware = upload;

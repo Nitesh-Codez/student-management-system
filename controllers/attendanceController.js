@@ -97,23 +97,19 @@ exports.getStudentAttendance = async (req, res) => {
 // --------------------------------------------------
 // 4) GET ALL STUDENTS FULL ATTENDANCE SUMMARY (Admin)
 // --------------------------------------------------
-// --------------------------------------------------
-// 4) GET ALL STUDENTS FULL ATTENDANCE SUMMARY (Fixed for Admin View)
-// --------------------------------------------------
 exports.getTodayAttendancePercent = async (req, res) => {
   try {
-    // Ab hum date filter nahi lagayenge JOIN par, 
-    // taaki har bache ki overall history (Present/Total) calculate ho sake.
     const sql = `
       SELECT 
         s.id AS "studentId",
         s.name AS name,
+        s.class AS class, -- Yeh missing tha
         COALESCE(SUM(CASE WHEN a.status='Present' THEN 1 ELSE 0 END), 0) AS present,
         COALESCE(SUM(CASE WHEN a.status='Present' OR a.status='Absent' THEN 1 ELSE 0 END), 0) AS total
       FROM students s
       LEFT JOIN attendance a ON s.id = a.student_id
       WHERE s.role='student'
-      GROUP BY s.id, s.name
+      GROUP BY s.id, s.name, s.class
       ORDER BY s.id
     `;
 
@@ -124,7 +120,6 @@ exports.getTodayAttendancePercent = async (req, res) => {
       const total = parseInt(r.total);
       const percentage = total === 0 ? 0 : (present / total) * 100;
       
-      // Student Dashboard wala Marks Logic
       let marks = 0;
       if (percentage > 75) {
         marks = Math.ceil((percentage - 75) / 5);
@@ -133,6 +128,7 @@ exports.getTodayAttendancePercent = async (req, res) => {
       return {
         studentId: r.studentId,
         name: r.name,
+        class: r.class, // Class add kar di
         present: present,
         total: total,
         percentage: percentage.toFixed(2),
@@ -140,14 +136,12 @@ exports.getTodayAttendancePercent = async (req, res) => {
       };
     });
 
-    const today = new Date().toLocaleDateString();
-    return res.json({ success: true, date: today, students: result });
+    return res.json({ success: true, date: new Date().toLocaleDateString(), students: result });
   } catch (error) {
-    console.error("Error fetching today attendance percent:", error);
+    console.error("Error:", error);
     return res.status(500).json({ success: false, message: "Server error" });
   }
 };
-
 // --------------------------------------------------
 // 5) GET ATTENDANCE MARKS (MONTHLY)
 // --------------------------------------------------

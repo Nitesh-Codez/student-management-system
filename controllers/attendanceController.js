@@ -97,37 +97,51 @@ exports.getStudentAttendance = async (req, res) => {
 // --------------------------------------------------
 // 4) GET ALL STUDENTS FULL ATTENDANCE SUMMARY (Admin)
 // --------------------------------------------------
+// --------------------------------------------------
+// 4) GET ALL STUDENTS FULL ATTENDANCE SUMMARY (Fixed for Admin View)
+// --------------------------------------------------
 exports.getTodayAttendancePercent = async (req, res) => {
   try {
-    const today = new Date();
-    const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
-
+    // Ab hum date filter nahi lagayenge JOIN par, 
+    // taaki har bache ki overall history (Present/Total) calculate ho sake.
     const sql = `
       SELECT 
         s.id AS "studentId",
         s.name AS name,
         COALESCE(SUM(CASE WHEN a.status='Present' THEN 1 ELSE 0 END), 0) AS present,
-        COUNT(a.date) AS total,
-        (COALESCE(SUM(CASE WHEN a.status='Present' THEN 1 ELSE 0 END),0) / NULLIF(COUNT(a.date),0) * 100) AS percentage
+        COALESCE(SUM(CASE WHEN a.status='Present' OR a.status='Absent' THEN 1 ELSE 0 END), 0) AS total
       FROM students s
-      LEFT JOIN attendance a
-        ON s.id = a.student_id AND a.date::date = $1
+      LEFT JOIN attendance a ON s.id = a.student_id
       WHERE s.role='student'
       GROUP BY s.id, s.name
       ORDER BY s.id
     `;
 
-    const { rows } = await db.query(sql, [dateStr]);
+    const { rows } = await db.query(sql);
 
-    const result = rows.map(r => ({
-      studentId: r.studentId,
-      name: r.name,
-      present: r.present,
-      total: r.total,
-      percentage: r.total > 0 ? r.percentage.toFixed(2) : "0.00"
-    }));
+    const result = rows.map(r => {
+      const present = parseInt(r.present);
+      const total = parseInt(r.total);
+      const percentage = total === 0 ? 0 : (present / total) * 100;
+      
+      // Student Dashboard wala Marks Logic
+      let marks = 0;
+      if (percentage > 75) {
+        marks = Math.ceil((percentage - 75) / 5);
+      }
 
-    return res.json({ success: true, date: dateStr, students: result });
+      return {
+        studentId: r.studentId,
+        name: r.name,
+        present: present,
+        total: total,
+        percentage: percentage.toFixed(2),
+        marks: marks
+      };
+    });
+
+    const today = new Date().toLocaleDateString();
+    return res.json({ success: true, date: today, students: result });
   } catch (error) {
     console.error("Error fetching today attendance percent:", error);
     return res.status(500).json({ success: false, message: "Server error" });

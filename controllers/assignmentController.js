@@ -15,58 +15,56 @@ async function uploadAssignment(req, res) {
   try {
     const { uploader_id, uploader_role, student_id, task_title, subject, class: className, deadline } = req.body;
 
+    // Strict validation
     if (!uploader_id || !uploader_role || !className || !req.file) {
       return res.status(400).json({ success: false, message: "Required fields missing" });
     }
 
-    if (uploader_role === "admin" && !task_title) {
-      return res.status(400).json({ success: false, message: "Admin must provide a task title" });
-    }
-
-    // Upload file to Cloudinary
+    // Upload to Cloudinary
     const folder = uploader_role === "admin"
       ? `assignments/admin/class-${className}`
       : `assignments/student/class-${className}`;
 
     const result = await cloudinary.uploader.upload(req.file.path, { resource_type: "auto", folder });
-    fs.unlinkSync(req.file.path);
+    
+    // Delete local temp file
+    if (fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
 
-    // ✅ uploaded_at define karna important hai
     const uploadedAt = req.body.uploaded_at || new Date().toISOString();
 
-    // DB Insert
+    // DB Insert - Exact Sequence as per your Table
     const sql = `
-      INSERT INTO assignment_uploads
-      (uploader_id, uploader_role, student_id, task_title, subject, class, deadline, file_path, status, uploaded_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      INSERT INTO assignment_uploads 
+      (uploader_id, uploader_role, student_id, task_title, subject, class, deadline, file_path, status, uploaded_at) 
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) 
       RETURNING *;
     `;
 
     const values = [
-      uploader_id,                                      // $1
-      uploader_role,                                    // $2
-      uploader_role === "student" ? student_id : null, // $3
-      task_title,                                       // $4
-      subject || null,                                  // $5
-      className,                                        // $6
-      deadline || null,                                 // $7
-      result.secure_url,                                // $8
-      uploader_role === "student" ? "SUBMITTED" : null,// $9
-      uploadedAt                                        // $10 ✅ uploaded_at timestamp
+      parseInt(uploader_id),                         // $1 (Integer)
+      uploader_role,                                 // $2 (String)
+      uploader_role === "student" ? parseInt(student_id) : null, // $3 (Integer or null)
+      task_title,                                    // $4
+      subject || null,                               // $5
+      className,                                     // $6
+      deadline || null,                              // $7
+      result.secure_url,                             // $8
+      uploader_role === "student" ? "SUBMITTED" : null, // $9
+      uploadedAt                                     // $10
     ];
 
-    console.log("UPLOAD DATA:", values);
+    console.log("LOG: Inserting into DB with values:", values);
 
     const { rows } = await db.query(sql, values);
-
     res.json({ success: true, message: "Assignment uploaded successfully", data: rows[0] });
+
   } catch (err) {
     console.error("UPLOAD ERROR:", err.message);
-    res.status(500).json({ success: false, message: "Internal Server Error" });
+    res.status(500).json({ success: false, message: "Server Error: " + err.message });
   }
 }
-
-
 // ================= GET ASSIGNMENTS BY CLASS =================
 // ================= GET ASSIGNMENTS BY CLASS =================
 async function getAssignmentsByClass(req, res) {

@@ -13,56 +13,89 @@ cloudinary.config({
 // ================= UPLOAD ASSIGNMENT =================
 async function uploadAssignment(req, res) {
   try {
-    const { uploader_id, uploader_role, student_id, task_title, subject, class: className, deadline } = req.body;
+    const {
+      uploader_id,
+      uploader_role,
+      student_id,
+      task_title,
+      subject,
+      class: className,
+      deadline
+    } = req.body;
 
-    // 1. Validation check
+    // 1. Validation
     if (!uploader_id || !uploader_role || !className || !req.file) {
-      if (req.file) fs.unlinkSync(req.file.path); // Delete file if validation fails
-      return res.status(400).json({ success: false, message: "Missing required fields" });
+      if (req.file?.path && fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields"
+      });
     }
 
-    // 2. Upload to Cloudinary
-    const folder = uploader_role === "admin" 
-      ? `assignments/admin/class-${className}` 
-      : `assignments/student/class-${className}`;
+    // 2. Cloudinary folder
+    const folder =
+      uploader_role === "admin"
+        ? `assignments/admin/class-${className}`
+        : `assignments/student/class-${className}`;
 
-    const result = await cloudinary.uploader.upload(req.file.path, { resource_type: "auto", folder });
-    
-    // File delete from local
-    if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    // 3. Upload to cloudinary
+    const result = await cloudinary.uploader.upload(req.file.path, {
+      resource_type: "auto",
+      folder
+    });
+
+    // 4. Safe local delete
+    if (req.file?.path && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
 
     const uploadedAt = new Date().toISOString();
 
-    // 3. DB INSERT (Exact columns match from your psql screenshot)
+    // 5. DB insert
     const sql = `
-      INSERT INTO assignment_uploads 
-      (uploader_id, uploader_role, student_id, task_title, subject, class, deadline, file_path, status, uploaded_at) 
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) 
+      INSERT INTO assignment_uploads
+      (uploader_id, uploader_role, student_id, task_title, subject, class, deadline, file_path, status, uploaded_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
       RETURNING *;
     `;
 
     const values = [
-      parseInt(uploader_id),                         // $1
-      uploader_role,                                 // $2
-      uploader_role === "student" ? parseInt(student_id) : null, // $3
-      task_title,                                    // $4
-      subject,                                       // $5
-      className,                                     // $6
-      deadline && deadline !== "null" ? deadline : null, // $7
-      result.secure_url,                             // $8
-      uploader_role === "student" ? "SUBMITTED" : null, // $9
-      uploadedAt                                     // $10
+      parseInt(uploader_id),
+      uploader_role,
+      uploader_role === "student" ? parseInt(student_id) : null,
+      task_title,
+      subject,
+      className,
+      deadline && deadline !== "null" ? deadline : null,
+      result.secure_url,
+      uploader_role === "student" ? "SUBMITTED" : null,
+      uploadedAt
     ];
 
     const { rows } = await db.query(sql, values);
-    res.json({ success: true, message: "Uploaded successfully", data: rows[0] });
+
+    res.json({
+      success: true,
+      message: "Uploaded successfully",
+      data: rows[0]
+    });
 
   } catch (err) {
-    if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-    console.error("DETAILED ERROR:", err); // Isse terminal pe asli error dikhega
-    res.status(500).json({ success: false, message: err.message || "Internal Server Error" });
+    if (req.file?.path && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    console.error("UPLOAD ERROR:", err);
+    res.status(500).json({
+      success: false,
+      message: err.message
+    });
   }
 }
+
+
+
 // ================= GET ASSIGNMENTS BY CLASS =================
 // ================= GET ASSIGNMENTS BY CLASS =================
 async function getAssignmentsByClass(req, res) {

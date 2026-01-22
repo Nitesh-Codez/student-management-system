@@ -10,7 +10,6 @@ cloudinary.config({
 });
 
 // ================= UPLOAD ASSIGNMENT =================
-// ================= UPLOAD ASSIGNMENT =================
 async function uploadAssignment(req, res) {
   try {
     const {
@@ -23,54 +22,80 @@ async function uploadAssignment(req, res) {
       deadline
     } = req.body;
 
-    // 1. Validation
+    // 1. Basic Validation
     if (!uploader_id || !uploader_role || !className || !req.file) {
-      if (req.file?.path && fs.existsSync(req.file.path)) {
+      if (req.file && req.file.path && fs.existsSync(req.file.path)) {
         fs.unlinkSync(req.file.path);
       }
       return res.status(400).json({
         success: false,
-        message: "Missing required fields"
+        message: "Missing required fields: ID, role, class, or file."
       });
     }
 
-    // 2. Cloudinary folder
+    // 2. Cloudinary folder structure
     const folder =
       uploader_role === "admin"
         ? `assignments/admin/class-${className}`
         : `assignments/student/class-${className}`;
 
-    // 3. Upload to cloudinary
-    const result = await cloudinary.uploader.upload(req.file.path, {
-      resource_type: "auto",
-      folder
-    });
+    // 3. Upload to Cloudinary
+    let result;
+    try {
+      result = await cloudinary.uploader.upload(req.file.path, {
+        resource_type: "auto",
+        folder: folder
+      });
+    } catch (uploadErr) {
+      if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      throw new Error("Cloudinary Error: " + uploadErr.message);
+    }
 
-    // 4. Safe local delete
-    if (req.file?.path && fs.existsSync(req.file.path)) {
+    // 4. Delete file from local "assignments/" folder after upload
+    if (fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
     }
 
-    const uploadedAt = new Date().toISOString();
+    // 5. Data Sanitization (Fix for NaN and Strings)
+    const finalUploaderId = parseInt(uploader_id);
+    
+    // Student ID logic: Agar role student hai tabhi ID save ho, varna NULL
+    let finalStudentId = null;
+    if (uploader_role === 'student' && student_id && student_id !== "null") {
+        finalStudentId = parseInt(student_id);
+    }
 
-    // 5. DB insert
+    // Check if ID is valid number
+    if (isNaN(finalUploaderId)) {
+        throw new Error("uploader_id must be a valid number");
+    }
+
+    const uploadedAt = new Date();
+
+    // 6. DB insert
     const sql = `
-      INSERT INTO assignment_uploads
+      INSERT INTO assignment_uploads 
       (uploader_id, uploader_role, student_id, task_title, subject, class, deadline, file_path, status, uploaded_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING *;
     `;
 
+    // Status logic
+    const status = (uploader_role === "student") ? "SUBMITTED" : null;
+    
+    // Deadline format logic
+    const finalDeadline = (deadline && deadline !== "null" && deadline !== "undefined") ? deadline : null;
+
     const values = [
-      parseInt(uploader_id),
+      finalUploaderId,
       uploader_role,
-      uploader_role === "student" ? parseInt(student_id) : null,
-      task_title,
-      subject,
+      finalStudentId,
+      task_title || null,
+      subject || null,
       className,
-      deadline && deadline !== "null" ? deadline : null,
+      finalDeadline,
       result.secure_url,
-      uploader_role === "student" ? "SUBMITTED" : null,
+      status,
       uploadedAt
     ];
 
@@ -83,10 +108,10 @@ async function uploadAssignment(req, res) {
     });
 
   } catch (err) {
-    if (req.file?.path && fs.existsSync(req.file.path)) {
+    if (req.file && req.file.path && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
     }
-    console.error("UPLOAD ERROR:", err);
+    console.error("UPLOAD ERROR:", err.message);
     res.status(500).json({
       success: false,
       message: err.message
@@ -94,9 +119,6 @@ async function uploadAssignment(req, res) {
   }
 }
 
-
-
-// ================= GET ASSIGNMENTS BY CLASS =================
 // ================= GET ASSIGNMENTS BY CLASS =================
 async function getAssignmentsByClass(req, res) {
   try {

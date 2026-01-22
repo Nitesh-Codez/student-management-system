@@ -10,32 +10,27 @@ cloudinary.config({
 });
 
 // ================= UPLOAD ASSIGNMENT =================
+// ================= UPLOAD ASSIGNMENT =================
 async function uploadAssignment(req, res) {
   try {
-    console.log("1. Request Body:", req.body); // Check if data is coming
-    console.log("2. Request File:", req.file); // Check if file is coming
-
-    const { uploader_id, uploader_role, student_id, task_title, subject, class: className, deadline } = req.body;
+    const { uploader_id, uploader_role, student_id, task_title, subject, deadline } = req.body;
+    const className = req.body.class; // 'class' is a reserved keyword
 
     if (!req.file) {
-        return res.status(400).json({ success: false, message: "File hi nahi mili! Check your field name in Multer." });
+      return res.status(400).json({ success: false, message: "File not received." });
     }
 
     // Cloudinary Upload
-    const folder = uploader_role === "admin" ? `assignments/admin/class-${className}` : `assignments/student/class-${className}`;
+    const folder = uploader_role === "admin" ? `assignments/admin/${className}` : `assignments/student/${className}`;
     
     const result = await cloudinary.uploader.upload(req.file.path, {
-        resource_type: "auto",
-        folder: folder
+      resource_type: "auto",
+      folder: folder
     });
-    console.log("3. Cloudinary Success URL:", result.secure_url);
 
     if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
 
     // Database Insert
-    const finalUploaderId = parseInt(uploader_id);
-    const finalStudentId = (uploader_role === 'student' && student_id) ? parseInt(student_id) : null;
-
     const sql = `
       INSERT INTO assignment_uploads 
       (uploader_id, uploader_role, student_id, task_title, subject, class, deadline, file_path, status, uploaded_at)
@@ -44,11 +39,15 @@ async function uploadAssignment(req, res) {
     `;
 
     const values = [
-      finalUploaderId, uploader_role, finalStudentId,
-      task_title || null, subject || null, className,
+      uploader_id, 
+      uploader_role, 
+      uploader_role === 'student' ? student_id : null,
+      task_title, 
+      subject, 
+      className,
       (deadline && deadline !== "null") ? deadline : null,
       result.secure_url,
-      uploader_role === "student" ? "SUBMITTED" : null,
+      uploader_role === "student" ? "SUBMITTED" : "PENDING",
       new Date()
     ];
 
@@ -57,12 +56,47 @@ async function uploadAssignment(req, res) {
 
   } catch (err) {
     if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-    
-    console.error("--- FULL UPLOAD ERROR ---");
-    console.error("Message:", err.message);
-    console.error("Detail:", err.detail); // PostgreSQL specific error detail
-    console.error("-------------------------");
-    
+    console.error("Upload Error:", err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+// ================= GET ASSIGNMENTS BY CLASS (FOR STUDENT) =================
+async function getAssignmentsByClass(req, res) {
+  try {
+    const { className, studentId } = req.params;
+
+    const sql = `
+      SELECT 
+        a.id,
+        a.task_title,
+        a.subject,
+        a.class,
+        a.deadline,
+        a.uploaded_at,
+        a.file_path AS task_file,
+        s.id AS student_submission_id,
+        s.uploaded_at AS student_uploaded_at,
+        s.file_path AS student_file,
+        s.rating,
+        CASE 
+          WHEN s.id IS NOT NULL THEN 'SUBMITTED'
+          ELSE 'PENDING'
+        END AS status
+      FROM assignment_uploads a
+      LEFT JOIN assignment_uploads s
+        ON s.task_title = a.task_title
+        AND s.class = a.class
+        AND s.uploader_role = 'student'
+        AND s.student_id = $2
+      WHERE a.uploader_role = 'admin'
+        AND a.class = $1
+      ORDER BY a.uploaded_at DESC
+    `;
+
+    const { rows } = await db.query(sql, [className, studentId]);
+    res.json({ success: true, assignments: rows });
+  } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 }

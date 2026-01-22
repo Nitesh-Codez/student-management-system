@@ -12,67 +12,30 @@ cloudinary.config({
 // ================= UPLOAD ASSIGNMENT =================
 async function uploadAssignment(req, res) {
   try {
-    const {
-      uploader_id,
-      uploader_role,
-      student_id,
-      task_title,
-      subject,
-      class: className,
-      deadline
-    } = req.body;
+    console.log("1. Request Body:", req.body); // Check if data is coming
+    console.log("2. Request File:", req.file); // Check if file is coming
 
-    // 1. Basic Validation
-    if (!uploader_id || !uploader_role || !className || !req.file) {
-      if (req.file && req.file.path && fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
-      }
-      return res.status(400).json({
-        success: false,
-        message: "Missing required fields: ID, role, class, or file."
-      });
+    const { uploader_id, uploader_role, student_id, task_title, subject, class: className, deadline } = req.body;
+
+    if (!req.file) {
+        return res.status(400).json({ success: false, message: "File hi nahi mili! Check your field name in Multer." });
     }
 
-    // 2. Cloudinary folder structure
-    const folder =
-      uploader_role === "admin"
-        ? `assignments/admin/class-${className}`
-        : `assignments/student/class-${className}`;
-
-    // 3. Upload to Cloudinary
-    let result;
-    try {
-      result = await cloudinary.uploader.upload(req.file.path, {
+    // Cloudinary Upload
+    const folder = uploader_role === "admin" ? `assignments/admin/class-${className}` : `assignments/student/class-${className}`;
+    
+    const result = await cloudinary.uploader.upload(req.file.path, {
         resource_type: "auto",
         folder: folder
-      });
-    } catch (uploadErr) {
-      if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-      throw new Error("Cloudinary Error: " + uploadErr.message);
-    }
+    });
+    console.log("3. Cloudinary Success URL:", result.secure_url);
 
-    // 4. Delete file from local "assignments/" folder after upload
-    if (fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
-    }
+    if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
 
-    // 5. Data Sanitization (Fix for NaN and Strings)
+    // Database Insert
     const finalUploaderId = parseInt(uploader_id);
-    
-    // Student ID logic: Agar role student hai tabhi ID save ho, varna NULL
-    let finalStudentId = null;
-    if (uploader_role === 'student' && student_id && student_id !== "null") {
-        finalStudentId = parseInt(student_id);
-    }
+    const finalStudentId = (uploader_role === 'student' && student_id) ? parseInt(student_id) : null;
 
-    // Check if ID is valid number
-    if (isNaN(finalUploaderId)) {
-        throw new Error("uploader_id must be a valid number");
-    }
-
-    const uploadedAt = new Date();
-
-    // 6. DB insert
     const sql = `
       INSERT INTO assignment_uploads 
       (uploader_id, uploader_role, student_id, task_title, subject, class, deadline, file_path, status, uploaded_at)
@@ -80,45 +43,29 @@ async function uploadAssignment(req, res) {
       RETURNING *;
     `;
 
-    // Status logic
-    const status = (uploader_role === "student") ? "SUBMITTED" : null;
-    
-    // Deadline format logic
-    const finalDeadline = (deadline && deadline !== "null" && deadline !== "undefined") ? deadline : null;
-
     const values = [
-      finalUploaderId,
-      uploader_role,
-      finalStudentId,
-      task_title || null,
-      subject || null,
-      className,
-      finalDeadline,
+      finalUploaderId, uploader_role, finalStudentId,
+      task_title || null, subject || null, className,
+      (deadline && deadline !== "null") ? deadline : null,
       result.secure_url,
-      status,
-      uploadedAt
+      uploader_role === "student" ? "SUBMITTED" : null,
+      new Date()
     ];
 
     const { rows } = await db.query(sql, values);
-
-    res.json({
-      success: true,
-      message: "Uploaded successfully",
-      data: rows[0]
-    });
+    res.json({ success: true, data: rows[0] });
 
   } catch (err) {
-    if (req.file && req.file.path && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
-    }
-    console.error("UPLOAD ERROR:", err.message);
-    res.status(500).json({
-      success: false,
-      message: err.message
-    });
+    if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    
+    console.error("--- FULL UPLOAD ERROR ---");
+    console.error("Message:", err.message);
+    console.error("Detail:", err.detail); // PostgreSQL specific error detail
+    console.error("-------------------------");
+    
+    res.status(500).json({ success: false, message: err.message });
   }
 }
-
 // ================= GET ASSIGNMENTS BY CLASS =================
 async function getAssignmentsByClass(req, res) {
   try {

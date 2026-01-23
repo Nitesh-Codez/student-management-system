@@ -100,49 +100,7 @@ async function getAssignmentsByClass(req, res) {
     res.status(500).json({ success: false, message: err.message });
   }
 }
-// ================= GET ASSIGNMENTS BY CLASS =================
-async function getAssignmentsByClass(req, res) {
-  try {
-    const { className, studentId } = req.params;
 
-    const sql = `
-      SELECT 
-        a.id,
-        a.task_title,
-        a.subject,
-        a.class,
-        a.deadline,
-        a.uploaded_at,
-        a.file_path AS task_file,          -- ✅ admin task file
-
-        s.id AS student_submission_id,
-        s.uploaded_at AS student_uploaded_at,
-        s.file_path AS student_file,       -- ✅ student submission file
-        s.rating,
-
-        CASE 
-          WHEN s.id IS NOT NULL THEN 'SUBMITTED'
-          ELSE 'NOT SUBMITTED'
-        END AS status
-      FROM assignment_uploads a
-      LEFT JOIN assignment_uploads s
-        ON s.task_title = a.task_title
-        AND s.subject = a.subject         -- ✅ subject included
-        AND s.uploader_role = 'student'
-        AND s.student_id = $2
-      WHERE a.uploader_role = 'admin'
-        AND a.class = $1
-      ORDER BY a.uploaded_at DESC
-    `;
-
-    const { rows } = await db.query(sql, [className, studentId]);
-
-    res.json({ success: true, assignments: rows });
-  } catch (err) {
-    console.error("FETCH ERROR:", err.message);
-    res.status(500).json({ success: false, message: "Internal Server Error" });
-  }
-}
 
 // ================= GET ADMIN TASKS BY CLASS =================
 async function getTasksByClass(req, res) {

@@ -11,36 +11,121 @@ cloudinary.config({
 
 // ================= UPLOAD ASSIGNMENT =================
 async function uploadAssignment(req, res) {
+  console.log("===== UPLOAD START =====");
+
   try {
-    console.log("ENV 👉", {
-      cloud: process.env.CLOUDINARY_CLOUD_NAME,
-      key: process.env.CLOUDINARY_API_KEY,
-      secret: process.env.CLOUDINARY_API_SECRET ? "SET" : "MISSING",
+    // 🔍 ENV CHECK
+    console.log("ENV CHECK:", {
+      cloud: process.env.CLOUDINARY_CLOUD_NAME || "❌ MISSING",
+      key: process.env.CLOUDINARY_API_KEY ? "✅ OK" : "❌ MISSING",
+      secret: process.env.CLOUDINARY_API_SECRET ? "✅ OK" : "❌ MISSING",
     });
 
-    console.log("FILE 👉", req.file);
+    // 🔍 BODY + FILE CHECK
+    console.log("REQ.BODY 👉", req.body);
+    console.log("REQ.FILE 👉", req.file);
 
+    const {
+      uploader_id,
+      uploader_role,
+      student_id,
+      task_title,
+      subject,
+      deadline,
+    } = req.body;
+
+    const className = req.body.class;
+
+    // ❌ BASIC VALIDATION
     if (!req.file) {
-      return res.status(400).json({ success: false, message: "No file" });
+      console.error("❌ FILE NOT RECEIVED");
+      return res.status(400).json({ success: false, message: "File not received" });
     }
 
-    const result = await cloudinary.uploader.upload(req.file.path, {
-      resource_type: "auto",
-    });
+    if (!uploader_id || !uploader_role || !task_title || !subject || !className) {
+      console.error("❌ REQUIRED FIELD MISSING");
+      return res.status(400).json({
+        success: false,
+        message: "Required fields missing",
+      });
+    }
 
-    return res.json({
-      success: true,
-      cloudinary_url: result.secure_url,
-    });
+    // 📁 FOLDER PATH
+    const folder =
+      uploader_role === "admin"
+        ? `assignments/admin/class-${className}`
+        : `assignments/student/class-${className}`;
+
+    console.log("CLOUDINARY FOLDER 👉", folder);
+    console.log("LOCAL FILE PATH 👉", req.file.path);
+
+    // ☁️ CLOUDINARY UPLOAD (TRY–CATCH)
+    let result;
+    try {
+      result = await cloudinary.uploader.upload(req.file.path, {
+        resource_type: "auto",
+        folder: folder,
+      });
+    } catch (cloudErr) {
+      console.error("🔥 CLOUDINARY ERROR 👉", cloudErr);
+      return res.status(500).json({
+        success: false,
+        message: "Cloudinary upload failed",
+      });
+    }
+
+    console.log("CLOUDINARY RESULT 👉", result.secure_url);
+
+    // 🧹 SAFE FILE DELETE
+    if (req.file?.path && fs.existsSync(req.file.path)) {
+      fs.unlink(req.file.path, () => {
+        console.log("LOCAL FILE DELETED");
+      });
+    }
+
+    // 🗄️ DB INSERT
+    const sql = `
+      INSERT INTO assignment_uploads
+      (uploader_id, uploader_role, student_id, task_title, subject, class, deadline, file_path, status, uploaded_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      RETURNING *;
+    `;
+
+    const values = [
+      uploader_id,
+      uploader_role,
+      uploader_role === "student" ? student_id : null,
+      task_title,
+      subject,
+      className,
+      deadline && deadline !== "null" ? deadline : null,
+      result.secure_url,
+      uploader_role === "student" ? "SUBMITTED" : "PENDING",
+      new Date(),
+    ];
+
+    console.log("DB VALUES 👉", values);
+
+    const { rows } = await db.query(sql, values);
+
+    console.log("✅ UPLOAD SUCCESS");
+    res.json({ success: true, data: rows[0] });
+
   } catch (err) {
-    console.error("CLOUDINARY REAL ERROR 👉", err);
-    return res.status(500).json({
+    console.error("🔥 FINAL CATCH ERROR 👉", err);
+
+    if (req.file?.path && fs.existsSync(req.file.path)) {
+      fs.unlink(req.file.path, () => {});
+    }
+
+    res.status(500).json({
       success: false,
-      message: err.message,
+      message: "Server error during upload",
     });
+  } finally {
+    console.log("===== UPLOAD END =====");
   }
 }
-
 // ================= GET ASSIGNMENTS BY CLASS (FOR STUDENT) =================
 async function getAssignmentsByClass(req, res) {
   try {

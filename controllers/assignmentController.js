@@ -9,13 +9,15 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// ================= SUPABASE (NEW UPLOADS) =================
+// ================= SUPABASE =================
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-const ASSIGNMENT_BUCKET = process.env.SUPABASE_ASSIGNMENT_BUCKET;
+// 🔒 fallback added
+const ASSIGNMENT_BUCKET =
+  process.env.SUPABASE_ASSIGNMENT_BUCKET || "assignments";
 
 // ============================================================
 // ================= UPLOAD ASSIGNMENT =========================
@@ -34,10 +36,7 @@ async function uploadAssignment(req, res) {
     const className = req.body.class;
 
     if (!req.file) {
-      return res.status(400).json({
-        success: false,
-        message: "File missing",
-      });
+      return res.status(400).json({ success: false, message: "File missing" });
     }
 
     if (!uploader_id || !uploader_role || !task_title || !subject || !className) {
@@ -47,7 +46,14 @@ async function uploadAssignment(req, res) {
       });
     }
 
-    // 📁 SUPABASE FILE PATH
+    if (uploader_role === "student" && !student_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Student ID required",
+      });
+    }
+
+    // 📁 FILE PATH
     const fileName = `${Date.now()}-${req.file.originalname}`;
     const folder =
       uploader_role === "admin"
@@ -67,9 +73,9 @@ async function uploadAssignment(req, res) {
     if (error) throw error;
 
     // 🔗 PUBLIC URL
-    const {
-      data: { publicUrl },
-    } = supabase.storage.from(ASSIGNMENT_BUCKET).getPublicUrl(filePath);
+    const { data } = supabase.storage
+      .from(ASSIGNMENT_BUCKET)
+      .getPublicUrl(filePath);
 
     // 🗄️ SAVE IN DB
     const sql = `
@@ -99,7 +105,7 @@ async function uploadAssignment(req, res) {
       subject,
       className,
       deadline && deadline !== "null" ? deadline : null,
-      publicUrl,
+      data.publicUrl,
       uploader_role === "student" ? "SUBMITTED" : "PENDING",
       new Date(),
     ];
@@ -108,15 +114,12 @@ async function uploadAssignment(req, res) {
 
     res.json({
       success: true,
-      message: "Assignment uploaded to Supabase ✅",
+      message: "Assignment uploaded successfully ✅",
       data: rows[0],
     });
   } catch (err) {
     console.error("UPLOAD ERROR:", err);
-    res.status(500).json({
-      success: false,
-      message: err.message,
-    });
+    res.status(500).json({ success: false, message: err.message });
   }
 }
 
@@ -127,31 +130,43 @@ async function deleteAssignment(req, res) {
   try {
     const { id } = req.params;
 
-    const sql = `
-      DELETE FROM assignment_uploads
-      WHERE id = $1
-        AND uploader_role = 'student'
-    `;
+    // 🔎 get file path first
+    const { rows } = await db.query(
+      `SELECT file_path FROM assignment_uploads
+       WHERE id=$1 AND uploader_role='student'`,
+      [id]
+    );
 
-    const { rowCount } = await db.query(sql, [id]);
-
-    if (rowCount === 0) {
+    if (!rows.length) {
       return res.status(404).json({
         success: false,
-        message: "Submission not found or not allowed",
+        message: "Submission not found",
       });
     }
 
+    const publicUrl = rows[0].file_path;
+    const filePath = publicUrl.split(
+      `/storage/v1/object/public/${ASSIGNMENT_BUCKET}/`
+    )[1];
+
+    // 🗑️ remove from supabase
+    if (filePath) {
+      await supabase.storage.from(ASSIGNMENT_BUCKET).remove([filePath]);
+    }
+
+    // 🗄️ delete from db
+    await db.query(
+      `DELETE FROM assignment_uploads WHERE id=$1`,
+      [id]
+    );
+
     res.json({
       success: true,
-      message: "Submission removed successfully",
+      message: "Submission deleted successfully ✅",
     });
   } catch (err) {
-    console.error("DELETE ERROR:", err.message);
-    res.status(500).json({
-      success: false,
-      message: "Internal Server Error",
-    });
+    console.error("DELETE ERROR:", err);
+    res.status(500).json({ success: false, message: err.message });
   }
 }
 
@@ -204,20 +219,22 @@ async function getTasksByClass(req, res) {
   try {
     const { className } = req.params;
 
-    const sql = `
+    const { rows } = await db.query(
+      `
       SELECT 
         task_title,
         subject,
         deadline,
         MAX(uploaded_at) AS latest_upload
       FROM assignment_uploads
-      WHERE uploader_role = 'admin'
-        AND class = $1
+      WHERE uploader_role='admin'
+        AND class=$1
       GROUP BY task_title, subject, deadline
       ORDER BY latest_upload DESC
-    `;
+      `,
+      [className]
+    );
 
-    const { rows } = await db.query(sql, [className]);
     res.json({ success: true, tasks: rows });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -232,7 +249,8 @@ async function getSubmissionsByTask(req, res) {
     const { task_title } = req.params;
     const className = req.query.class;
 
-    const sql = `
+    const { rows } = await db.query(
+      `
       SELECT 
         s.id,
         s.task_title,
@@ -249,13 +267,14 @@ async function getSubmissionsByTask(req, res) {
         ON a.task_title = s.task_title
        AND a.uploader_role = 'admin'
        AND a.class = s.class
-      WHERE s.uploader_role = 'student'
-        AND s.task_title = $1
-        AND s.class = $2
+      WHERE s.uploader_role='student'
+        AND s.task_title=$1
+        AND s.class=$2
       ORDER BY s.uploaded_at ASC
-    `;
+      `,
+      [task_title, className]
+    );
 
-    const { rows } = await db.query(sql, [task_title, className]);
     res.json({ success: true, submissions: rows });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -273,9 +292,8 @@ async function updateRating(req, res) {
     const { rows } = await db.query(
       `
       UPDATE assignment_uploads
-      SET rating = $1
-      WHERE id = $2
-        AND uploader_role = 'student'
+      SET rating=$1
+      WHERE id=$2 AND uploader_role='student'
       RETURNING *;
       `,
       [rating, id]
@@ -297,9 +315,9 @@ async function updateRating(req, res) {
 // ================= EXPORT =================
 module.exports = {
   uploadAssignment,
-  getAssignmentsByClass,
-  updateRating,
-  getTasksByClass,
   deleteAssignment,
+  getAssignmentsByClass,
+  getTasksByClass,
   getSubmissionsByTask,
+  updateRating,
 };

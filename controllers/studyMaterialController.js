@@ -2,11 +2,13 @@ const db = require("../db");
 const { createClient } = require("@supabase/supabase-js");
 const cloudinary = require("cloudinary").v2;
 
-// ================= SUPABASE =================
+// ================= SUPABASE (SERVER SIDE) =================
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_ANON_KEY
+  process.env.SUPABASE_SERVICE_ROLE_KEY // ✅ MUST
 );
+
+const SUPABASE_BUCKET = process.env.SUPABASE_BUCKET || "study-materials";
 
 // ================= CLOUDINARY (OLD DATA ONLY) =================
 cloudinary.config({
@@ -20,7 +22,10 @@ async function uploadStudyMaterial(req, res) {
   const { title, class_name, subject } = req.body;
 
   if (!title || !class_name || !subject || !req.file) {
-    return res.status(400).json({ success: false, message: "Details missing!" });
+    return res.status(400).json({
+      success: false,
+      message: "Details missing!",
+    });
   }
 
   try {
@@ -29,24 +34,26 @@ async function uploadStudyMaterial(req, res) {
 
     // 1️⃣ Upload to Supabase
     const { error } = await supabase.storage
-      .from("study-materials")
+      .from(SUPABASE_BUCKET)
       .upload(filePath, req.file.buffer, {
         contentType: req.file.mimetype,
+        upsert: false,
       });
 
     if (error) throw error;
 
-    // 2️⃣ Public URL
+    // 2️⃣ Get public URL
     const {
       data: { publicUrl },
-    } = supabase.storage.from("study-materials").getPublicUrl(filePath);
+    } = supabase.storage.from(SUPABASE_BUCKET).getPublicUrl(filePath);
 
     // 3️⃣ Save in DB
     const sql = `
-      INSERT INTO study_material 
+      INSERT INTO study_material
       (title, class_name, subject, file_path, storage_type)
-      VALUES ($1,$2,$3,$4,'supabase')
+      VALUES ($1, $2, $3, $4, 'supabase')
     `;
+
     await db.query(sql, [title, class_name, subject, publicUrl]);
 
     res.json({
@@ -55,8 +62,11 @@ async function uploadStudyMaterial(req, res) {
       url: publicUrl,
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: err.message });
+    console.error("UPLOAD ERROR:", err);
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
   }
 }
 
@@ -64,48 +74,85 @@ async function uploadStudyMaterial(req, res) {
 async function getMaterialByClass(req, res) {
   try {
     const sql = `
-      SELECT * FROM study_material 
-      WHERE class_name = $1 
+      SELECT *
+      FROM study_material
+      WHERE class_name = $1
       ORDER BY uploaded_at DESC
     `;
+
     const { rows } = await db.query(sql, [req.params.className]);
 
-    res.json({ success: true, materials: rows });
+    res.json({
+      success: true,
+      materials: rows,
+    });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    console.error("FETCH ERROR:", err);
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
   }
 }
 
 // ================= DELETE (AUTO DETECT CLOUD) =================
 async function deleteMaterial(req, res) {
   try {
-    const sql = `SELECT file_path, storage_type FROM study_material WHERE id=$1`;
+    const sql = `
+      SELECT file_path, storage_type
+      FROM study_material
+      WHERE id = $1
+    `;
+
     const { rows } = await db.query(sql, [req.params.id]);
 
     if (!rows.length) {
-      return res.status(404).json({ success: false, message: "Not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Material not found",
+      });
     }
 
     const { file_path, storage_type } = rows[0];
 
     // 🔴 OLD CLOUDINARY
     if (storage_type === "cloudinary") {
-      const publicId = file_path.split("/upload/")[1].split(".")[0];
-      await cloudinary.uploader.destroy(publicId, { resource_type: "auto" });
+      const publicId = file_path
+        .split("/upload/")[1]
+        ?.replace(/\.[^/.]+$/, "");
+
+      if (publicId) {
+        await cloudinary.uploader.destroy(publicId, {
+          resource_type: "auto",
+        });
+      }
     }
 
     // 🟢 SUPABASE
     if (storage_type === "supabase") {
-      const path = file_path.split("/study-materials/")[1];
-      await supabase.storage.from("study-materials").remove([path]);
+      const path = file_path.split(`/${SUPABASE_BUCKET}/`)[1];
+
+      if (path) {
+        await supabase.storage
+          .from(SUPABASE_BUCKET)
+          .remove([path]);
+      }
     }
 
-    await db.query(`DELETE FROM study_material WHERE id=$1`, [req.params.id]);
+    await db.query(`DELETE FROM study_material WHERE id = $1`, [
+      req.params.id,
+    ]);
 
-    res.json({ success: true, message: "Delete successful ✅" });
+    res.json({
+      success: true,
+      message: "Delete successful ✅",
+    });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: err.message });
+    console.error("DELETE ERROR:", err);
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
   }
 }
 

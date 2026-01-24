@@ -8,7 +8,9 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY // ✅ MUST
 );
 
-const SUPABASE_BUCKET = process.env.SUPABASE_BUCKET || "study-materials";
+const SUPABASE_STUDY_BUCKET =
+  process.env.SUPABASE_STUDY_BUCKET || "study-materials";
+
 
 // ================= CLOUDINARY (OLD DATA ONLY) =================
 cloudinary.config({
@@ -34,7 +36,7 @@ async function uploadStudyMaterial(req, res) {
 
     // 1️⃣ Upload to Supabase
     const { error } = await supabase.storage
-      .from(SUPABASE_BUCKET)
+      .from(SUPABASE_STUDY_BUCKET)
       .upload(filePath, req.file.buffer, {
         contentType: req.file.mimetype,
         upsert: false,
@@ -45,7 +47,7 @@ async function uploadStudyMaterial(req, res) {
     // 2️⃣ Get public URL
     const {
       data: { publicUrl },
-    } = supabase.storage.from(SUPABASE_BUCKET).getPublicUrl(filePath);
+    } = supabase.storage.from(SUPABASE_STUDY_BUCKET).getPublicUrl(filePath);
 
     // 3️⃣ Save in DB
     const sql = `
@@ -130,7 +132,7 @@ async function deleteMaterial(req, res) {
 
     // 🟢 SUPABASE
     if (storage_type === "supabase") {
-      const path = file_path.split(`/${SUPABASE_BUCKET}/`)[1];
+      const path = file_path.split(`/${SUPABASE_STUDY_BUCKET}/`)[1];
 
       if (path) {
         await supabase.storage

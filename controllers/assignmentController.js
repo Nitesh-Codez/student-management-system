@@ -1,30 +1,25 @@
 const db = require("../db");
 const cloudinary = require("cloudinary").v2;
-const fs = require("fs");
+const { createClient } = require("@supabase/supabase-js");
 
-// ================= CLOUDINARY CONFIG =================
+// ================= CLOUDINARY (OLD DATA ONLY) =================
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
+// ================= SUPABASE (NEW UPLOADS) =================
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+const ASSIGNMENT_BUCKET = process.env.SUPABASE_ASSIGNMENT_BUCKET;
+
 // ================= UPLOAD ASSIGNMENT =================
 async function uploadAssignment(req, res) {
-  console.log("===== UPLOAD START =====");
-
   try {
-    // 🔍 ENV CHECK
-    console.log("ENV CHECK:", {
-      cloud: process.env.CLOUDINARY_CLOUD_NAME || "❌ MISSING",
-      key: process.env.CLOUDINARY_API_KEY ? "✅ OK" : "❌ MISSING",
-      secret: process.env.CLOUDINARY_API_SECRET ? "✅ OK" : "❌ MISSING",
-    });
-
-    // 🔍 BODY + FILE CHECK
-    console.log("REQ.BODY 👉", req.body);
-    console.log("REQ.FILE 👉", req.file);
-
     const {
       uploader_id,
       uploader_role,
@@ -36,58 +31,47 @@ async function uploadAssignment(req, res) {
 
     const className = req.body.class;
 
-    // ❌ BASIC VALIDATION
     if (!req.file) {
-      console.error("❌ FILE NOT RECEIVED");
-      return res.status(400).json({ success: false, message: "File not received" });
+      return res.status(400).json({ success: false, message: "File missing" });
     }
 
     if (!uploader_id || !uploader_role || !task_title || !subject || !className) {
-      console.error("❌ REQUIRED FIELD MISSING");
       return res.status(400).json({
         success: false,
         message: "Required fields missing",
       });
     }
 
-    // 📁 FOLDER PATH
+    // 📁 SUPABASE PATH
+    const fileName = `${Date.now()}-${req.file.originalname}`;
     const folder =
       uploader_role === "admin"
-        ? `assignments/admin/class-${className}`
-        : `assignments/student/class-${className}`;
+        ? `admin/class-${className}`
+        : `student/class-${className}/${student_id}`;
 
-    console.log("CLOUDINARY FOLDER 👉", folder);
-    console.log("LOCAL FILE PATH 👉", req.file.path);
+    const filePath = `${folder}/${fileName}`;
 
-    // ☁️ CLOUDINARY UPLOAD (TRY–CATCH)
-    let result;
-    try {
-      result = await cloudinary.uploader.upload(req.file.path, {
-        resource_type: "auto",
-        folder: folder,
+    // ☁️ SUPABASE UPLOAD
+    const { error } = await supabase.storage
+      .from(ASSIGNMENT_BUCKET)
+      .upload(filePath, req.file.buffer, {
+        contentType: req.file.mimetype,
+        upsert: false,
       });
-    } catch (cloudErr) {
-      console.error("🔥 CLOUDINARY ERROR 👉", cloudErr);
-      return res.status(500).json({
-        success: false,
-        message: "Cloudinary upload failed",
-      });
-    }
 
-    console.log("CLOUDINARY RESULT 👉", result.secure_url);
+    if (error) throw error;
 
-    // 🧹 SAFE FILE DELETE
-    if (req.file?.path && fs.existsSync(req.file.path)) {
-      fs.unlink(req.file.path, () => {
-        console.log("LOCAL FILE DELETED");
-      });
-    }
+    // 🔗 PUBLIC URL
+    const {
+      data: { publicUrl },
+    } = supabase.storage.from(ASSIGNMENT_BUCKET).getPublicUrl(filePath);
 
     // 🗄️ DB INSERT
     const sql = `
       INSERT INTO assignment_uploads
-      (uploader_id, uploader_role, student_id, task_title, subject, class, deadline, file_path, status, uploaded_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      (uploader_id, uploader_role, student_id, task_title, subject, class,
+       deadline, file_path, status, storage_type, uploaded_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'supabase',$10)
       RETURNING *;
     `;
 
@@ -99,34 +83,28 @@ async function uploadAssignment(req, res) {
       subject,
       className,
       deadline && deadline !== "null" ? deadline : null,
-      result.secure_url,
+      publicUrl,
       uploader_role === "student" ? "SUBMITTED" : "PENDING",
       new Date(),
     ];
 
-    console.log("DB VALUES 👉", values);
-
     const { rows } = await db.query(sql, values);
 
-    console.log("✅ UPLOAD SUCCESS");
-    res.json({ success: true, data: rows[0] });
-
+    res.json({
+      success: true,
+      message: "Assignment uploaded to Supabase ✅",
+      data: rows[0],
+    });
   } catch (err) {
-    console.error("🔥 FINAL CATCH ERROR 👉", err);
-
-    if (req.file?.path && fs.existsSync(req.file.path)) {
-      fs.unlink(req.file.path, () => {});
-    }
-
+    console.error("UPLOAD ERROR:", err);
     res.status(500).json({
       success: false,
-      message: "Server error during upload",
+      message: err.message,
     });
-  } finally {
-    console.log("===== UPLOAD END =====");
   }
 }
-// ================= GET ASSIGNMENTS BY CLASS (FOR STUDENT) =================
+
+// ================= GET ASSIGNMENTS BY CLASS =================
 async function getAssignmentsByClass(req, res) {
   try {
     const { className, studentId } = req.params;
@@ -166,102 +144,37 @@ async function getAssignmentsByClass(req, res) {
   }
 }
 
-
-
-// ================= GET ADMIN TASKS BY CLASS =================
+// ================= GET ADMIN TASKS =================
 async function getTasksByClass(req, res) {
   try {
     const { className } = req.params;
 
     const sql = `
-      SELECT 
-        task_title,
-        subject,                         -- ✅ subject included
-        deadline,
-        MAX(uploaded_at) AS latest_upload
+      SELECT task_title, subject, deadline, MAX(uploaded_at) AS latest_upload
       FROM assignment_uploads
-      WHERE uploader_role = 'admin'
-        AND class = $1
+      WHERE uploader_role = 'admin' AND class = $1
       GROUP BY task_title, subject, deadline
       ORDER BY latest_upload DESC
     `;
 
     const { rows } = await db.query(sql, [className]);
-
-    // Return tasks with title, subject, and deadline
-    res.json({
-      success: true,
-      tasks: rows.map((r) => ({
-        task_title: r.task_title,
-        subject: r.subject,              // ✅ return subject
-        deadline: r.deadline,
-      })),
-    });
+    res.json({ success: true, tasks: rows });
   } catch (err) {
-    console.error("FETCH TASKS ERROR:", err.message);
-    res.status(500).json({ success: false, message: "Internal Server Error" });
+    res.status(500).json({ success: false, message: err.message });
   }
 }
 
-// ================= DELETE STUDENT SUBMISSION =================
-async function deleteAssignment(req, res) {
-  try {
-    const { id } = req.params;
-
-    // ❗ Sirf student submission delete ho
-    const { rowCount } = await db.query(
-      `
-      DELETE FROM assignment_uploads
-      WHERE id = $1
-        AND uploader_role = 'student'
-      `,
-      [id]
-    );
-
-    if (rowCount === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Submission not found or not allowed",
-      });
-    }
-
-    res.json({
-      success: true,
-      message: "Submission removed successfully",
-    });
-  } catch (err) {
-    console.error("DELETE ERROR:", err.message);
-    res.status(500).json({
-      success: false,
-      message: "Internal Server Error",
-    });
-  }
-}
-
-
-// ================= GET SUBMISSIONS BY TASK =================
 // ================= GET SUBMISSIONS BY TASK =================
 async function getSubmissionsByTask(req, res) {
   try {
     const { task_title } = req.params;
     const className = req.query.class;
 
-    // ✅ Admin view: fetch all submissions for this task + class
     const sql = `
       SELECT 
-        s.id,
-        s.task_title,
-        s.subject,
-        s.class,
-        s.file_path,
-        s.uploaded_at,
-        s.rating,
-        a.deadline,
-        st.name AS student_name,
-        CASE
-          WHEN s.rating IS NOT NULL THEN 'GRADED'
-          ELSE 'NOT GRADED'
-        END AS grading_status
+        s.id, s.task_title, s.subject, s.class,
+        s.file_path, s.uploaded_at, s.rating,
+        a.deadline, st.name AS student_name
       FROM assignment_uploads s
       JOIN students st ON s.student_id = st.id
       JOIN assignment_uploads a
@@ -275,42 +188,35 @@ async function getSubmissionsByTask(req, res) {
     `;
 
     const { rows } = await db.query(sql, [task_title, className]);
-
     res.json({ success: true, submissions: rows });
   } catch (err) {
-    console.error("FETCH SUBMISSIONS ERROR:", err.message);
-    res.status(500).json({ success: false, message: "Internal Server Error" });
+    res.status(500).json({ success: false, message: err.message });
   }
 }
-
 
 // ================= UPDATE RATING =================
 async function updateRating(req, res) {
   try {
-    const { id } = req.params; // student submission id
-    const { rating } = req.body; // 1 to 5
+    const { id } = req.params;
+    const { rating } = req.body;
 
-    if (!rating || rating < 1 || rating > 5) {
-      return res.status(400).json({ success: false, message: "Rating must be between 1 and 5" });
-    }
-
-    const sql = `
+    const { rows } = await db.query(
+      `
       UPDATE assignment_uploads
       SET rating = $1
       WHERE id = $2 AND uploader_role = 'student'
       RETURNING *;
-    `;
-
-    const { rows } = await db.query(sql, [rating, id]);
+      `,
+      [rating, id]
+    );
 
     if (!rows.length) {
-      return res.status(404).json({ success: false, message: "Submission not found" });
+      return res.status(404).json({ success: false, message: "Not found" });
     }
 
-    res.json({ success: true, message: "Rating updated", data: rows[0] });
+    res.json({ success: true, data: rows[0] });
   } catch (err) {
-    console.error("UPDATE RATING ERROR:", err.message);
-    res.status(500).json({ success: false, message: "Internal Server Error" });
+    res.status(500).json({ success: false, message: err.message });
   }
 }
 
@@ -318,8 +224,7 @@ async function updateRating(req, res) {
 module.exports = {
   uploadAssignment,
   getAssignmentsByClass,
-  updateRating,
-  getTasksByClass, // added for dropdown
-  deleteAssignment,
+  getTasksByClass,
   getSubmissionsByTask,
+  updateRating,
 };

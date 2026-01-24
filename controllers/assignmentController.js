@@ -202,42 +202,52 @@ async function getTasksByClass(req, res) {
 // ============================================================
 // ================= GET SUBMISSIONS BY TASK ===================
 // ============================================================
+// ================= GET SUBMISSIONS BY TASK ===================
 async function getSubmissionsByTask(req, res) {
   try {
-    const { task_title } = req.params;
-    const className = req.query.class;
+    const { task_title } = req.params; // URL se task title
+    const className = req.query.class; // Query param se class
 
+    // DB query: student submissions + student name + task deadline
     const { rows } = await db.query(
       `
       SELECT 
-        s.id,
+        s.id AS submission_id,
         s.task_title,
         s.subject,
         s.class,
-        s.file_path,
-        s.uploaded_at,
+        s.file_path AS student_file,
+        s.uploaded_at AS student_uploaded_at,
         s.rating,
         a.deadline,
         st.name AS student_name
       FROM assignment_uploads s
-      JOIN students st ON s.student_id = st.id
+      JOIN students st 
+        ON s.student_id = st.id
       JOIN assignment_uploads a
         ON a.task_title = s.task_title
        AND a.uploader_role = 'admin'
        AND a.class = s.class
-      WHERE s.uploader_role='student'
-        AND s.task_title=$1
-        AND s.class=$2
-      ORDER BY s.uploaded_at ASC
+      WHERE s.uploader_role = 'student'
+        AND s.task_title = $1
+        AND s.class = $2
+      ORDER BY s.uploaded_at ASC;
       `,
       [task_title, className]
     );
 
+    // Response bhejna
     res.json({ success: true, submissions: rows });
   } catch (err) {
+    console.error("FETCH SUBMISSIONS ERROR:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 }
+
+// ================= EXPORT =================
+module.exports = {
+  getSubmissionsByTask,
+};
 
 // ============================================================
 // ================= UPDATE RATING =============================

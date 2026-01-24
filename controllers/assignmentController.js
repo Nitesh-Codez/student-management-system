@@ -24,42 +24,18 @@ const ASSIGNMENT_BUCKET =
 // ============================================================
 async function uploadAssignment(req, res) {
   try {
-    const {
-      uploader_id,
-      uploader_role,
-      student_id,
-      task_title,
-      subject,
-      deadline,
-    } = req.body;
-
+    const { uploader_id, uploader_role, task_title, subject, deadline } = req.body;
     const className = req.body.class;
 
-    if (!req.file) {
-      return res.status(400).json({ success: false, message: "File missing" });
+    if (!req.file || !uploader_id || !uploader_role || !task_title || !subject || !className) {
+      return res.status(400).json({ success: false, message: "Required fields missing" });
     }
 
-    if (!uploader_id || !uploader_role || !task_title || !subject || !className) {
-      return res.status(400).json({
-        success: false,
-        message: "Required fields missing",
-      });
-    }
-
-    if (uploader_role === "student" && !student_id) {
-      return res.status(400).json({
-        success: false,
-        message: "Student ID required",
-      });
-    }
-
-    // 📁 FILE PATH
+    // 📁 FILE PATH - only class-wise
     const fileName = `${Date.now()}-${req.file.originalname}`;
-    const folder =
-      uploader_role === "admin"
-        ? `admin/class-${className}`
-        : `student/class-${className}/${student_id}`;
-
+    const folder = uploader_role === "admin"
+      ? `admin/class-${className}`
+      : `student/class-${className}`;
     const filePath = `${folder}/${fileName}`;
 
     // ☁️ UPLOAD TO SUPABASE
@@ -73,34 +49,19 @@ async function uploadAssignment(req, res) {
     if (error) throw error;
 
     // 🔗 PUBLIC URL
-    const { data } = supabase.storage
-      .from(ASSIGNMENT_BUCKET)
-      .getPublicUrl(filePath);
+    const { data } = supabase.storage.from(ASSIGNMENT_BUCKET).getPublicUrl(filePath);
 
     // 🗄️ SAVE IN DB
     const sql = `
       INSERT INTO assignment_uploads
-      (
-        uploader_id,
-        uploader_role,
-        student_id,
-        task_title,
-        subject,
-        class,
-        deadline,
-        file_path,
-        status,
-        storage_type,
-        uploaded_at
-      )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'supabase',$10)
+      (uploader_id, uploader_role, task_title, subject, class, deadline, file_path, status, storage_type, uploaded_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'supabase',$9)
       RETURNING *;
     `;
 
     const values = [
       uploader_id,
       uploader_role,
-      uploader_role === "student" ? student_id : null,
       task_title,
       subject,
       className,
@@ -112,16 +73,13 @@ async function uploadAssignment(req, res) {
 
     const { rows } = await db.query(sql, values);
 
-    res.json({
-      success: true,
-      message: "Assignment uploaded successfully ✅",
-      data: rows[0],
-    });
+    res.json({ success: true, message: "Assignment uploaded successfully ✅", data: rows[0] });
   } catch (err) {
     console.error("UPLOAD ERROR:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 }
+
 
 // ============================================================
 // ================= DELETE STUDENT SUBMISSION =================

@@ -7,7 +7,10 @@ const {
 } = require("../controllers/studyMaterialController");
 
 const router = express.Router();
-const upload = multer({ dest: "temp/" });
+
+// ✅ Memory storage use karein taki Render folder permissions ka error na de
+const storage = multer.memoryStorage();
+const upload = multer({ storage: storage });
 
 router.post("/upload", upload.single("file"), uploadStudyMaterial);
 router.get("/:className", getMaterialByClass);

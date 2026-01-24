@@ -1,6 +1,5 @@
 const db = require("../db");
 const cloudinary = require("cloudinary").v2;
-const fs = require("fs");
 
 // Cloudinary config
 cloudinary.config({
@@ -21,17 +20,19 @@ async function uploadStudyMaterial(req, res) {
   }
 
   try {
-    const result = await cloudinary.uploader.upload(req.file.path, {
-      resource_type: "auto",     // PDF automatically detect
+    // ✅ File ko Buffer se Base64 mein convert karein
+    const fileBase64 = `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`;
+
+    // ✅ Cloudinary par upload karein
+    const result = await cloudinary.uploader.upload(fileBase64, {
+      resource_type: "auto", 
       folder: `study-material/class-${class_name}`,
       use_filename: true,
       unique_filename: false,
       overwrite: true,
-      type: "upload",            // ✅ Make file public
     });
 
-    fs.unlinkSync(req.file.path);
-
+    // Database entry
     const sql = `
       INSERT INTO study_material (title, class_name, subject, file_path)
       VALUES ($1, $2, $3, $4)
@@ -44,9 +45,11 @@ async function uploadStudyMaterial(req, res) {
       url: result.secure_url,
     });
   } catch (err) {
+    console.error("Upload Error:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 }
+
 
 // ================= GET =================
 async function getMaterialByClass(req, res) {

@@ -2,11 +2,14 @@ const express = require("express");
 const router = express.Router();
 const multer = require("multer");
 
-// ✅ admin ke liye admin folder
-const adminUpload = multer({ dest: "assignments/admin/" });
+// ✅ Use memory storage for multer so req.file.buffer is available
+const memoryStorage = multer.memoryStorage();
 
-// ✅ student ke liye student folder
-const studentUpload = multer({ dest: "assignments/student/" });
+// Admin upload
+const adminUpload = multer({ storage: memoryStorage });
+
+// Student upload
+const studentUpload = multer({ storage: memoryStorage });
 
 const {
   uploadAssignment,
@@ -14,8 +17,10 @@ const {
   getTasksByClass,
   deleteAssignment,
   getSubmissionsByTask,
-  updateRating // ✅ add this
+  updateRating
 } = require("../controllers/assignmentController");
+
+// ================= ROUTES =================
 
 // Admin upload
 router.post("/admin/upload", adminUpload.single("file"), uploadAssignment);
@@ -27,7 +32,7 @@ router.post("/student/upload", studentUpload.single("file"), uploadAssignment);
 router.get("/class/:className/:studentId", getAssignmentsByClass);
 
 // Update student rating
-router.put("/rating/:id", updateRating); // ✅ simplified path
+router.put("/rating/:id", updateRating);
 
 // Get admin tasks by class (for dropdown)
 router.get("/admin/tasks/:className", getTasksByClass);

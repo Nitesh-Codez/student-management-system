@@ -111,46 +111,45 @@ async function uploadAssignment(req, res) {
 async function deleteAssignment(req, res) {
   try {
     const { id } = req.params;
-    const { student_id } = req.body; // 🔐 ownership check
 
     const { rows } = await db.query(
-      `
-      SELECT file_path
-      FROM assignment_uploads
-      WHERE id=$1 AND uploader_role='student' AND student_id=$2
-      `,
-      [id, student_id]
+      `SELECT file_path FROM assignment_uploads 
+       WHERE id=$1 AND uploader_role='student'`,
+      [id]
     );
 
     if (!rows.length) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Submission not found" });
+      return res.status(404).json({ success: false, message: "Submission not found" });
     }
 
     const publicUrl = rows[0].file_path;
-    const filePath = publicUrl.split(
-      `/storage/v1/object/public/${ASSIGNMENT_BUCKET}/`
-    )[1];
 
-    if (filePath) {
-      await supabase.storage.from(ASSIGNMENT_BUCKET).remove([filePath]);
-    }
+    // ✅ SAFE PATH EXTRACTION
+    const url = new URL(publicUrl);
+    const fullPath = url.pathname; 
+    // /storage/v1/object/public/assignments/student/class-10th/34/file.pdf
 
-    await db.query(
-      `DELETE FROM assignment_uploads WHERE id=$1 AND student_id=$2`,
-      [id, student_id]
+    const filePath = fullPath.replace(
+      `/storage/v1/object/public/${ASSIGNMENT_BUCKET}/`,
+      ""
     );
 
-    res.json({
-      success: true,
-      message: "Submission deleted successfully ✅",
-    });
+    if (filePath) {
+      await supabase.storage
+        .from(ASSIGNMENT_BUCKET)
+        .remove([filePath]);
+    }
+
+    await db.query(`DELETE FROM assignment_uploads WHERE id=$1`, [id]);
+
+    res.json({ success: true, message: "Submission deleted successfully ✅" });
+
   } catch (err) {
     console.error("DELETE ERROR:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 }
+
 
 // ============================================================
 // ================= GET ASSIGNMENTS BY CLASS ==================

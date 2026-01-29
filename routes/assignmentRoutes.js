@@ -41,7 +41,7 @@ router.get("/admin/tasks/:className", getTasksByClass);
 // routes/assignmentRoutes.js
 router.put(
   "/admin/assignment/:id",
-  upload.single("file"), // optional
+  adminUpload.single("file"),
   updateAdminAssignment
 );
 

@@ -339,50 +339,46 @@ async function updateRating(req, res) {
 async function updateAdminAssignment(req, res) {
   try {
     const assignmentId = req.params.id;
+    const { deadline } = req.body;
 
-    const {
-      task_title,
-      subject,
-      class: className,
-      deadline,
-    } = req.body;
-
-    // 1️⃣ fetch old assignment
+    // 1️⃣ Fetch existing admin assignment
     const { rows } = await db.query(
-      `SELECT * FROM assignment_uploads 
+      `SELECT * FROM assignment_uploads
        WHERE id = $1 AND uploader_role = 'admin'`,
       [assignmentId]
     );
 
-    if (rows.length === 0) {
+    if (!rows.length) {
       return res
         .status(404)
         .json({ success: false, message: "Admin assignment not found" });
     }
 
-    const oldAssignment = rows[0];
-    let filePath = oldAssignment.file_path;
-    let storageType = oldAssignment.storage_type;
+    const old = rows[0];
+    let filePath = old.file_path;
+    let storageType = old.storage_type;
 
-    // 2️⃣ if new file uploaded → replace old one
+    // 2️⃣ Replace file if uploaded
     if (req.file) {
-      // 🔥 delete old file from supabase
-      if (storageType === "supabase") {
-        const objectPath = filePath.split("/storage/v1/object/public/")[1];
+      if (storageType === "supabase" && filePath) {
+        const objectPath = filePath.split(
+          `/storage/v1/object/public/${ASSIGNMENT_BUCKET}/`
+        )[1];
 
-        await supabase
-          .storage
-          .from("assignments")
-          .remove([objectPath]);
+        if (objectPath) {
+          await supabase
+            .storage
+            .from(ASSIGNMENT_BUCKET)
+            .remove([objectPath]);
+        }
       }
 
-      // ⬆️ upload new file
       const newFileName = `${Date.now()}-${req.file.originalname}`;
-      const folder = `admin/class-${className || oldAssignment.class}`;
+      const folder = `assignments/admin/class-${old.class}`;
       const newPath = `${folder}/${newFileName}`;
 
       const { error } = await supabase.storage
-        .from("assignments")
+        .from(ASSIGNMENT_BUCKET)
         .upload(newPath, req.file.buffer, {
           contentType: req.file.mimetype,
         });
@@ -390,46 +386,34 @@ async function updateAdminAssignment(req, res) {
       if (error) throw error;
 
       const { data } = supabase.storage
-        .from("assignments")
+        .from(ASSIGNMENT_BUCKET)
         .getPublicUrl(newPath);
 
       filePath = data.publicUrl;
       storageType = "supabase";
     }
 
-    // 3️⃣ update DB
-    const updateSql = `
+    // 3️⃣ Update ONLY deadline + file
+    const { rows: updated } = await db.query(
+      `
       UPDATE assignment_uploads
-      SET
-        task_title = $1,
-        subject = $2,
-        class = $3,
-        deadline = $4,
-        file_path = $5,
-        storage_type = $6
-      WHERE id = $7
+      SET deadline = $1,
+          file_path = $2,
+          storage_type = $3
+      WHERE id = $4
       RETURNING *;
-    `;
-
-    const values = [
-      task_title || oldAssignment.task_title,
-      subject || oldAssignment.subject,
-      className || oldAssignment.class,
-      deadline || oldAssignment.deadline,
-      filePath,
-      storageType,
-      assignmentId,
-    ];
-
-    const { rows: updated } = await db.query(updateSql, values);
+      `,
+      [deadline || old.deadline, filePath, storageType, assignmentId]
+    );
 
     res.json({
       success: true,
-      message: "Assignment updated successfully ✏️",
+      message: "Deadline / File updated successfully ✅",
       data: updated[0],
     });
+
   } catch (err) {
-    console.error("UPDATE ERROR:", err);
+    console.error("ADMIN UPDATE ERROR:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 }

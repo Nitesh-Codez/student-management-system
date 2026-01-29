@@ -30,11 +30,11 @@ async function uploadAssignment(req, res) {
       task_title,
       subject,
       deadline,
-      student_id,
     } = req.body;
 
     const className = req.body.class;
 
+    // ================= BASIC VALIDATION =================
     if (
       !req.file ||
       !uploader_id ||
@@ -43,37 +43,59 @@ async function uploadAssignment(req, res) {
       !subject ||
       !className
     ) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Required fields missing" });
+      return res.status(400).json({
+        success: false,
+        message: "Required fields missing",
+      });
     }
 
+    // ================= ROLE BASED VALIDATION =================
+    if (uploader_role === "admin" && !deadline) {
+      return res.status(400).json({
+        success: false,
+        message: "Deadline is required for admin uploads",
+      });
+    }
+
+    // ================= FILE PATH =================
     const fileName = `${Date.now()}-${req.file.originalname}`;
     const folder =
       uploader_role === "admin"
-        ? `admin/class-${className}`
-        : `student/class-${className}`;
+        ? `assignments/admin/class-${className}`
+        : `assignments/student/class-${className}`;
 
     const filePath = `${folder}/${fileName}`;
 
-    // ⬆️ upload to supabase
-    const { error } = await supabase.storage
+    // ================= UPLOAD TO SUPABASE =================
+    const { error: uploadError } = await supabase.storage
       .from(ASSIGNMENT_BUCKET)
       .upload(filePath, req.file.buffer, {
         contentType: req.file.mimetype,
         upsert: false,
       });
 
-    if (error) throw error;
+    if (uploadError) throw uploadError;
 
-    const { data } = supabase.storage
+    const { data: publicData } = supabase.storage
       .from(ASSIGNMENT_BUCKET)
       .getPublicUrl(filePath);
 
+    // ================= DB INSERT =================
     const sql = `
       INSERT INTO assignment_uploads
-      (uploader_id, uploader_role, task_title, subject, class, deadline,
-       file_path, status, storage_type, uploaded_at, student_id)
+      (
+        uploader_id,
+        uploader_role,
+        student_id,
+        task_title,
+        subject,
+        class,
+        deadline,
+        file_path,
+        status,
+        storage_type,
+        uploaded_at
+      )
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
       RETURNING *;
     `;
@@ -81,19 +103,20 @@ async function uploadAssignment(req, res) {
     const values = [
       uploader_id,
       uploader_role,
+      uploader_role === "student" ? uploader_id : null,
       task_title,
       subject,
       className,
-      deadline || null,
-      data.publicUrl,
-      uploader_role === "student" ? "SUBMITTED" : "PENDING",
+      uploader_role === "admin" ? deadline : null,
+      publicData.publicUrl,
+      uploader_role === "student" ? "SUBMITTED" : null,
       "supabase",
       new Date(),
-      uploader_role === "student" ? student_id : null,
     ];
 
     const { rows } = await db.query(sql, values);
 
+    // ================= RESPONSE =================
     res.json({
       success: true,
       message: "Assignment uploaded successfully ✅",
@@ -101,7 +124,11 @@ async function uploadAssignment(req, res) {
     });
   } catch (err) {
     console.error("UPLOAD ERROR:", err);
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({
+      success: false,
+      message: "Assignment upload failed",
+      error: err.message,
+    });
   }
 }
 

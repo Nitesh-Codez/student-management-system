@@ -14,6 +14,7 @@ const newMarksRoutes = require("./routes/newMarksRoutes");
 const feedbackRoutes = require("./routes/feedbackRoutes");
 const assignmentRoutes = require("./routes/assignmentRoutes");
 const chatRoutes = require("./routes/chatRoutes"); // <--- YE ADD KIYA
+const studentsProfileRoute = require("./routes/studentsProfileRoute");
 
 // DB init
 require("./db");
@@ -41,6 +42,7 @@ app.use("/api/new-marks", newMarksRoutes);
 app.use("/api/feedback", feedbackRoutes);
 app.use("/api/assignments", assignmentRoutes);
 app.use("/api/chat", chatRoutes); // <--- YE SABSE ZAROORI HAI
+app.use("/api/students", studentsProfileRoute);
 
 // ============ STATIC (Images dikhane ke liye) ============
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));

@@ -37,6 +37,15 @@ router.put("/rating/:id", updateRating);
 // Get admin tasks by class (for dropdown)
 router.get("/admin/tasks/:className", getTasksByClass);
 
+//For assignment edit
+// routes/assignmentRoutes.js
+router.put(
+  "/admin/assignment/:id",
+  upload.single("file"), // optional
+  updateAdminAssignment
+);
+
+
 // Get submissions for a task
 router.get("/admin/submissions/:task_title", getSubmissionsByTask);
 

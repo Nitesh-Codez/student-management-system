@@ -17,7 +17,8 @@ const {
   getTasksByClass,
   deleteAssignment,
   getSubmissionsByTask,
-  updateRating
+  updateRating,
+  updateAdminAssignment   // ✅ ADD THIS
 } = require("../controllers/assignmentController");
 
 // ================= ROUTES =================

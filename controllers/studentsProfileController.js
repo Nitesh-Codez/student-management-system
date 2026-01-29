@@ -3,7 +3,7 @@ const pool = require("../db");
 // Get student profile by ID (query param)
 const getStudentProfile = async (req, res) => {
   try {
-    const studentId = req.query.id; // frontend se /profile?id=27 pass hoga
+    const studentId = parseInt(req.query.id); // string → integer
 
     if (!studentId) {
       return res.status(400).json({ success: false, message: "Student ID required" });
@@ -11,7 +11,7 @@ const getStudentProfile = async (req, res) => {
 
     const result = await pool.query(
       `SELECT id, name, class, mobile, address, role, profile_photo 
-       FROM Students 
+       FROM "Students" 
        WHERE id = $1`,
       [studentId]
     );

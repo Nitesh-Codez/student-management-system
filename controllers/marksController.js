@@ -109,7 +109,12 @@ const getAllMarks = async (req, res) => {
         m.subject,
         m.total_marks,
         m.obtained_marks,
-        m.test_date
+        m.test_date,
+        CASE 
+          WHEN m.obtained_marks >= m.total_marks * 0.33
+          THEN 'Pass'
+          ELSE 'Fail'
+        END AS status
       FROM marks m
       JOIN students s ON s.id = m.student_id
       ORDER BY s.class, s.name, m.test_date DESC
@@ -122,6 +127,7 @@ const getAllMarks = async (req, res) => {
     res.json({ success: false, message: "Error getting all marks" });
   }
 };
+
 
 // ================= UPDATE MARKS =================
 const updateMarks = async (req, res) => {

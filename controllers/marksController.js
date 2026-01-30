@@ -84,3 +84,41 @@ exports.checkMarks = async (req, res) => {
     res.json({ success: false, message: "Error fetching marks" });
   }
 };
+
+//========= Get all marks ============
+// Get all marks entries (Admin)
+exports.getAllMarks = async (req, res) => {
+  try {
+    const sql = `
+      SELECT 
+        m.id,
+        s.id AS student_id,
+        s.name AS student_name,
+        s.class,
+        m.subject,
+        m.total_marks,
+        m.obtained_marks,
+        m.test_date,
+        CASE 
+          WHEN m.obtained_marks >= m.total_marks * 0.33 
+          THEN 'Pass' 
+          ELSE 'Fail' 
+        END AS status
+      FROM marks m
+      JOIN students s ON s.id = m.student_id
+      ORDER BY m.test_date DESC
+    `;
+
+    const { rows } = await db.query(sql);
+
+    if (rows.length === 0) {
+      return res.json({ success: false, message: "No marks entries found" });
+    }
+
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error(error);
+    res.json({ success: false, message: "Error fetching marks list" });
+  }
+};
+

@@ -1,10 +1,12 @@
+const pool = require("../db");
+
+// Get student profile by ID (query param)
 const getStudentProfile = async (req, res) => {
   try {
-    console.log("Received ID:", req.query.id); // ✅ check what arrives
-    const studentId = Number(req.query.id);
+    const studentId = parseInt(req.query.id); // string → integer
 
-    if (!studentId || isNaN(studentId)) {
-      return res.status(400).json({ success: false, message: "Invalid student ID" });
+    if (!studentId) {
+      return res.status(400).json({ success: false, message: "Student ID required" });
     }
 
     const result = await pool.query(
@@ -14,15 +16,15 @@ const getStudentProfile = async (req, res) => {
       [studentId]
     );
 
-    console.log("DB Result:", result.rows); // ✅ check DB output
-
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, message: "Student not found" });
     }
 
     res.status(200).json({ success: true, student: result.rows[0] });
   } catch (error) {
-    console.error("Error fetching profile:", error); // ✅ full error
+    console.error("Error fetching profile:", error.message);
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
+
+module.exports = { getStudentProfile };

@@ -12,8 +12,13 @@ router.get("/students/:className", marksController.getStudentsByClass);
 router.post("/add", marksController.addMarks);
 router.post("/check", marksController.checkMarks);
 
+// ================= EDIT MARKS =================
+router.put("/admin/marks/:id", marksController.updateMarks);
+
 //Get all marks
 router.get("/admin/marks", marksController.getAllMarks);
+
+
 
 
 module.exports = router;

@@ -122,3 +122,74 @@ exports.getAllMarks = async (req, res) => {
   }
 };
 
+const db = require("../db");
+
+// ============================================================
+// ================= EDIT MARKS (ADMIN) =======================
+// ============================================================
+async function updateMarks(req, res) {
+  try {
+    const { id } = req.params;
+    const { marks, maxMarks, date } = req.body;
+
+    if (!marks || !maxMarks) {
+      return res.status(400).json({
+        success: false,
+        message: "Marks and Total Marks are required",
+      });
+    }
+
+    const status = Number(marks) >= Number(maxMarks) * 0.33
+      ? "PASS"
+      : "FAIL";
+
+    // check entry exists
+    const { rows: existing } = await db.query(
+      `SELECT * FROM marks WHERE id=$1`,
+      [id]
+    );
+
+    if (!existing.length) {
+      return res.status(404).json({
+        success: false,
+        message: "Marks entry not found",
+      });
+    }
+
+    const { rows } = await db.query(
+      `
+      UPDATE marks
+      SET obtained_marks = $1,
+          total_marks = $2,
+          test_date = $3,
+          status = $4
+      WHERE id = $5
+      RETURNING *;
+      `,
+      [
+        marks,
+        maxMarks,
+        date || existing[0].test_date,
+        status,
+        id,
+      ]
+    );
+
+    res.json({
+      success: true,
+      message: "Marks updated successfully ✅",
+      data: rows[0],
+    });
+
+  } catch (err) {
+    console.error("MARKS UPDATE ERROR:", err);
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+}
+
+module.exports = {
+  updateMarks,
+};

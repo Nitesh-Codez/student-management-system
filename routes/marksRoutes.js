@@ -1,24 +1,24 @@
 const express = require("express");
 const router = express.Router();
+
 const marksController = require("../controllers/marksController");
 
-// Get classes list
+// ================= GET CLASSES =================
 router.get("/classes", marksController.getClasses);
 
-// Get students by class
+// ================= GET STUDENTS BY CLASS =================
 router.get("/students/:className", marksController.getStudentsByClass);
 
-// Add marks
+// ================= ADD MARKS =================
 router.post("/add", marksController.addMarks);
+
+// ================= CHECK MARKS (STUDENT) =================
 router.post("/check", marksController.checkMarks);
 
-// ================= EDIT MARKS =================
+// ================= UPDATE MARKS (ADMIN) =================
 router.put("/admin/marks/:id", marksController.updateMarks);
 
-//Get all marks
+// ================= GET ALL MARKS (ADMIN) =================
 router.get("/admin/marks", marksController.getAllMarks);
-
-
-
 
 module.exports = router;

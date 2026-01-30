@@ -135,24 +135,29 @@ const updateMarks = async (req, res) => {
     const { id } = req.params;
     const { subject, marks, maxMarks, date } = req.body;
 
+    // Check karein ki purana data fetch karke missing fields fill karein 
+    // ya SQL query ko thoda flexible banayein.
     const sql = `
       UPDATE marks
-      SET subject = $1,
-          obtained_marks = $2,
-          total_marks = $3,
-          test_date = $4
+      SET subject = COALESCE($1, subject),
+          obtained_marks = COALESCE($2, obtained_marks),
+          total_marks = COALESCE($3, total_marks),
+          test_date = COALESCE($4, test_date)
       WHERE id = $5
     `;
 
-    await db.query(sql, [subject, marks, maxMarks, date, id]);
+    const result = await db.query(sql, [subject, marks, maxMarks, date, id]);
+
+    if (result.rowCount === 0) {
+      return res.json({ success: false, message: "Record not found" });
+    }
 
     res.json({ success: true, message: "Marks updated successfully" });
   } catch (err) {
-    console.error(err);
+    console.error("Update Error:", err);
     res.json({ success: false, message: "Error updating marks" });
   }
 };
-
 // ================= EXPORTS =================
 module.exports = {
   getClasses,

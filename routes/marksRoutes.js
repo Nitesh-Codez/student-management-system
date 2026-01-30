@@ -1,5 +1,6 @@
 const express = require("express");
 const router = express.Router();
+const headAuth = require("../middlewares/headAuth");
 
 const marksController = require("../controllers/marksController");
 
@@ -16,9 +17,15 @@ router.post("/add", marksController.addMarks);
 router.post("/check", marksController.checkMarks);
 
 // ================= UPDATE MARKS (ADMIN) =================
-router.put("/admin/marks/:id", marksController.updateMarks);
+router.put(
+  "/admin/marks/:id",
+  headAuth,                // 🔐 protection
+  marksController.updateMarks
+);
 
 // ================= GET ALL MARKS (ADMIN) =================
 router.get("/admin/marks", marksController.getAllMarks);
+
+
 
 module.exports = router;

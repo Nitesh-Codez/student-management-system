@@ -13,20 +13,28 @@ const getStudentProfile = async (req, res) => {
     }
 
     const query = `
-      SELECT 
-        id,
-        code,
-        name,
-        class,
-        mobile,
-        address,
-        role,
-        father_name,
-        mother_name,
-        profile_photo
-      FROM students
-      WHERE id = $1
-    `;
+  SELECT 
+    id,
+    code,
+    name,
+    class,
+    mobile,
+    address,
+    role,
+    father_name,
+    mother_name,
+    gender,
+    dob,
+    email,
+    blood_group,
+    category,
+    city,
+    state,
+    pincode,
+    profile_photo
+  FROM students
+  WHERE id = $1
+`;
 
     const { rows } = await pool.query(query, [studentId]);
 

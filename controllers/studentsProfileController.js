@@ -369,19 +369,29 @@ const getPendingEditRequests = async (req, res) => {
   }
 };
 
+////////get edit by students //////////////
 const getEditRequests = async (req, res) => {
   try {
+    const studentId = Number(req.query.id);
+    if (!studentId || isNaN(studentId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid student id is required",
+      });
+    }
+
     const query = `
       SELECT per.id, s.id AS student_id, s.name as student_name, per.field_name, 
-             per.old_value, per.requested_value, per.reason, per.status, per.action_at, per.created_at
+             per.old_value, per.requested_value, per.reason, per.status, per.action_at, per.requested_at
       FROM profile_edit_requests per
       JOIN students s ON s.id = per.student_id
       WHERE s.id = $1
       ORDER BY per.id DESC
     `;
-    const studentId = Number(req.query.id);
+
     const { rows } = await pool.query(query, [studentId]);
     res.json({ success: true, requests: rows });
+
   } catch (error) {
     console.error("Error fetching edit requests:", error);
     res.status(500).json({ success: false, message: "Server error" });

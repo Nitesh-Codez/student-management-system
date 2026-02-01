@@ -5,6 +5,8 @@ const {
   getStudentProfile,
   insertStudent,
 updateStudentProfile,
+  requestProfileEdit,
+  handleEditRequest,
 } = require("../controllers/studentsProfileController");
 
 // GET profile
@@ -18,5 +20,10 @@ router.post("/add", insertStudent);
 // /api/students/update/27
 router.put("/update/:id", updateStudentProfile);
 
+// student → request edit
+router.post("/request-edit", requestProfileEdit);
+
+// admin → approve / reject
+router.post("/handle-edit", handleEditRequest);
 
 module.exports = router;

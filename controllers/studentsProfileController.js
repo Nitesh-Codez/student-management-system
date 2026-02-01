@@ -240,10 +240,122 @@ const updateStudentProfile = async (req, res) => {
   }
 };
 
+// ================= REQUEST PROFILE EDIT =================
+const requestProfileEdit = async (req, res) => {
+  try {
+    const {
+      student_id,
+      field_name,
+      requested_value,
+      reason,
+    } = req.body;
+
+    if (!student_id || !field_name || !reason) {
+      return res.status(400).json({
+        success: false,
+        message: "Student, field and reason are required",
+      });
+    }
+
+    // get old value
+    const oldQuery = `SELECT ${field_name} FROM students WHERE id = $1`;
+    const oldRes = await pool.query(oldQuery, [student_id]);
+
+    if (oldRes.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Student not found",
+      });
+    }
+
+    const old_value = oldRes.rows[0][field_name];
+
+    const query = `
+      INSERT INTO profile_edit_requests
+      (student_id, field_name, old_value, requested_value, reason)
+      VALUES ($1,$2,$3,$4,$5)
+      RETURNING *
+    `;
+
+    const values = [
+      student_id,
+      field_name,
+      old_value || null,
+      requested_value || null,
+      reason,
+    ];
+
+    const { rows } = await pool.query(query, values);
+
+    res.json({
+      success: true,
+      message: "Edit request sent to admin",
+      request: rows[0],
+    });
+
+  } catch (error) {
+    console.error("Edit request error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};
+
+// ================= ADMIN ACTION =================
+const handleEditRequest = async (req, res) => {
+  try {
+    const { request_id, status, admin_id } = req.body;
+
+    if (!request_id || !status) {
+      return res.status(400).json({
+        success: false,
+        message: "Request id and status required",
+      });
+    }
+
+    const query = `
+      UPDATE profile_edit_requests
+      SET status = $1,
+          action_by = $2,
+          action_at = NOW()
+      WHERE id = $3
+      RETURNING *
+    `;
+
+    const { rows } = await pool.query(query, [
+      status,
+      admin_id || null,
+      request_id,
+    ]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Request not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: `Request ${status}`,
+      data: rows[0],
+    });
+
+  } catch (error) {
+    console.error("Admin edit action error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};
 
 // ✅ SINGLE EXPORT
 module.exports = {
   getStudentProfile,
   insertStudent,
   updateStudentProfile,
+  requestProfileEdit,
+  handleEditRequest,
 };

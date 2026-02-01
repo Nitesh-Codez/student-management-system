@@ -55,3 +55,88 @@ const getStudentProfile = async (req, res) => {
 };
 
 module.exports = { getStudentProfile };
+const pool = require("../db");
+
+// ================= INSERT STUDENT =================
+const insertStudent = async (req, res) => {
+  try {
+    const {
+      name,
+      class: studentClass,
+      mobile,
+      address,
+      role,
+      father_name,
+      mother_name,
+      gender,
+      dob,
+      email,
+      aadhaar,
+      blood_group,
+      category,
+      city,
+      state,
+      pincode,
+    } = req.body;
+
+    // Basic validation
+    if (!name || !studentClass || !mobile) {
+      return res.status(400).json({
+        success: false,
+        message: "Name, Class and Mobile are required",
+      });
+    }
+
+    const query = `
+      INSERT INTO students (
+        name, class, mobile, address, role,
+        father_name, mother_name, gender, dob,
+        email, aadhaar, blood_group, category,
+        city, state, pincode
+      )
+      VALUES (
+        $1,$2,$3,$4,$5,
+        $6,$7,$8,$9,
+        $10,$11,$12,$13,
+        $14,$15,$16
+      )
+      RETURNING *
+    `;
+
+    const values = [
+      name,
+      studentClass,
+      mobile,
+      address || null,
+      role || "student",
+      father_name || null,
+      mother_name || null,
+      gender || null,
+      dob || null,
+      email || null,
+      aadhaar || null,
+      blood_group || null,
+      category || null,
+      city || null,
+      state || null,
+      pincode || null,
+    ];
+
+    const { rows } = await pool.query(query, values);
+
+    return res.status(201).json({
+      success: true,
+      message: "Student inserted successfully",
+      student: rows[0],
+    });
+
+  } catch (error) {
+    console.error("Insert student error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+    });
+  }
+};
+
+module.exports = { insertStudent };

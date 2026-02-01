@@ -351,6 +351,26 @@ const handleEditRequest = async (req, res) => {
   }
 };
 
+// GET pending edit requests (for admin)
+const getPendingEditRequests = async (req, res) => {
+  try {
+    const query = `
+      SELECT per.id, s.name as student_name, per.field_name, per.old_value, per.requested_value, per.reason, per.status
+      FROM profile_edit_requests per
+      JOIN students s ON s.id = per.student_id
+      WHERE per.status = 'pending'
+      ORDER BY per.id DESC
+    `;
+    const { rows } = await pool.query(query);
+    res.json({ success: true, requests: rows });
+  } catch (error) {
+    console.error("Error fetching pending edit requests:", error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+
+
 // ✅ SINGLE EXPORT
 module.exports = {
   getStudentProfile,
@@ -358,4 +378,5 @@ module.exports = {
   updateStudentProfile,
   requestProfileEdit,
   handleEditRequest,
+  getPendingEditRequests,
 };

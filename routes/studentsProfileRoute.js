@@ -7,6 +7,7 @@ const {
 updateStudentProfile,
   requestProfileEdit,
   handleEditRequest,
+  getPendingEditRequests,
 } = require("../controllers/studentsProfileController");
 
 // GET profile
@@ -25,6 +26,10 @@ router.post("/request-edit", requestProfileEdit);
 
 // admin → approve / reject
 router.post("/handle-edit", handleEditRequest);
+
+// GET /api/students/pending-edit-requests
+router.get("/pending-edit-requests", getPendingEditRequests);
+
 
 
 

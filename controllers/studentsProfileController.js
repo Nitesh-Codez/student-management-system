@@ -141,8 +141,101 @@ const insertStudent = async (req, res) => {
   }
 };
 
+// ================= UPDATE STUDENT PROFILE =================
+const updateStudentProfile = async (req, res) => {
+  try {
+    const studentId = Number(req.params.id);
+
+    if (!studentId || isNaN(studentId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid Student ID required",
+      });
+    }
+
+    const {
+      name,
+      class: studentClass,
+      mobile,
+      address,
+      father_name,
+      mother_name,
+      gender,
+      dob,
+      email,
+      blood_group,
+      category,
+      city,
+      state,
+      pincode,
+    } = req.body;
+
+    const query = `
+      UPDATE students SET
+        name = $1,
+        class = $2,
+        mobile = $3,
+        address = $4,
+        father_name = $5,
+        mother_name = $6,
+        gender = $7,
+        dob = $8,
+        email = $9,
+        blood_group = $10,
+        category = $11,
+        city = $12,
+        state = $13,
+        pincode = $14
+      WHERE id = $15
+      RETURNING *
+    `;
+
+    const values = [
+      name,
+      studentClass,
+      mobile,
+      address,
+      father_name,
+      mother_name,
+      gender,
+      dob,
+      email,
+      blood_group,
+      category,
+      city,
+      state,
+      pincode,
+      studentId,
+    ];
+
+    const { rows } = await pool.query(query, values);
+
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Student not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Profile updated successfully",
+      student: rows[0],
+    });
+
+  } catch (error) {
+    console.error("Update profile error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};
+
+
 // ✅ SINGLE EXPORT
 module.exports = {
   getStudentProfile,
   insertStudent,
+  updateStudentProfile,
 };

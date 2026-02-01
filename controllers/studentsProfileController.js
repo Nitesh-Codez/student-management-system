@@ -58,9 +58,13 @@ module.exports = { getStudentProfile };
 const pool = require("../db");
 
 // ================= INSERT STUDENT =================
+const pool = require("../db");
+
+// ================= INSERT STUDENT =================
 const insertStudent = async (req, res) => {
   try {
     const {
+      code,
       name,
       class: studentClass,
       mobile,
@@ -79,31 +83,32 @@ const insertStudent = async (req, res) => {
       pincode,
     } = req.body;
 
-    // Basic validation
-    if (!name || !studentClass || !mobile) {
+    // Validation
+    if (!code || !name || !studentClass || !mobile) {
       return res.status(400).json({
         success: false,
-        message: "Name, Class and Mobile are required",
+        message: "Code, Name, Class and Mobile are required",
       });
     }
 
     const query = `
       INSERT INTO students (
-        name, class, mobile, address, role,
+        code, name, class, mobile, address, role,
         father_name, mother_name, gender, dob,
         email, aadhaar, blood_group, category,
         city, state, pincode
       )
       VALUES (
-        $1,$2,$3,$4,$5,
-        $6,$7,$8,$9,
-        $10,$11,$12,$13,
-        $14,$15,$16
+        $1,$2,$3,$4,$5,$6,
+        $7,$8,$9,$10,
+        $11,$12,$13,$14,
+        $15,$16,$17
       )
       RETURNING *
     `;
 
     const values = [
+      code,
       name,
       studentClass,
       mobile,
@@ -131,6 +136,14 @@ const insertStudent = async (req, res) => {
     });
 
   } catch (error) {
+    // unique code error
+    if (error.code === "23505") {
+      return res.status(409).json({
+        success: false,
+        message: "Student code already exists",
+      });
+    }
+
     console.error("Insert student error:", error);
     return res.status(500).json({
       success: false,

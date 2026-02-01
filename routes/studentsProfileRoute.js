@@ -1,8 +1,10 @@
 const express = require("express");
 const router = express.Router();
 
-const { getStudentProfile } = require("../controllers/studentsProfileController");
-const { insertStudent } = require("../controllers/studentsController");
+const {
+  getStudentProfile,
+  insertStudent,
+} = require("../controllers/studentsProfileController");
 
 // GET profile
 // /api/students/profile?id=27

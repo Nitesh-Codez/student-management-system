@@ -1,13 +1,10 @@
 const pool = require("../db");
 
 // ================= GET STUDENT PROFILE =================
-// URL: /api/students/profile?id=1
-
 const getStudentProfile = async (req, res) => {
   try {
-    const studentId = Number(req.query.id); // safer than parseInt
+    const studentId = Number(req.query.id);
 
-    // ❌ ID missing or invalid
     if (!studentId || isNaN(studentId)) {
       return res.status(400).json({
         success: false,
@@ -15,15 +12,17 @@ const getStudentProfile = async (req, res) => {
       });
     }
 
-    // ✅ PostgreSQL table name is lowercase: students
     const query = `
       SELECT 
         id,
+        code,
         name,
         class,
         mobile,
         address,
         role,
+        father_name,
+        mother_name,
         profile_photo
       FROM students
       WHERE id = $1
@@ -31,7 +30,6 @@ const getStudentProfile = async (req, res) => {
 
     const { rows } = await pool.query(query, [studentId]);
 
-    // ❌ No student found
     if (rows.length === 0) {
       return res.status(404).json({
         success: false,
@@ -39,26 +37,19 @@ const getStudentProfile = async (req, res) => {
       });
     }
 
-    // ✅ Success
-    return res.status(200).json({
+    res.status(200).json({
       success: true,
       student: rows[0],
     });
 
   } catch (error) {
     console.error("Error fetching student profile:", error);
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       message: "Internal Server Error",
     });
   }
 };
-
-module.exports = { getStudentProfile };
-const pool = require("../db");
-
-// ================= INSERT STUDENT =================
-const pool = require("../db");
 
 // ================= INSERT STUDENT =================
 const insertStudent = async (req, res) => {
@@ -83,7 +74,6 @@ const insertStudent = async (req, res) => {
       pincode,
     } = req.body;
 
-    // Validation
     if (!code || !name || !studentClass || !mobile) {
       return res.status(400).json({
         success: false,
@@ -129,14 +119,13 @@ const insertStudent = async (req, res) => {
 
     const { rows } = await pool.query(query, values);
 
-    return res.status(201).json({
+    res.status(201).json({
       success: true,
       message: "Student inserted successfully",
       student: rows[0],
     });
 
   } catch (error) {
-    // unique code error
     if (error.code === "23505") {
       return res.status(409).json({
         success: false,
@@ -145,11 +134,15 @@ const insertStudent = async (req, res) => {
     }
 
     console.error("Insert student error:", error);
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       message: "Server Error",
     });
   }
 };
 
-module.exports = { insertStudent };
+// ✅ SINGLE EXPORT
+module.exports = {
+  getStudentProfile,
+  insertStudent,
+};

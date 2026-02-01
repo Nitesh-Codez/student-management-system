@@ -369,6 +369,24 @@ const getPendingEditRequests = async (req, res) => {
   }
 };
 
+const getEditRequests = async (req, res) => {
+  try {
+    const query = `
+      SELECT per.id, s.id AS student_id, s.name as student_name, per.field_name, 
+             per.old_value, per.requested_value, per.reason, per.status, per.action_at, per.created_at
+      FROM profile_edit_requests per
+      JOIN students s ON s.id = per.student_id
+      WHERE s.id = $1
+      ORDER BY per.id DESC
+    `;
+    const studentId = Number(req.query.id);
+    const { rows } = await pool.query(query, [studentId]);
+    res.json({ success: true, requests: rows });
+  } catch (error) {
+    console.error("Error fetching edit requests:", error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
 
 
 // ✅ SINGLE EXPORT
@@ -379,4 +397,5 @@ module.exports = {
   requestProfileEdit,
   handleEditRequest,
   getPendingEditRequests,
+  getEditRequests,
 };

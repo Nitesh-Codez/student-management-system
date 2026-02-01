@@ -8,6 +8,7 @@ updateStudentProfile,
   requestProfileEdit,
   handleEditRequest,
   getPendingEditRequests,
+    getEditRequests,
 } = require("../controllers/studentsProfileController");
 
 // GET profile
@@ -29,6 +30,9 @@ router.post("/handle-edit", handleEditRequest);
 
 // GET /api/students/pending-edit-requests
 router.get("/pending-edit-requests", getPendingEditRequests);
+
+// GET all edit requests for a student
+router.get("/edit-requests", getEditRequests);
 
 
 

@@ -1,32 +1,33 @@
 const pool = require("../db");
 
-// 1. Fetch Assigned Subjects (Jab bacha form page khole)
+// 1. Fetch Exam Details (Used by ExamForm AND Admit Card)
 const getMyExamDetails = async (req, res) => {
   try {
     const { student_id, exam_type } = req.query;
 
     const query = `
-      SELECT subjects, status 
+      SELECT subjects, status, student_name, student_class 
       FROM exam_registrations 
       WHERE student_id = $1 AND exam_type = $2
     `;
     const { rows } = await pool.query(query, [student_id, exam_type]);
 
     if (rows.length === 0) {
+      // Admit card code is message ko pakad kar "Restricted" dikhayega
       return res.status(404).json({ 
         success: false, 
-        message: "No exam assigned for this type. Contact Admin." 
+        message: "Exam form not found for this student." 
       });
     }
 
     res.json({ success: true, data: rows[0] });
   } catch (error) {
-    console.error(error);
+    console.error("Fetch Exam Error:", error);
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
 
-// 2. Finalize/Submit Exam Form (Status update karna)
+// 2. Finalize/Submit (Jab bacha "Confirm" dabata hai)
 const finalizeExamSubmission = async (req, res) => {
   try {
     const { student_id, exam_type } = req.body;
@@ -40,12 +41,12 @@ const finalizeExamSubmission = async (req, res) => {
     const { rows } = await pool.query(query, [student_id, exam_type]);
 
     if (rows.length === 0) {
-      return res.status(404).json({ success: false, message: "Record not found" });
+      return res.status(404).json({ success: false, message: "No registration record found to update." });
     }
 
     res.json({ success: true, message: "Exam Form Submitted Successfully!", data: rows[0] });
   } catch (error) {
-    console.error(error);
+    console.error("Submit Exam Error:", error);
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };

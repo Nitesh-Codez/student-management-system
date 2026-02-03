@@ -21,8 +21,11 @@ router.post(
 router.get("/:id/profile-photo", studentController.getProfilePhoto);
 
 // --- EXAM ROUTES ---
-// Yahan examController use karna hoga kyunki functions us file mein hain
+
+// Admit Card page is route ko use karega status check karne ke liye
 router.get("/my-exam-details", examController.getMyExamDetails);
+
+// Exam Form page is route ko use karega status 'Submitted' karne ke liye
 router.post("/finalize-exam", examController.finalizeExamSubmission);
 
 module.exports = router;

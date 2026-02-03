@@ -17,5 +17,12 @@ router.post(
 // Profile photo view (anyone can see)
 router.get("/:id/profile-photo", studentController.getProfilePhoto);
 
+
+// GET assigned subjects
+router.get("/my-exam-details", getMyExamDetails);
+
+// POST finalize submission
+router.post("/finalize-exam", finalizeExamSubmission);
+
 module.exports = router;
 

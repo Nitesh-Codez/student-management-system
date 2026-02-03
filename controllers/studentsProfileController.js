@@ -79,6 +79,7 @@ const insertStudent = async (req, res) => {
 };
 
 // ================= UPDATE STUDENT PROFILE =================
+// ================= UPDATE STUDENT PROFILE (Fixed with CODE) =================
 const updateStudentProfile = async (req, res) => {
   try {
     const studentId = Number(req.params.id);
@@ -87,23 +88,67 @@ const updateStudentProfile = async (req, res) => {
     }
 
     const {
-      name, class: studentClass, mobile, address, father_name, mother_name,
-      gender, dob, email, aadhaar, blood_group, category, city, state, pincode, district,
+      code,          // <--- Ye missing tha!
+      name,
+      class: studentClass,
+      mobile,
+      address,
+      father_name,
+      mother_name,
+      gender,
+      dob,
+      email,
+      aadhaar,
+      blood_group,
+      category,
+      city,
+      state,
+      pincode,
+      district,
     } = req.body;
 
     const query = `
       UPDATE students SET
-        name = $1, class = $2, mobile = $3, address = $4,
-        father_name = $5, mother_name = $6, gender = $7, dob = $8,
-        email = $9, aadhaar = $10, blood_group = $11, category = $12,
-        city = $13, state = $14, pincode = $15, district = $16
-      WHERE id = $17
+        code = $1,      -- <--- Query mein add kiya
+        name = $2, 
+        class = $3, 
+        mobile = $4, 
+        address = $5,
+        father_name = $6, 
+        mother_name = $7, 
+        gender = $8, 
+        dob = $9,
+        email = $10, 
+        aadhaar = $11, 
+        blood_group = $12, 
+        category = $13,
+        city = $14, 
+        state = $15, 
+        pincode = $16, 
+        district = $17
+      WHERE id = $18    -- <--- Index change ho gaya
       RETURNING *
     `;
 
     const values = [
-      name, studentClass, mobile, address, father_name, mother_name,
-      gender, dob, email, aadhaar, blood_group, category, city, state, pincode, district, studentId
+      code,             // $1
+      name,             // $2
+      studentClass,     // $3
+      mobile,           // $4
+      address,          // $5
+      father_name,      // $6
+      mother_name,      // $7
+      gender,           // $8
+      dob,              // $9
+      email,            // $10
+      aadhaar,          // $11
+      blood_group,      // $12
+      category,         // $13
+      city,             // $14
+      state,            // $15
+      pincode,          // $16
+      district,         // $17
+      studentId         // $18
     ];
 
     const { rows } = await pool.query(query, values);
@@ -112,13 +157,17 @@ const updateStudentProfile = async (req, res) => {
       return res.status(404).json({ success: false, message: "Student not found" });
     }
 
-    res.json({ success: true, message: "Profile updated successfully", student: rows[0] });
+    res.json({
+      success: true,
+      message: "Profile updated successfully",
+      student: rows[0], // Ye rows[0] ab naya 'code' lekar jayega frontend pe
+    });
+
   } catch (error) {
     console.error("Update profile error:", error);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
-
 // ================= REQUEST PROFILE EDIT =================
 const requestProfileEdit = async (req, res) => {
   try {

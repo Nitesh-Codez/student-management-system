@@ -43,6 +43,8 @@ app.use("/api/feedback", feedbackRoutes);
 app.use("/api/assignments", assignmentRoutes);
 app.use("/api/chat", chatRoutes); 
 app.use("/api/students", studentsProfileRoute);
+app.use("/api/teachers", require("./routes/teacherRoutes"));
+
 
 // ==================== STATIC FILES ====================
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));

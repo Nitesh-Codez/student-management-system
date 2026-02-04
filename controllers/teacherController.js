@@ -14,14 +14,13 @@ exports.addTeacher = async (req, res) => {
       qualification,
       experience_years,
       salary,
-      joining_date,
-      status
+      joining_date
     } = req.body;
 
     const sql = `
       INSERT INTO teachers
-      (teacher_code,name,gender,dob,phone,email,address,qualification,experience_years,salary,joining_date,status)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      (teacher_code,name,gender,dob,phone,email,address,qualification,experience_years,salary,joining_date)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
     `;
 
     await db.query(sql, [
@@ -35,8 +34,7 @@ exports.addTeacher = async (req, res) => {
       qualification,
       experience_years,
       salary,
-      joining_date,
-      status
+      joining_date
     ]);
 
     res.json({ success: true, message: "Teacher added successfully" });

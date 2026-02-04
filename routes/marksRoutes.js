@@ -17,11 +17,7 @@ router.post("/add", marksController.addMarks);
 router.post("/check", marksController.checkMarks);
 
 // ================= DELETE MARKS (ADMIN) =================
-router.delete(
-  "/admin/marks/:id",
-  headAuth,               // 🔐 sirf HEAD access
-  marksController.deleteMarks
-);
+router.delete("/admin/marks/:id", marksController.deleteMarks);
 
 
 // ================= UPDATE MARKS (ADMIN) =================

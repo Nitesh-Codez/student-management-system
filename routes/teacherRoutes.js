@@ -4,31 +4,20 @@ const multer = require("multer");
 
 const teacherController = require("../controllers/teacherController");
 
-// multer memory storage (Supabase ke liye required)
-const upload = multer({ storage: multer.memoryStorage() });
+// multer memory storage
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
 
+// ADD TEACHER (photo)
+router.post("/add", upload.single("photo"), teacherController.addTeacher);
 
-// ================= ADD TEACHER =================
-router.post(
-  "/add",
-  upload.single("photo"),   // 👈 frontend field name "photo"
-  teacherController.addTeacher
-);
-
-
-// ================= GET ALL =================
+// GET ALL
 router.get("/admin/teachers", teacherController.getTeachers);
 
+// UPDATE
+router.put("/admin/teachers/:id", upload.single("photo"), teacherController.updateTeacher);
 
-// ================= UPDATE =================
-router.put(
-  "/admin/teachers/:id",
-  upload.single("photo"),   // 👈 image replace supported
-  teacherController.updateTeacher
-);
-
-
-// ================= DELETE =================
+// DELETE
 router.delete("/admin/teachers/:id", teacherController.deleteTeacher);
 
 module.exports = router;

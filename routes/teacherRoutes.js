@@ -1,19 +1,18 @@
 const express = require("express");
 const router = express.Router();
-const headAuth = require("../middlewares/headAuth");
 
 const teacherController = require("../controllers/teacherController");
 
 // ADD TEACHER
-router.post("/add", headAuth, teacherController.addTeacher);
+router.post("/add", teacherController.addTeacher);
 
 // GET ALL
-router.get("/admin/teachers", headAuth, teacherController.getTeachers);
+router.get("/admin/teachers", teacherController.getTeachers);
 
 // UPDATE
-router.put("/admin/teachers/:id", headAuth, teacherController.updateTeacher);
+router.put("/admin/teachers/:id", teacherController.updateTeacher);
 
 // DELETE
-router.delete("/admin/teachers/:id", headAuth, teacherController.deleteTeacher);
+router.delete("/admin/teachers/:id", teacherController.deleteTeacher);
 
 module.exports = router;

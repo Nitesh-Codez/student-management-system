@@ -4,12 +4,15 @@ const db = require("../db"); // Promise-based PostgreSQL connection
 async function loginController(req, res) {
   const { name, password } = req.body;
 
+  console.log("Login attempt:", { name, password }); // 🔍 Request body check
+
   try {
-    // 🔍 students table se data nikal rahe
     const results = await db.query(
       'SELECT id, name, password, role, "class" FROM students WHERE name = $1',
       [name]
     );
+
+    console.log("DB results:", results.rows); // 🔍 DB se kya aa raha
 
     if (results.rows.length === 0) {
       return res.json({
@@ -19,9 +22,9 @@ async function loginController(req, res) {
     }
 
     const user = results.rows[0];
-
-    // 🔐 password match
     const isMatch = await bcrypt.compare(password, user.password);
+
+    console.log("Password match result:", isMatch); // 🔍 Password match
 
     if (!isMatch) {
       return res.json({
@@ -30,14 +33,13 @@ async function loginController(req, res) {
       });
     }
 
-    // ✅ SUCCESS RESPONSE
     res.json({
       success: true,
       user: {
         id: user.id,
         name: user.name,
         role: user.role,
-        class: user.class, // 🔥 PostgreSQL me bhi same
+        class: user.class,
       },
     });
   } catch (err) {

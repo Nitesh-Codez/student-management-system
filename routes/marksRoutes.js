@@ -16,6 +16,14 @@ router.post("/add", marksController.addMarks);
 // ================= CHECK MARKS (STUDENT) =================
 router.post("/check", marksController.checkMarks);
 
+// ================= DELETE MARKS (ADMIN) =================
+router.delete(
+  "/admin/marks/:id",
+  headAuth,               // 🔐 sirf HEAD access
+  marksController.deleteMarks
+);
+
+
 // ================= UPDATE MARKS (ADMIN) =================
 router.put(
   "/admin/marks/:id",

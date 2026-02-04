@@ -177,6 +177,28 @@ const updateMarks = async (req, res) => {
   }
 };
 
+
+// ================= DELETE MARKS =================
+const deleteMarks = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await db.query(
+      "DELETE FROM marks WHERE id = $1",
+      [id]
+    );
+
+    if (result.rowCount === 0) {
+      return res.json({ success: false, message: "Record not found" });
+    }
+
+    res.json({ success: true, message: "Record deleted successfully" });
+  } catch (err) {
+    console.error("Delete Error:", err);
+    res.json({ success: false, message: "Error deleting marks" });
+  }
+};
+
 // ================= EXPORTS =================
 module.exports = {
   getClasses,
@@ -184,5 +206,6 @@ module.exports = {
   addMarks,
   checkMarks,
   updateMarks,
-  getAllMarks
+  getAllMarks,
+  deleteMarks
 };

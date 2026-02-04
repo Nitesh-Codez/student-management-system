@@ -3,15 +3,16 @@ const { Pool } = require("pg");
 // ================= POOL CONFIG =================
 const connectionString = process.env.DATABASE_URL;
 
-// Force IPv4 host extraction from DATABASE_URL
-const host = connectionString.split("@")[1].split(":")[0];
+// Force IPv4 extraction
+const url = new URL(connectionString);
+const host = url.hostname; // yeh automatically IPv4 lega agar available
 
 const db = new Pool({
   connectionString,
   ssl: {
     rejectUnauthorized: false, // must for Supabase
   },
-  host, // IPv4 force
+  host, // force IPv4
 });
 
 // ================= TEST CONNECTION =================

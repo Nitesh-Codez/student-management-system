@@ -130,34 +130,53 @@ const getAllMarks = async (req, res) => {
 
 
 // ================= UPDATE MARKS =================
+// ================= UPDATE MARKS =================
 const updateMarks = async (req, res) => {
   try {
     const { id } = req.params;
     const { subject, marks, maxMarks, date } = req.body;
 
-    // Check karein ki purana data fetch karke missing fields fill karein 
-    // ya SQL query ko thoda flexible banayein.
-    const sql = `
-      UPDATE marks
-      SET subject = COALESCE($1, subject),
-          obtained_marks = COALESCE($2, obtained_marks),
-          total_marks = COALESCE($3, total_marks),
-          test_date = COALESCE($4, test_date)
-      WHERE id = $5
-    `;
-
-    const result = await db.query(sql, [subject, marks, maxMarks, date, id]);
-
-    if (result.rowCount === 0) {
-      return res.json({ success: false, message: "Record not found" });
+    // 🔹 Validation
+    if (
+      marks !== undefined && (typeof marks !== "number" || marks < 0) ||
+      maxMarks !== undefined && (typeof maxMarks !== "number" || maxMarks <= 0) ||
+      date !== undefined && isNaN(new Date(date))
+    ) {
+      return res.status(400).json({ success: false, message: "Invalid input" });
     }
 
-    res.json({ success: true, message: "Marks updated successfully" });
+    // 🔹 Dynamic update fields
+    const fields = [];
+    const values = [];
+    let idx = 1;
+
+    if (subject !== undefined) { fields.push(`subject = $${idx++}`); values.push(subject); }
+    if (marks !== undefined) { fields.push(`obtained_marks = $${idx++}`); values.push(marks); }
+    if (maxMarks !== undefined) { fields.push(`total_marks = $${idx++}`); values.push(maxMarks); }
+    if (date !== undefined) { fields.push(`test_date = $${idx++}`); values.push(date); }
+
+    if (!fields.length) {
+      return res.status(400).json({ success: false, message: "Nothing to update" });
+    }
+
+    values.push(id);
+    const sql = `UPDATE marks SET ${fields.join(", ")} WHERE id = $${idx}`;
+    const result = await db.query(sql, values);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ success: false, message: "Record not found" });
+    }
+
+    // 🔹 Optionally return updated record
+    const updated = await db.query(`SELECT * FROM marks WHERE id = $1`, [id]);
+    res.json({ success: true, message: "Marks updated successfully", data: updated.rows[0] });
+
   } catch (err) {
     console.error("Update Error:", err);
-    res.json({ success: false, message: "Error updating marks" });
+    res.status(500).json({ success: false, message: "Error updating marks" });
   }
 };
+
 // ================= EXPORTS =================
 module.exports = {
   getClasses,

@@ -191,3 +191,18 @@ exports.deleteTeacher = async (req,res)=>{
     res.status(500).json({success:false});
   }
 };
+
+// GET ALL TEACHERS WITH FULL DATA (for Admin listing page)
+// Controller function
+exports.getAllTeachers = async (req, res) => {
+  try {
+    const result = await db.query(`
+      SELECT id, name FROM teachers ORDER BY name
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success:false, message: err.message });
+  }
+};
+

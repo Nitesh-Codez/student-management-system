@@ -15,6 +15,7 @@ const feedbackRoutes = require("./routes/feedbackRoutes");
 const assignmentRoutes = require("./routes/assignmentRoutes");
 const chatRoutes = require("./routes/chatRoutes"); 
 const studentsProfileRoute = require("./routes/studentsProfileRoute");
+const teacherAssignmentsRoutes = require("./routes/teacherAssignmentsRoutes");
 
 // ==================== DB INIT ====================
 const db = require("./db"); // <- ye db.js ko import karo, SSL fix ke sath
@@ -44,6 +45,7 @@ app.use("/api/assignments", assignmentRoutes);
 app.use("/api/chat", chatRoutes); 
 app.use("/api/students", studentsProfileRoute);
 app.use("/api/teachers", require("./routes/teacherRoutes"));
+app.use("/api/teacher-assignments", teacherAssignmentsRoutes);
 
 
 // ==================== STATIC FILES ====================

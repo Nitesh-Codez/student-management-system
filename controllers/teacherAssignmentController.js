@@ -84,3 +84,15 @@ exports.deleteAssignment = async (req, res) => {
     res.status(500).json({ success: false });
   }
 };
+
+
+// ================= GET ALL TEACHERS =================
+exports.getTeachers = async (req, res) => {
+  try {
+    const result = await db.query("SELECT id, name FROM teachers ORDER BY name");
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};

@@ -8,6 +8,8 @@ router.post("/assign", teacherAssignmentController.assignClass);
 // GET ALL ASSIGNMENTS
 router.get("/all", teacherAssignmentController.getAssignments);
 
+router.get("/admin/teachers", teacherController.getTeachers); // ✅ ye call hona chahiye
+
 // UPDATE ASSIGNMENT
 router.put("/update/:id", teacherAssignmentController.updateAssignment);
 

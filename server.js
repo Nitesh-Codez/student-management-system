@@ -16,9 +16,10 @@ const assignmentRoutes = require("./routes/assignmentRoutes");
 const chatRoutes = require("./routes/chatRoutes"); 
 const studentsProfileRoute = require("./routes/studentsProfileRoute");
 const teacherAssignmentsRoutes = require("./routes/teacherAssignmentsRoutes");
+const teacherRoutes = require("./routes/teacherRoutes")
 
 // ==================== DB INIT ====================
-const db = require("./db"); // <- ye db.js ko import karo, SSL fix ke sath
+const db = require("./db"); 
 
 const app = express();
 
@@ -44,7 +45,7 @@ app.use("/api/feedback", feedbackRoutes);
 app.use("/api/assignments", assignmentRoutes);
 app.use("/api/chat", chatRoutes); 
 app.use("/api/students", studentsProfileRoute);
-app.use("/api/teachers", require("./routes/teacherRoutes"));
+app.use("/api/teachers", teacherRoutes);
 app.use("/api/teacher-assignments", teacherAssignmentsRoutes);
 
 

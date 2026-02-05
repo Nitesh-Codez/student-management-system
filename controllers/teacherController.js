@@ -1,5 +1,6 @@
 const db = require("../db");
 const { createClient } = require("@supabase/supabase-js");
+const bcrypt = require("bcryptjs");
 
 // ================= SUPABASE =================
 const supabase = createClient(
@@ -14,7 +15,6 @@ const TEACHER_BUCKET = "teachers";
 // =================================================
 exports.addTeacher = async (req, res) => {
   try {
-
     const {
       teacher_code,
       name,
@@ -26,7 +26,8 @@ exports.addTeacher = async (req, res) => {
       qualification,
       experience_years,
       salary,
-      joining_date
+      joining_date,
+      password
     } = req.body;
 
     let profile_photo = null;
@@ -51,11 +52,14 @@ exports.addTeacher = async (req, res) => {
       profile_photo = data.publicUrl;
     }
 
+    // ========= PASSWORD HASH =========
+    const hashedPassword = await bcrypt.hash(password || "123456", 10);
+
     // ========= DB INSERT =========
     const sql = `
       INSERT INTO teachers
-      (teacher_code,name,gender,dob,phone,email,address,qualification,experience_years,salary,joining_date,profile_photo)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      (teacher_code,name,gender,dob,phone,email,address,qualification,experience_years,salary,joining_date,profile_photo,password)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
     `;
 
     await db.query(sql, [
@@ -70,7 +74,8 @@ exports.addTeacher = async (req, res) => {
       experience_years || 0,
       salary || 0,
       joining_date || null,
-      profile_photo
+      profile_photo,
+      hashedPassword
     ]);
 
     res.json({ success:true, message:"Teacher added successfully ✅" });
@@ -81,30 +86,25 @@ exports.addTeacher = async (req, res) => {
   }
 };
 
-
-
 // =================================================
 // ================= GET TEACHERS ===================
 // =================================================
 exports.getTeachers = async (req,res)=>{
   try{
-    const result = await db.query(`SELECT * FROM teachers ORDER BY id DESC`);
+    const result = await db.query(`SELECT *, password FROM teachers ORDER BY id DESC`);
     res.json(result.rows);
   }catch(err){
+    console.error(err);
     res.status(500).json({success:false});
   }
 };
-
-
 
 // =================================================
 // ================= UPDATE TEACHER =================
 // =================================================
 exports.updateTeacher = async (req,res)=>{
   try{
-
     const { id } = req.params;
-
     const {
       name,
       phone,
@@ -112,7 +112,8 @@ exports.updateTeacher = async (req,res)=>{
       qualification,
       experience_years,
       salary,
-      status
+      status,
+      password
     } = req.body;
 
     let profile_photo = null;
@@ -137,30 +138,31 @@ exports.updateTeacher = async (req,res)=>{
       profile_photo = data.publicUrl;
     }
 
+    // ===== hash password if provided =====
+    let hashedPassword = undefined;
+    if(password){
+      hashedPassword = await bcrypt.hash(password,10);
+    }
+
     const sql = `
       UPDATE teachers SET
-      name = COALESCE($1,name),
-      phone = COALESCE($2,phone),
-      email = COALESCE($3,email),
-      qualification = COALESCE($4,qualification),
-      experience_years = COALESCE($5,experience_years),
-      salary = COALESCE($6,salary),
-      status = COALESCE($7,status),
-      profile_photo = COALESCE($8,profile_photo)
-      WHERE id=$9
+        name = COALESCE($1,name),
+        phone = COALESCE($2,phone),
+        email = COALESCE($3,email),
+        qualification = COALESCE($4,qualification),
+        experience_years = COALESCE($5,experience_years),
+        salary = COALESCE($6,salary),
+        status = COALESCE($7,status),
+        profile_photo = COALESCE($8,profile_photo)
+        ${hashedPassword ? ", password=$9" : ""}
+      WHERE id=$${hashedPassword ? 10 : 9}
     `;
 
-    const result = await db.query(sql,[
-      name,
-      phone,
-      email,
-      qualification,
-      experience_years,
-      salary,
-      status,
-      profile_photo,
-      id
-    ]);
+    const values = [name, phone, email, qualification, experience_years, salary, status, profile_photo];
+    if(hashedPassword) values.push(hashedPassword);
+    values.push(id);
+
+    const result = await db.query(sql, values);
 
     if(!result.rowCount)
       return res.json({success:false,message:"Not found"});
@@ -172,8 +174,6 @@ exports.updateTeacher = async (req,res)=>{
     res.status(500).json({success:false});
   }
 };
-
-
 
 // =================================================
 // ================= DELETE TEACHER =================
@@ -187,6 +187,7 @@ exports.deleteTeacher = async (req,res)=>{
     res.json({success:true,message:"Teacher deleted ✅"});
 
   }catch(err){
+    console.error(err);
     res.status(500).json({success:false});
   }
 };

@@ -3,6 +3,7 @@ const db = require("../db");
 // ================= CREATE / ASSIGN CLASS =================
 exports.assignClass = async (req, res) => {
   try {
+    // React se ab hum class_name aur subject_name bhejenge
     const { teacher_id, class_id, subject_id, day_of_week, start_time, end_time } = req.body;
 
     if (!teacher_id || !class_id || !subject_id || !day_of_week || !start_time || !end_time) {
@@ -10,15 +11,17 @@ exports.assignClass = async (req, res) => {
     }
 
     const sql = `
-      INSERT INTO teacher_assignments
-      (teacher_id, class_id, subject_id, day_of_week, start_time, end_time)
+      INSERT INTO teacher_assignments 
+      (teacher_id, class_name, subject_name, day_of_week, start_time, end_time) 
       VALUES ($1, $2, $3, $4, $5, $6)
     `;
+    
+    // Yahan class_id aur subject_id variable hi use kar rahe hain jo req.body se aaye hain
     await db.query(sql, [teacher_id, class_id, subject_id, day_of_week, start_time, end_time]);
 
     res.json({ success: true, message: "Class assigned successfully ✅" });
   } catch (err) {
-    console.error(err);
+    console.error("Save Error:", err.message);
     res.status(500).json({ success: false, message: err.message });
   }
 };
@@ -26,20 +29,20 @@ exports.assignClass = async (req, res) => {
 // ================= GET ALL ASSIGNMENTS =================
 exports.getAssignments = async (req, res) => {
   try {
+    // Ab humein classes ya subjects table se JOIN karne ki zaroorat nahi hai 
+    // kyunki naam ab seedha teacher_assignments table mein hi hai.
     const sql = `
-      SELECT ta.id, t.name AS teacher_name, c.name AS class_name, s.name AS subject_name,
+      SELECT ta.id, t.name AS teacher_name, ta.class_name, ta.subject_name,
              ta.day_of_week, ta.start_time, ta.end_time
       FROM teacher_assignments ta
       LEFT JOIN teachers t ON ta.teacher_id = t.id
-      LEFT JOIN classes c ON ta.class_id = c.id
-      LEFT JOIN subjects s ON ta.subject_id = s.id
       ORDER BY ta.day_of_week, ta.start_time
     `;
     const result = await db.query(sql);
     res.json(result.rows);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false });
+    console.error("Fetch Error:", err.message);
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
@@ -52,8 +55,8 @@ exports.updateAssignment = async (req, res) => {
     const sql = `
       UPDATE teacher_assignments SET
         teacher_id = COALESCE($1, teacher_id),
-        class_id = COALESCE($2, class_id),
-        subject_id = COALESCE($3, subject_id),
+        class_name = COALESCE($2, class_name),
+        subject_name = COALESCE($3, subject_name),
         day_of_week = COALESCE($4, day_of_week),
         start_time = COALESCE($5, start_time),
         end_time = COALESCE($6, end_time)
@@ -65,8 +68,8 @@ exports.updateAssignment = async (req, res) => {
 
     res.json({ success: true, message: "Assignment updated ✅" });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false });
+    console.error("Update Error:", err.message);
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
@@ -80,10 +83,7 @@ exports.deleteAssignment = async (req, res) => {
 
     res.json({ success: true, message: "Assignment deleted ✅" });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false });
+    console.error("Delete Error:", err.message);
+    res.status(500).json({ success: false, message: err.message });
   }
 };
-
-
-

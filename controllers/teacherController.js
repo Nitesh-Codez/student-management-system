@@ -89,14 +89,13 @@ exports.addTeacher = async (req, res) => {
 // =================================================
 // ================= GET TEACHERS ===================
 // =================================================
-// ================= GET ALL TEACHERS =================
-exports.getTeachers = async (req, res) => {
-  try {
-    const result = await db.query("SELECT id, name FROM teachers ORDER BY name");
+exports.getTeachers = async (req,res)=>{
+  try{
+    const result = await db.query(`SELECT *, password FROM teachers ORDER BY id DESC`);
     res.json(result.rows);
-  } catch (err) {
+  }catch(err){
     console.error(err);
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({success:false});
   }
 };
 

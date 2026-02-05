@@ -20,7 +20,7 @@ router.put("/admin/teachers/:id", upload.single("photo"), teacherController.upda
 // DELETE
 router.delete("/admin/teachers/:id", teacherController.deleteTeacher);
 
-router.get("/teachers/all", teacherController.getAllTeachers);
+router.get("/all", teacherController.getAllTeachers);
 
 
 module.exports = router;

@@ -17,5 +17,8 @@ router.put("/update/:id", teacherAssignmentController.updateAssignment);
 
 // ================= DELETE ASSIGNMENT =================
 router.delete("/delete/:id", teacherAssignmentController.deleteAssignment);
+// ================= GET LECTURES BY TEACHER ID =================
+
+router.get("/teacher/:teacher_id", teacherAssignmentController.getTeacherLectures);
 
 module.exports = router;

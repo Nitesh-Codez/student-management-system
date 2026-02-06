@@ -138,8 +138,14 @@ exports.getStudentLectures = async (req, res) => {
     const { class_name } = req.params;
 
     const sql = `
-      SELECT ta.id, t.name AS teacher_name, ta.class_name, ta.subject_name,
-             ta.class_date, ta.start_time, ta.end_time
+      SELECT ta.id,
+             t.name AS teacher_name,
+             t.profile_photo,
+             ta.class_name,
+             ta.subject_name,
+             ta.class_date,
+             ta.start_time,
+             ta.end_time
       FROM teacher_assignments ta
       LEFT JOIN teachers t ON ta.teacher_id = t.id
       WHERE ta.class_name = $1

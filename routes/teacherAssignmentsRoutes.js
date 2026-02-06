@@ -11,7 +11,8 @@ router.post("/assign", teacherAssignmentController.assignClass);
 // ================= GET ALL ASSIGNMENTS =================
 router.get("/all", teacherAssignmentController.getAssignments);
 
-router.get("/student-class/:class_name", teacherAssignmentController.getStudentLectures);
+router.get("/student-class/:class_name/:day", teacherAssignmentController.getStudentLectures);
+
 // ================= UPDATE ASSIGNMENT =================
 router.put("/update/:id", teacherAssignmentController.updateAssignment);
 

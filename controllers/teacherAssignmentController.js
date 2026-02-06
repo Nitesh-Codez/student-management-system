@@ -89,6 +89,42 @@ exports.deleteAssignment = async (req, res) => {
 };
 
 // ================= GET LECTURES FOR A SPECIFIC TEACHER =================
+exports.getTeacherLectures = async (req, res) => {
+  try {
+    const { teacher_id } = req.params;
+
+    const sql = `
+      SELECT ta.id, t.name AS teacher_name, ta.class_name, ta.subject_name,
+             ta.day_of_week, ta.start_time, ta.end_time
+      FROM teacher_assignments ta
+      LEFT JOIN teachers t ON ta.teacher_id = t.id
+      WHERE ta.teacher_id = $1
+      ORDER BY 
+        CASE 
+          WHEN day_of_week = 'Monday' THEN 1
+          WHEN day_of_week = 'Tuesday' THEN 2
+          WHEN day_of_week = 'Wednesday' THEN 3
+          WHEN day_of_week = 'Thursday' THEN 4
+          WHEN day_of_week = 'Friday' THEN 5
+          WHEN day_of_week = 'Saturday' THEN 6
+          ELSE 7 
+        END, ta.start_time
+    `;
+
+    const result = await db.query(sql, [teacher_id]);
+
+    if (result.rows.length === 0) {
+      return res.status(200).json({ success: true, message: "No lectures assigned yet.", assignments: [] });
+    }
+
+    res.json({ success: true, assignments: result.rows });
+  } catch (err) {
+    console.error("Teacher Lectures Fetch Error:", err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+
 // teacherAssignmentController.js mein add karein
 exports.getStudentLectures = async (req, res) => {
   try {

@@ -134,28 +134,30 @@ exports.getTeacherLectures=async(req,res)=>{
 };
 
 // ================= STUDENT (weekly + date control) =================
-exports.getStudentLectures=async(req,res)=>{
- try{
+exports.getStudentLectures = async (req, res) => {
+  try {
+    const { class_name, day } = req.params;
+    const today = new Date().toISOString().split("T")[0];
 
- const {class_name,day}=req.params;
+    const sql = `
+      SELECT ta.*, t.name teacher_name, t.teacher_code, t.profile_photo
+      FROM teacher_assignments ta
+      LEFT JOIN teachers t ON ta.teacher_id = t.id
+      WHERE ta.class_name = $1
+      AND ta.day_of_week = $2
+      AND $3 BETWEEN ta.class_start_date AND ta.class_end_date
+      ORDER BY ta.start_time
+    `;
 
- const today=new Date().toISOString().split("T")[0];
+    const r = await db.query(sql, [class_name, day, today]);
 
- const sql=`
-  SELECT ta.*,t.name teacher_name,t.profile_photo
-  FROM teacher_assignments ta
-  LEFT JOIN teachers t ON ta.teacher_id=t.id
-  WHERE ta.class_name=$1
-  AND ta.day_of_week=$2
-  AND $3 BETWEEN ta.class_start_date AND ta.class_end_date
-  ORDER BY ta.start_time
- `;
-
- const r=await db.query(sql,[class_name,day,today]);
-
- res.json(r.rows);
-
- }catch(err){
-  res.status(500).json({success:false,message:err.message});
- }
+    // ✅ Yaha object me wrap kar do
+    res.json({
+      success: true,
+      assignments: r.rows
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
 };
+

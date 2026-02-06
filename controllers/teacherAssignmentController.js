@@ -135,7 +135,7 @@ exports.getTeacherLectures = async (req, res) => {
 // ================= GET STUDENT LECTURES =================
 exports.getStudentLectures = async (req, res) => {
   try {
-    const { class_name } = req.params;
+    const { class_name, day } = req.params;
 
     const sql = `
       SELECT ta.id,
@@ -143,16 +143,17 @@ exports.getStudentLectures = async (req, res) => {
              t.profile_photo,
              ta.class_name,
              ta.subject_name,
-             ta.class_date,
+             ta.day_of_week,
              ta.start_time,
              ta.end_time
       FROM teacher_assignments ta
       LEFT JOIN teachers t ON ta.teacher_id = t.id
       WHERE ta.class_name = $1
-      ORDER BY ta.class_date, ta.start_time
+      AND ta.day_of_week = $2
+      ORDER BY ta.start_time
     `;
 
-    const result = await db.query(sql, [class_name]);
+    const result = await db.query(sql, [class_name, day]);
 
     res.json({ success: true, assignments: result.rows });
 

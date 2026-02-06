@@ -145,6 +145,7 @@ exports.getStudentLectures = async (req, res) => {
              ta.subject_name,
              ta.day_of_week,
              ta.start_time,
+             ta.class_date,
              ta.end_time
       FROM teacher_assignments ta
       LEFT JOIN teachers t ON ta.teacher_id = t.id

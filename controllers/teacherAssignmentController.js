@@ -1,15 +1,36 @@
 const db = require("../db");
 
 // ================= CREATE / ASSIGN CLASS =================
+// ================= CREATE / ASSIGN CLASS =================
 exports.assignClass = async (req, res) => {
   try {
     const { teacher_id, class_id, subject_id, class_date, start_time, end_time } = req.body;
 
-    // class_date se Day nikalna (e.g., 'Monday')
+    // 1. Check Duplicate: Pehle check karo kya exact same record pehle se hai?
+    const checkSql = `
+      SELECT id FROM teacher_assignments 
+      WHERE teacher_id = $1 
+      AND class_name = $2 
+      AND class_date = $3 
+      AND start_time = $4
+    `;
+    
+    const duplicateCheck = await db.query(checkSql, [teacher_id, class_id, class_date, start_time]);
+
+    if (duplicateCheck.rows.length > 0) {
+      // Agar record mil gaya toh error bhej do
+      return res.status(400).json({ 
+        success: false, 
+        message: `Duplicate Error: Class ${class_id} is already assigned at ${start_time} on this date.` 
+      });
+    }
+
+    // 2. Day nikalna
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     const dateObj = new Date(class_date);
     const day_of_week = days[dateObj.getDay()];
 
+    // 3. Insert agar duplicate nahi mila
     const sql = `
       INSERT INTO teacher_assignments 
       (teacher_id, class_name, subject_name, class_date, day_of_week, start_time, end_time) 
@@ -21,17 +42,17 @@ exports.assignClass = async (req, res) => {
       class_id,
       subject_id,
       class_date,
-      day_of_week, // Yeh mismatch fix kar dega
+      day_of_week,
       start_time,
       end_time
     ]);
 
     res.json({ success: true, message: "Class assigned successfully ✅" });
   } catch (err) {
+    console.error("Assign Error:", err.message);
     res.status(500).json({ success: false, message: err.message });
   }
 };
-
 // ================= GET ALL ASSIGNMENTS =================
 exports.getAssignments = async (req, res) => {
   try {

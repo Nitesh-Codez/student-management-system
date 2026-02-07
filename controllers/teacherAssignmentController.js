@@ -6,23 +6,33 @@ exports.assignClass = async (req, res) => {
   try {
     const { teacher_id, class_id, subject_id, class_date, start_time, end_time } = req.body;
 
-    // 1. Check Duplicate: Pehle check karo kya exact same record pehle se hai?
-    const checkSql = `
-      SELECT id FROM teacher_assignments 
-      WHERE teacher_id = $1 
-      AND class_name = $2 
-      AND class_date = $3 
-      AND start_time = $4
+    // 1. ADVANCED CONFLICT CHECK
+    // Hum check kar rahe hain: Ya toh Teacher busy hai, ya Class busy hai.
+    const conflictSql = `
+      SELECT id, teacher_id, class_name FROM teacher_assignments 
+      WHERE class_date = $1 
+      AND start_time = $2 
+      AND (teacher_id = $3 OR class_name = $4)
     `;
     
-    const duplicateCheck = await db.query(checkSql, [teacher_id, class_id, class_date, start_time]);
+    const conflictCheck = await db.query(conflictSql, [class_date, start_time, teacher_id, class_id]);
 
-    if (duplicateCheck.rows.length > 0) {
-      // Agar record mil gaya toh error bhej do
-      return res.status(400).json({ 
-        success: false, 
-        message: `Duplicate Error: Class ${class_id} is already assigned at ${start_time} on this date.` 
-      });
+    if (conflictCheck.rows.length > 0) {
+      const conflict = conflictCheck.rows[0];
+      
+      if (conflict.teacher_id == teacher_id) {
+        return res.status(400).json({ 
+          success: false, 
+          message: `Teacher Conflict: Yeh Teacher is time (${start_time}) par pehle se busy hain.` 
+        });
+      }
+      
+      if (conflict.class_name === class_id) {
+        return res.status(400).json({ 
+          success: false, 
+          message: `Class Conflict: Class ${class_id} mein is time (${start_time}) par doosra teacher assigned hai.` 
+        });
+      }
     }
 
     // 2. Day nikalna
@@ -30,26 +40,17 @@ exports.assignClass = async (req, res) => {
     const dateObj = new Date(class_date);
     const day_of_week = days[dateObj.getDay()];
 
-    // 3. Insert agar duplicate nahi mila
+    // 3. Insert agar koi conflict nahi mila
     const sql = `
       INSERT INTO teacher_assignments 
       (teacher_id, class_name, subject_name, class_date, day_of_week, start_time, end_time) 
       VALUES ($1, $2, $3, $4, $5, $6, $7)
     `;
 
-    await db.query(sql, [
-      teacher_id,
-      class_id,
-      subject_id,
-      class_date,
-      day_of_week,
-      start_time,
-      end_time
-    ]);
+    await db.query(sql, [teacher_id, class_id, subject_id, class_date, day_of_week, start_time, end_time]);
 
     res.json({ success: true, message: "Class assigned successfully ✅" });
   } catch (err) {
-    console.error("Assign Error:", err.message);
     res.status(500).json({ success: false, message: err.message });
   }
 };

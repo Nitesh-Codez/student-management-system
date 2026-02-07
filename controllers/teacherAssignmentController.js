@@ -23,14 +23,14 @@ exports.assignClass = async (req, res) => {
       if (conflict.teacher_id == teacher_id) {
         return res.status(400).json({ 
           success: false, 
-          message: `Teacher Conflict: Yeh Teacher is time (${start_time}) par pehle se busy hain.` 
+          message: `Class alreday assigned to this teacher at (${start_time}).` 
         });
       }
       
       if (conflict.class_name === class_id) {
         return res.status(400).json({ 
           success: false, 
-          message: `Class Conflict: Class ${class_id} mein is time (${start_time}) par doosra teacher assigned hai.` 
+          message: `Class ${class_id} at(${start_time}) already have another teacher.` 
         });
       }
     }

@@ -94,7 +94,7 @@ exports.getStudentLectures = async (req,res)=>{
     const day=days[new Date(date).getDay()];
 
     const sql=`
-    SELECT ta.*,t.name AS teacher_name
+    SELECT ta.*,t.name AS teacher_name,t.profile_photo
     FROM teacher_assignments ta
     LEFT JOIN teachers t ON ta.teacher_id=t.id
     WHERE ta.class_name=$1

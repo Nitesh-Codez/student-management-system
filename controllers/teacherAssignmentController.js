@@ -11,39 +11,45 @@ exports.assignClass = async (req, res) => {
       start_time,
       end_time,
       is_recurring = true,
-      repeat_until = null
+      repeat_until
     } = req.body;
 
-    // Day nikalna
+    if (!class_date)
+      return res.status(400).json({ success:false,message:"class_date required" });
+
+    // agar repeat_until nahi diya → class_date hi end maan lo
+    const finalRepeatUntil = repeat_until || class_date;
+
     const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
     const day_of_week = days[new Date(class_date).getDay()];
 
-    // ================= CONFLICT CHECK =================
+    // ✅ Proper conflict (range + weekly)
     const conflictSql = `
-      SELECT id FROM teacher_assignments
-      WHERE start_time = $1
-      AND class_date = $2
-      AND (teacher_id = $3 OR class_name = $4)
+    SELECT id FROM teacher_assignments
+    WHERE teacher_id=$1
+    AND day_of_week=$2
+    AND start_time=$3
+    AND (
+        $4 BETWEEN class_date AND repeat_until
+        OR repeat_until IS NULL
+    )
     `;
 
-    const conflict = await db.query(conflictSql, [
-      start_time,
-      class_date,
+    const conflict = await db.query(conflictSql,[
       teacher_id,
-      class_id
+      day_of_week,
+      start_time,
+      class_date
     ]);
 
-    if (conflict.rows.length)
-      return res.status(400).json({ success:false,message:"Time slot already occupied ❌" });
+    if(conflict.rows.length)
+      return res.status(400).json({success:false,message:"Slot already occupied ❌"});
 
-    // ================= INSERT =================
-    const sql = `
+    await db.query(`
       INSERT INTO teacher_assignments
       (teacher_id,class_name,subject_name,class_date,day_of_week,start_time,end_time,is_recurring,repeat_until)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-    `;
-
-    await db.query(sql,[
+    `,[
       teacher_id,
       class_id,
       subject_id,
@@ -52,10 +58,10 @@ exports.assignClass = async (req, res) => {
       start_time,
       end_time,
       is_recurring,
-      repeat_until
+      finalRepeatUntil
     ]);
 
-    res.json({success:true,message:"Class assigned successfully ✅"});
+    res.json({success:true,message:"Class assigned ✅"});
 
   } catch(err){
     res.status(500).json({success:false,message:err.message});
@@ -88,18 +94,13 @@ exports.getStudentLectures = async (req,res)=>{
     const day=days[new Date(date).getDay()];
 
     const sql=`
-    SELECT ta.*,t.name AS teacher_name,t.profile_photo
+    SELECT ta.*,t.name AS teacher_name
     FROM teacher_assignments ta
     LEFT JOIN teachers t ON ta.teacher_id=t.id
     WHERE ta.class_name=$1
-    AND (
-        ta.class_date=$2
-        OR (
-          ta.is_recurring=true
-          AND ta.day_of_week=$3
-          AND ($2 <= ta.repeat_until OR ta.repeat_until IS NULL)
-        )
-    )
+    AND ta.day_of_week=$3
+    AND $2 >= ta.class_date
+    AND ($2 <= ta.repeat_until OR ta.repeat_until IS NULL)
     ORDER BY ta.start_time
     `;
 

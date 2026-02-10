@@ -119,7 +119,7 @@ exports.getTeacherLectures = async (req,res)=>{
     const { teacher_id }=req.params;
 
     const result=await db.query(`
-      SELECT ta.*,t.name AS teacher_name
+      SELECT ta.*,t.name AS teacher_name,t.profile_photo
       FROM teacher_assignments ta
       LEFT JOIN teachers t ON ta.teacher_id=t.id
       WHERE ta.teacher_id=$1

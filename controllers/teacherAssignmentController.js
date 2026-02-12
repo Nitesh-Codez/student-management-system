@@ -11,28 +11,28 @@ exports.assignClass = async (req, res) => {
       start_time,
       end_time,
       is_recurring = true,
-      repeat_until
+      repeat_until,
+      special = false   // 👈 SPECIAL FLAG
     } = req.body;
 
     if (!class_date)
       return res.status(400).json({ success:false,message:"class_date required" });
 
-    // agar repeat_until nahi diya → class_date hi end maan lo
     const finalRepeatUntil = repeat_until || class_date;
 
     const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
     const day_of_week = days[new Date(class_date).getDay()];
 
-    // ✅ Proper conflict (range + weekly)
+    // ================= CONFLICT CHECK =================
     const conflictSql = `
-    SELECT id FROM teacher_assignments
-    WHERE teacher_id=$1
-    AND day_of_week=$2
-    AND start_time=$3
-    AND (
-        $4 BETWEEN class_date AND repeat_until
-        OR repeat_until IS NULL
-    )
+      SELECT id FROM teacher_assignments
+      WHERE teacher_id=$1
+      AND day_of_week=$2
+      AND start_time=$3
+      AND (
+          $4 BETWEEN class_date AND repeat_until
+          OR repeat_until IS NULL
+      )
     `;
 
     const conflict = await db.query(conflictSql,[
@@ -42,9 +42,15 @@ exports.assignClass = async (req, res) => {
       class_date
     ]);
 
-    if(conflict.rows.length)
-      return res.status(400).json({success:false,message:"Slot already occupied ❌"});
+    // ❌ BLOCK ONLY IF NOT SPECIAL
+    if(conflict.rows.length && !special){
+      return res.status(400).json({
+        success:false,
+        message:"Slot already occupied ❌"
+      });
+    }
 
+    // ================= INSERT =================
     await db.query(`
       INSERT INTO teacher_assignments
       (teacher_id,class_name,subject_name,class_date,day_of_week,start_time,end_time,is_recurring,repeat_until)
@@ -61,9 +67,15 @@ exports.assignClass = async (req, res) => {
       finalRepeatUntil
     ]);
 
-    res.json({success:true,message:"Class assigned ✅"});
+    res.json({
+      success:true,
+      message: special
+        ? "Special class assigned to ALL classes ✅"
+        : "Class assigned ✅"
+    });
 
   } catch(err){
+    console.log(err);
     res.status(500).json({success:false,message:err.message});
   }
 };

@@ -204,3 +204,31 @@ exports.deleteAssignment = async (req,res)=>{
     res.status(500).json({success:false,message:err.message});
   }
 };
+
+
+// ================= SUSPEND ALL CLASSES FOR A DAY =================
+exports.suspendDay = async (req, res) => {
+  try {
+    const { date } = req.body;
+
+    if (!date) {
+      return res.status(400).json({ success: false, message: "Date is required" });
+    }
+
+    // Is query se us specific date par hone wali saari classes delete ho jayengi
+    // Note: Agar recurring classes hain, toh unhe 'is_recurring=false' karke handle karna hota hai, 
+    // par simple approach ke liye hum us date ke entries delete kar rahe hain.
+    const result = await db.query(
+      `DELETE FROM teacher_assignments WHERE class_date = $1`,
+      [date]
+    );
+
+    res.json({
+      success: true,
+      message: `Total ${result.rowCount} classes suspended for ${date} ✅`,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};

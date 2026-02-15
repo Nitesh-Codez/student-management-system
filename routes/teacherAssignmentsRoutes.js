@@ -20,6 +20,9 @@ router.put("/update/:id", teacherAssignmentController.updateAssignment);
 router.delete("/delete/:id", teacherAssignmentController.deleteAssignment);
 // ================= GET LECTURES BY TEACHER ID =================
 
+// ================= BULK SUSPEND / HOLIDAY =================
+router.post("/suspend-day", teacherAssignmentController.suspendDay);
+
 router.get("/teacher/:teacher_id", teacherAssignmentController.getTeacherLectures);
 
 module.exports = router;

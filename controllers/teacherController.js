@@ -102,8 +102,8 @@ exports.getTeachers = async (req,res)=>{
 // =================================================
 // ================= UPDATE TEACHER =================
 // =================================================
-exports.updateTeacher = async (req,res)=>{
-  try{
+exports.updateTeacher = async (req, res) => {
+  try {
     const { id } = req.params;
     const {
       name,
@@ -118,18 +118,19 @@ exports.updateTeacher = async (req,res)=>{
 
     let profile_photo = null;
 
-    // ===== photo replace =====
-    if(req.file){
+    // 1. Photo Check: Agar nayi file upload hui hai
+    if (req.file) {
       const fileName = `${Date.now()}-${req.file.originalname}`;
       const path = `profiles/${fileName}`;
 
       const { error } = await supabase.storage
         .from(TEACHER_BUCKET)
-        .upload(path, req.file.buffer,{
-          contentType:req.file.mimetype
+        .upload(path, req.file.buffer, {
+          contentType: req.file.mimetype,
+          upsert: true // Agar file exist karti hai toh replace kar dega
         });
 
-      if(error) throw error;
+      if (error) throw error;
 
       const { data } = supabase.storage
         .from(TEACHER_BUCKET)
@@ -138,43 +139,59 @@ exports.updateTeacher = async (req,res)=>{
       profile_photo = data.publicUrl;
     }
 
-    // ===== hash password if provided =====
-    let hashedPassword = undefined;
-    if(password){
-      hashedPassword = await bcrypt.hash(password,10);
+    // 2. Password Hash: Agar naya password bheja hai
+    let hashedPassword = null;
+    if (password && password.trim() !== "") {
+      hashedPassword = await bcrypt.hash(password, 10);
     }
 
+    // 3. Dynamic Query Build: 
+    // Taki sirf wahi fields update hon jo humne bheji hain
     const sql = `
       UPDATE teachers SET
-        name = COALESCE($1,name),
-        phone = COALESCE($2,phone),
-        email = COALESCE($3,email),
-        qualification = COALESCE($4,qualification),
-        experience_years = COALESCE($5,experience_years),
-        salary = COALESCE($6,salary),
-        status = COALESCE($7,status),
-        profile_photo = COALESCE($8,profile_photo)
-        ${hashedPassword ? ", password=$9" : ""}
-      WHERE id=$${hashedPassword ? 10 : 9}
+        name = COALESCE($1, name),
+        phone = COALESCE($2, phone),
+        email = COALESCE($3, email),
+        qualification = COALESCE($4, qualification),
+        experience_years = COALESCE($5, experience_years),
+        salary = COALESCE($6, salary),
+        status = COALESCE($7, status),
+        profile_photo = CASE WHEN $8::text IS NOT NULL THEN $8 ELSE profile_photo END,
+        password = CASE WHEN $9::text IS NOT NULL THEN $9 ELSE password END
+      WHERE id = $10
+      RETURNING *;
     `;
 
-    const values = [name, phone, email, qualification, experience_years, salary, status, profile_photo];
-    if(hashedPassword) values.push(hashedPassword);
-    values.push(id);
+    const values = [
+      name || null,
+      phone || null,
+      email || null,
+      qualification || null,
+      experience_years || null,
+      salary || null,
+      status || null,
+      profile_photo, // Ye null hoga agar nayi photo nahi aayi
+      hashedPassword, // Ye null hoga agar naya password nahi aaya
+      id
+    ];
 
     const result = await db.query(sql, values);
 
-    if(!result.rowCount)
-      return res.json({success:false,message:"Not found"});
+    if (result.rowCount === 0) {
+      return res.status(404).json({ success: false, message: "Teacher not found" });
+    }
 
-    res.json({success:true,message:"Teacher updated ✅"});
+    res.json({ 
+      success: true, 
+      message: "Teacher updated successfully ✅", 
+      data: result.rows[0] 
+    });
 
-  }catch(err){
-    console.error(err);
-    res.status(500).json({success:false});
+  } catch (err) {
+    console.error("Update Error:", err);
+    res.status(500).json({ success: false, message: err.message });
   }
 };
-
 // =================================================
 // ================= DELETE TEACHER =================
 // =================================================

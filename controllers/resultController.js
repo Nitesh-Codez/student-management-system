@@ -29,18 +29,26 @@ const getAllResults = async (req, res) => {
 };
 
 // 3. GET SINGLE STUDENT RESULT (Bache ke liye - Search by Name & Class)
-const getStudentResult = async (req, res) => {
+
+exports.getStudentResult = async (req, res) => {
     try {
-        const { name, cls } = req.query; // Query params: ?name=Raunak&cls=7th
-        const result = await pool.query(
-            'SELECT * FROM student_results WHERE student_name = $1 AND class = $2 ORDER BY created_at DESC',
-            [name, cls]
-        );
+        const { name, cls } = req.query; // Query params se data nikalna
+        let query = { name: name };
         
-        if (result.rows.length === 0) return res.status(404).json({ message: "Result not found" });
-        res.status(200).json(result.rows);
+        // Agar class bheji hai toh add karo, warna saare results do
+        if (cls) {
+            query.class = cls;
+        }
+
+        const results = await Result.find(query);
+        
+        if (results.length === 0) {
+            return res.status(404).json({ message: "No results found" });
+        }
+        
+        res.status(200).json(results);
     } catch (error) {
-        res.status(500).json({ message: "Error fetching result" });
+        res.status(500).json({ message: "Server error", error });
     }
 };
 

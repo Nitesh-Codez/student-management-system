@@ -13,7 +13,7 @@ router.post('/add', addResult);
 // Admin: Saare results dekhne ke liye
 router.get('/all', getAllResults);
 
-// Student: Apna result dekhne ke liye (Frontend: axios.get(`/api/results/search?name=Raunak&cls=7th`))
+// Student: Apna result dekhne ke liye 
 router.get('/search', getStudentResult);
 
 // Admin/Teacher: Result edit karne ke liye

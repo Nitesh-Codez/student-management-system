@@ -32,10 +32,18 @@ const addResult = async (req, res) => {
         });
 
     } catch (error) {
-        res.status(500).json({ message: "Error saving result", error });
+
+        if (error.code === "23505") {
+            return res.status(400).json({
+                message: "Result already exists for this student, class and exam term ❌"
+            });
+        }
+
+        res.status(500).json({
+            message: "Error saving result"
+        });
     }
 };
-
 
 // 2. GET ALL RESULTS
 const getAllResults = async (req, res) => {

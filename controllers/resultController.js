@@ -40,7 +40,7 @@ const addResult = async (req, res) => {
         }
 
         res.status(500).json({
-            message: "Error saving result"
+            message: "Result already exists for this class and exam ❌"
         });
     }
 };

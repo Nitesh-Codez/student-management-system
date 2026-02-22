@@ -1,16 +1,15 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
+const quizController = require("../controllers/quizController");
 
-const {
-    addResult,
-    getAllResults,
-    getStudentResult,
-    updateResult
-} = require('../controllers/resultController');
+// Admin Routes
+router.post("/create", quizController.createQuiz);
+router.get("/admin/results/:class_name", quizController.getAdminResults);
 
-router.post('/add', addResult);
-router.get('/all', getAllResults);
-router.get('/search', getStudentResult);
-router.put('/update/:id', updateResult);
+// Student Routes
+router.get("/class/:class_name", quizController.getQuizByClass);
+router.get("/:id", quizController.getSingleQuiz);
+router.get("/status/:quizId/:studentId", quizController.checkAttemptStatus);
+router.post("/submit", quizController.submitQuiz);
 
 module.exports = router;

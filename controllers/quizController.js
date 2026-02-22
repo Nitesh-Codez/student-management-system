@@ -83,67 +83,46 @@ exports.checkAttemptStatus = async (req, res) => {
 };
 
 // 5. SUBMIT QUIZ (Strict 1-Attempt Logic & Real-time Calc)
+// ✅ 5. SUBMIT QUIZ (Updated to handle Finish Time)
 exports.submitQuiz = async (req, res) => {
   try {
     const { student_id, quiz_id, answers } = req.body;
 
-    // STEP A: Lock - Check if already exists in quiz_results
     const check = await db.query(
         `SELECT id FROM quiz_results WHERE student_id=$1 AND quiz_id=$2`, 
         [student_id, quiz_id]
     );
     
     if (check.rowCount > 0) {
-      return res.status(403).json({ 
-        success: false, 
-        message: "STRICT LOCK: You have already submitted this quiz once." 
-      });
+      return res.status(403).json({ success: false, message: "Already submitted!" });
     }
 
-    // STEP B: Fetch Quiz Correct Answers
     const quizRes = await db.query(`SELECT questions, total_marks FROM quizzes WHERE id=$1`, [quiz_id]);
-    if (quizRes.rowCount === 0) return res.status(404).json({ success: false, message: "Quiz data lost" });
-
     const quiz = quizRes.rows[0];
     const questions = typeof quiz.questions === 'string' ? JSON.parse(quiz.questions) : quiz.questions;
 
-    // STEP C: Score Calculation
     let score = 0;
     questions.forEach((q, index) => {
-      // Comparison logic (Ensure cases match)
       if (answers[index] && answers[index].trim() === q.correctAnswer.trim()) {
         score++;
       }
     });
 
     const percentage = ((score / quiz.total_marks) * 100).toFixed(2);
-    
-    // STEP D: Dynamic Grading System
-    let grade = "F";
-    if (percentage >= 90) grade = "A+";
-    else if (percentage >= 80) grade = "A";
-    else if (percentage >= 70) grade = "B";
-    else if (percentage >= 60) grade = "C";
-    else if (percentage >= 40) grade = "D";
+    let grade = percentage >= 90 ? "A+" : percentage >= 80 ? "A" : percentage >= 70 ? "B" : percentage >= 60 ? "C" : "D";
 
-    // STEP E: Final Save
+    // Saving result (attempted_at will be handled by DEFAULT CURRENT_TIMESTAMP in DB)
     const insertRes = await db.query(
       `INSERT INTO quiz_results (student_id, quiz_id, score, percentage, grade)
        VALUES ($1, $2, $3, $4, $5) RETURNING *`,
       [student_id, quiz_id, score, percentage, grade]
     );
 
-    res.json({ 
-        success: true, 
-        message: "Quiz submitted successfully",
-        data: insertRes.rows[0] 
-    });
+    res.json({ success: true, data: insertRes.rows[0] });
   } catch (err) {
-    console.error("Submission Error:", err);
-    res.status(500).json({ success: false, message: "System failure during submission" });
+    res.status(500).json({ success: false, message: err.message });
   }
 };
-
 // 6. ADMIN REPORT (Fetch all student results with names & timestamp)
 exports.getAdminResults = async (req, res) => {
     try {

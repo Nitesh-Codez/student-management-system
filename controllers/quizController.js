@@ -181,3 +181,42 @@ exports.getAdminResults = async (req, res) => {
       res.status(500).json({ success: false, message: "Database error" });
     }
 };
+//============================================================================
+// ✅ GET QUIZ REVIEW (Questions + Correct Answers + Student Response)
+//===============================================================================
+exports.getQuizReview = async (req, res) => {
+  try {
+    const { quizId, studentId } = req.params;
+
+    // 1. Fetch Quiz Details & Questions
+    const quizQuery = `SELECT * FROM quizzes WHERE id = $1`;
+    const quizRes = await db.query(quizQuery, [quizId]);
+
+    if (quizRes.rowCount === 0) {
+      return res.status(404).json({ success: false, message: "Quiz not found" });
+    }
+
+    const quiz = quizRes.rows[0];
+
+    // 2. Fetch Student's Result & Answers (If attempted)
+    const resultQuery = `SELECT * FROM quiz_results WHERE quiz_id = $1 AND student_id = $2`;
+    const resultRes = await db.query(resultQuery, [quizId, studentId]);
+
+    // Response structure
+    const reviewData = {
+      quiz_info: {
+        title: quiz.title,
+        subject: quiz.subject,
+        total_marks: quiz.total_marks,
+        class_name: quiz.class_name
+      },
+      questions: typeof quiz.questions === 'string' ? JSON.parse(quiz.questions) : quiz.questions,
+      student_result: resultRes.rowCount > 0 ? resultRes.rows[0] : null
+    };
+
+    res.json({ success: true, data: reviewData });
+  } catch (err) {
+    console.error("Review Error:", err);
+    res.status(500).json({ success: false, message: "Error fetching quiz review" });
+  }
+};

@@ -13,11 +13,17 @@ router.get("/admin/results/:class_name", quizController.getAdminResults);
  */
 // 3. Get all quizzes assigned to student's class
 router.get("/class/:class_name", quizController.getQuizByClass);
+
 // 4. Get full quiz details (Questions/Timer) for attempting
 router.get("/:id", quizController.getSingleQuiz);
+
 // 5. Check if student has already done this quiz (Lock mechanism)
 router.get("/status/:quizId/:studentId", quizController.checkAttemptStatus);
+
 // 6. Final submission and score calculation
 router.post("/submit", quizController.submitQuiz);
+
+// 7. checking answers and respond questionsion
+router.get("/review/:quizId/:studentId", quizController.getQuizReview);
 
 module.exports = router;

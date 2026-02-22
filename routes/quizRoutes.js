@@ -1,17 +1,25 @@
 const express = require("express");
 const router = express.Router();
-const quizController = require("../controllers/quizController");
 
-// Create Quiz (Admin)
-router.post("/create", quizController.createQuiz);
+// ✅ Import controller functions (destructure the exports)
+const {
+  createQuiz,
+  getQuizByClass,
+  getSingleQuiz,
+  checkAttemptStatus,
+  submitQuiz,
+  getAdminResults
+} = require("../controllers/quizController");
 
-// Get Quizzes by Class Name (For Students)
-router.get("/class/:class_name", quizController.getQuizByClass);
+// ================== Admin Routes ==================
+router.post("/create", createQuiz);
+router.get("/admin/results/:class_name", getAdminResults);
 
-// Get Specific Quiz Details
-router.get("/:id", quizController.getSingleQuiz);
-
-// Submit Quiz Result
-router.post("/submit", quizController.submitQuiz);
+// ================= Student Routes ==================
+// Specific routes first to avoid conflict with parameterized route
+router.get("/class/:class_name", getQuizByClass);
+router.get("/status/:quizId/:studentId", checkAttemptStatus);
+router.get("/:id", getSingleQuiz);
+router.post("/submit", submitQuiz);
 
 module.exports = router;

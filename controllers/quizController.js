@@ -124,40 +124,37 @@ exports.submitQuiz = async (req, res) => {
   }
 };
 // 6. ADMIN REPORT (Fetch all student results with names & timestamp)
+// 6. ADMIN REPORT (Class wise results)
 exports.getAdminResults = async (req, res) => {
     try {
-      const { class_name } = req.params;
-      
-      // SQL JOIN to get student name from 'students' table and quiz details from 'quizzes'
-      const sql = `
-        SELECT 
-          qr.id as result_id,
-          s.name as student_name,
-          s.id as student_id,
-          q.title as quiz_title,
-          q.subject,
-          qr.score,
-          q.total_marks,
-          qr.percentage,
-          qr.grade,
-          qr.attempted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata' as submission_time
-        FROM quiz_results qr
-        JOIN students s ON qr.student_id = s.id
-        JOIN quizzes q ON qr.quiz_id = q.id
-        WHERE q.class_name = $1
-        ORDER BY qr.attempted_at DESC
-      `;
-  
-      const result = await db.query(sql, [class_name]);
-      
-      if(result.rowCount === 0) {
-          return res.json({ success: true, message: "No records found for this class", data: [] });
-      }
+        const { class_name } = req.params;
+        
+        // SQL JOIN: students table se naam aur quizzes table se title lane ke liye
+        const sql = `
+            SELECT 
+                qr.id as result_id,
+                s.name as student_name,
+                q.title as quiz_title,
+                q.subject,
+                qr.score,
+                q.total_marks,
+                qr.percentage,
+                qr.grade,
+                qr.attempted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata' as created_at
+            FROM quiz_results qr
+            JOIN students s ON qr.student_id = s.id
+            JOIN quizzes q ON qr.quiz_id = q.id
+            WHERE q.class_name = $1
+            ORDER BY qr.attempted_at DESC
+        `;
 
-      res.json({ success: true, data: result.rows });
+        const result = await db.query(sql, [class_name]);
+        
+        // Frontend ko direct array bhejna asaan hota hai map karne ke liye
+        res.json(result.rows); 
     } catch (err) {
-      console.error("Admin Report Error:", err);
-      res.status(500).json({ success: false, message: "Database error" });
+        console.error("Admin Report Error:", err);
+        res.status(500).json({ success: false, message: "Database error" });
     }
 };
 //============================================================================

@@ -1,16 +1,17 @@
-import express from "express";
-import {
-  createQuiz,
-  getQuizByClass,
-  getSingleQuiz,
-  submitQuiz
-} from "../controllers/quizController.js";
-
+const express = require("express");
 const router = express.Router();
+const quizController = require("../controllers/quizController");
 
-router.post("/create", createQuiz);
-router.get("/class/:class_name", getQuizByClass);
-router.get("/:id", getSingleQuiz);
-router.post("/submit", submitQuiz);
+// Create Quiz (Admin)
+router.post("/create", quizController.createQuiz);
 
-export default router;
+// Get Quizzes by Class Name (For Students)
+router.get("/class/:class_name", quizController.getQuizByClass);
+
+// Get Specific Quiz Details
+router.get("/:id", quizController.getSingleQuiz);
+
+// Submit Quiz Result
+router.post("/submit", quizController.submitQuiz);
+
+module.exports = router;

@@ -1,33 +1,39 @@
 const db = require("../db");
 
-
 // ✅ Create Quiz (Admin)
-export const createQuiz = async (req, res) => {
+exports.createQuiz = async (req, res) => {
   try {
     const { class_name, subject, title, timer_minutes, questions } = req.body;
 
     const total_marks = questions.length;
 
-    const result = await pool.query(
-      `INSERT INTO quizzes 
+    const sql = `
+      INSERT INTO quizzes 
       (class_name, subject, title, timer_minutes, questions, total_marks)
-      VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-      [class_name, subject, title, timer_minutes, JSON.stringify(questions), total_marks]
-    );
+      VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`;
 
-    res.json(result.rows[0]);
+    const result = await db.query(sql, [
+      class_name,
+      subject,
+      title,
+      timer_minutes,
+      JSON.stringify(questions),
+      total_marks,
+    ]);
+
+    res.json({ success: true, data: result.rows[0] });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
-
 // ✅ Get Quiz by Class (Student Dashboard)
-export const getQuizByClass = async (req, res) => {
+exports.getQuizByClass = async (req, res) => {
   try {
     const { class_name } = req.params;
 
-    const result = await pool.query(
+    const result = await db.query(
       `SELECT id, title, subject, timer_minutes 
        FROM quizzes WHERE class_name=$1`,
       [class_name]
@@ -35,43 +41,44 @@ export const getQuizByClass = async (req, res) => {
 
     res.json(result.rows);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
-
 // ✅ Get Single Quiz
-export const getSingleQuiz = async (req, res) => {
+exports.getSingleQuiz = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const result = await pool.query(
-      `SELECT * FROM quizzes WHERE id=$1`,
-      [id]
-    );
+    const result = await db.query(`SELECT * FROM quizzes WHERE id=$1`, [id]);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ success: false, message: "Quiz not found" });
+    }
 
     res.json(result.rows[0]);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
-
 // ✅ Submit Quiz
-export const submitQuiz = async (req, res) => {
+exports.submitQuiz = async (req, res) => {
   try {
     const { student_id, quiz_id, answers } = req.body;
 
-    const quizRes = await pool.query(
-      `SELECT * FROM quizzes WHERE id=$1`,
-      [quiz_id]
-    );
+    const quizRes = await db.query(`SELECT * FROM quizzes WHERE id=$1`, [quiz_id]);
+
+    if (quizRes.rowCount === 0) {
+      return res.status(404).json({ success: false, message: "Quiz not found" });
+    }
 
     const quiz = quizRes.rows[0];
-    const questions = quiz.questions;
+    const questions = quiz.questions; // Ensure this is parsed if stored as JSON string
 
     let score = 0;
-
     questions.forEach((q, index) => {
       if (answers[index] === q.correctAnswer) {
         score++;
@@ -86,16 +93,16 @@ export const submitQuiz = async (req, res) => {
     else if (percentage >= 70) grade = "B";
     else if (percentage >= 60) grade = "C";
 
-    await pool.query(
+    await db.query(
       `INSERT INTO quiz_results 
       (student_id, quiz_id, score, percentage, grade)
-      VALUES ($1,$2,$3,$4,$5)`,
+      VALUES ($1, $2, $3, $4, $5)`,
       [student_id, quiz_id, score, percentage, grade]
     );
 
-    res.json({ score, percentage, grade });
-
+    res.json({ success: true, score, percentage, grade });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ success: false, message: err.message });
   }
 };

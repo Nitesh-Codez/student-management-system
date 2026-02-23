@@ -23,7 +23,8 @@ router.get("/status/:quizId/:studentId", quizController.checkAttemptStatus);
 // 6. Final submission and score calculation
 router.post("/submit", quizController.submitQuiz);
 
-// 7. checking answers and respond questionsion
+
+// Review quiz (answers + result)
 router.get("/review/:quizId/:studentId", quizController.getQuizReview);
 
 module.exports = router;

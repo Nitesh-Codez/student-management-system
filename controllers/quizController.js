@@ -88,42 +88,67 @@ exports.submitQuiz = async (req, res) => {
   try {
     const { student_id, quiz_id, answers } = req.body;
 
+    // 1. Check already attempted
     const check = await db.query(
-        `SELECT id FROM quiz_results WHERE student_id=$1 AND quiz_id=$2`, 
-        [student_id, quiz_id]
+      `SELECT id FROM quiz_results WHERE student_id=$1 AND quiz_id=$2`,
+      [student_id, quiz_id]
     );
-    
+
     if (check.rowCount > 0) {
       return res.status(403).json({ success: false, message: "Already submitted!" });
     }
 
-    const quizRes = await db.query(`SELECT questions, total_marks FROM quizzes WHERE id=$1`, [quiz_id]);
-    const quiz = quizRes.rows[0];
-    const questions = typeof quiz.questions === 'string' ? JSON.parse(quiz.questions) : quiz.questions;
+    // 2. Get quiz
+    const quizRes = await db.query(
+      `SELECT questions, total_marks FROM quizzes WHERE id=$1`,
+      [quiz_id]
+    );
 
+    if (quizRes.rowCount === 0) {
+      return res.status(404).json({ success: false, message: "Quiz not found" });
+    }
+
+    const quiz = quizRes.rows[0];
+    const questions =
+      typeof quiz.questions === "string"
+        ? JSON.parse(quiz.questions)
+        : quiz.questions;
+
+    // 3. Calculate Score
     let score = 0;
+
     questions.forEach((q, index) => {
-      if (answers[index] && answers[index].trim() === q.correctAnswer.trim()) {
+      if (
+        answers[index] &&
+        answers[index].trim() === q.correctAnswer.trim()
+      ) {
         score++;
       }
     });
 
     const percentage = ((score / quiz.total_marks) * 100).toFixed(2);
-    let grade = percentage >= 90 ? "A+" : percentage >= 80 ? "A" : percentage >= 70 ? "B" : percentage >= 60 ? "C" : "D";
 
-    // Saving result (attempted_at will be handled by DEFAULT CURRENT_TIMESTAMP in DB)
+    let grade =
+      percentage >= 90 ? "A+" :
+      percentage >= 80 ? "A" :
+      percentage >= 70 ? "B" :
+      percentage >= 60 ? "C" :
+      "D";
+
+    // 4. Insert with answers
     const insertRes = await db.query(
-      `INSERT INTO quiz_results (student_id, quiz_id, score, percentage, grade)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [student_id, quiz_id, score, percentage, grade]
+      `INSERT INTO quiz_results
+      (student_id, quiz_id, score, percentage, grade, answers)
+      VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [student_id, quiz_id, score, percentage, grade, JSON.stringify(answers)]
     );
 
     res.json({ success: true, data: insertRes.rows[0] });
+
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
-};
-// 6. ADMIN REPORT (Fetch all student results with names & timestamp)
+};// 6. ADMIN REPORT (Fetch all student results with names & timestamp)
 // 6. ADMIN REPORT (Class wise results)
 exports.getAdminResults = async (req, res) => {
     try {
@@ -164,25 +189,48 @@ exports.getQuizReview = async (req, res) => {
   try {
     const { quizId, studentId } = req.params;
 
-    const quizRes = await db.query(`SELECT * FROM quizzes WHERE id = $1`, [quizId]);
-    if (quizRes.rowCount === 0) return res.status(404).json({ success: false, message: "Quiz not found" });
+    // 1. Get quiz
+    const quizRes = await db.query(
+      `SELECT * FROM quizzes WHERE id=$1`,
+      [quizId]
+    );
+
+    if (quizRes.rowCount === 0)
+      return res.status(404).json({ success: false, message: "Quiz not found" });
+
     const quiz = quizRes.rows[0];
 
-    // Added Timezone conversion for local time
+    // 2. Get student result
     const resultRes = await db.query(
-      `SELECT *, attempted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata' as finish_time 
-       FROM quiz_results WHERE quiz_id = $1 AND student_id = $2`, 
+      `SELECT *,
+      attempted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata' as finish_time
+      FROM quiz_results
+      WHERE quiz_id=$1 AND student_id=$2`,
       [quizId, studentId]
     );
+
+    if (resultRes.rowCount === 0)
+      return res.status(404).json({ success: false, message: "Result not found" });
+
+    const studentResult = resultRes.rows[0];
 
     res.json({
       success: true,
       data: {
-        quiz_info: { title: quiz.title, subject: quiz.subject, total_marks: quiz.total_marks },
-        questions: typeof quiz.questions === 'string' ? JSON.parse(quiz.questions) : quiz.questions,
-        student_result: resultRes.rowCount > 0 ? resultRes.rows[0] : null
-      }
+        quiz_info: {
+          title: quiz.title,
+          subject: quiz.subject,
+          total_marks: quiz.total_marks,
+        },
+        questions:
+          typeof quiz.questions === "string"
+            ? JSON.parse(quiz.questions)
+            : quiz.questions,
+        student_answers: studentResult.answers,
+        student_result: studentResult,
+      },
     });
+
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

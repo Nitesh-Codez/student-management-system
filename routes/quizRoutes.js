@@ -30,4 +30,8 @@ router.get("/review/:quizId/:studentId", quizController.getQuizReview);
 //
 // 7. Update question (Admin)
 router.put("/update/:quizId/:questionIndex", quizController.updateQuestion);
+
+//// 8. Delete quiz (Admin)
+router.delete("/delete/:quizId", quizController.deleteQuiz);
+
 module.exports = router;

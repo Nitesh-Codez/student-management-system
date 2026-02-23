@@ -282,3 +282,39 @@ exports.updateQuestion = async (req, res) => {
     res.status(500).json({ success: false, message: "Server error while updating question" });
   }
 };
+
+//========================================
+// 8. DELETE QUIZ (Admin Only)
+exports.deleteQuiz = async (req, res) => {
+  try {
+    const { quizId } = req.params;
+
+    // Check quiz exists
+    const check = await db.query(
+      `SELECT id FROM quizzes WHERE id=$1`,
+      [quizId]
+    );
+
+    if (check.rowCount === 0) {
+      return res.status(404).json({ success: false, message: "Quiz not found" });
+    }
+
+    // First delete related results (to avoid foreign key error)
+    await db.query(
+      `DELETE FROM quiz_results WHERE quiz_id=$1`,
+      [quizId]
+    );
+
+    // Then delete quiz
+    await db.query(
+      `DELETE FROM quizzes WHERE id=$1`,
+      [quizId]
+    );
+
+    res.json({ success: true, message: "Quiz deleted successfully" });
+
+  } catch (err) {
+    console.error("Delete Quiz Error:", err);
+    res.status(500).json({ success: false, message: "Server error while deleting quiz" });
+  }
+};

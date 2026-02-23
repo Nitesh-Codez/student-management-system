@@ -235,3 +235,50 @@ exports.getQuizReview = async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 };
+//==============================================
+// 7. UPDATE QUESTION / OPTION (Admin Only)
+//==============================================
+exports.updateQuestion = async (req, res) => {
+  try {
+    const { quizId, questionIndex } = req.params;
+    const { question, options, correctAnswer } = req.body;
+
+    // Step 1: Get existing quiz
+    const quizRes = await db.query(
+      `SELECT questions FROM quizzes WHERE id=$1`,
+      [quizId]
+    );
+
+    if (quizRes.rowCount === 0) {
+      return res.status(404).json({ success: false, message: "Quiz not found" });
+    }
+
+    let questions = quizRes.rows[0].questions;
+
+    // If string convert to JSON
+    if (typeof questions === "string") {
+      questions = JSON.parse(questions);
+    }
+
+    // Step 2: Update specific question
+    if (!questions[questionIndex]) {
+      return res.status(404).json({ success: false, message: "Question index invalid" });
+    }
+
+    if (question) questions[questionIndex].question = question;
+    if (options) questions[questionIndex].options = options;
+    if (correctAnswer) questions[questionIndex].correctAnswer = correctAnswer;
+
+    // Step 3: Save updated JSON
+    const updateRes = await db.query(
+      `UPDATE quizzes SET questions=$1 WHERE id=$2 RETURNING *`,
+      [JSON.stringify(questions), quizId]
+    );
+
+    res.json({ success: true, data: updateRes.rows[0] });
+
+  } catch (err) {
+    console.error("Update Question Error:", err);
+    res.status(500).json({ success: false, message: "Server error while updating question" });
+  }
+};

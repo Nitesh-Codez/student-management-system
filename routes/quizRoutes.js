@@ -27,4 +27,7 @@ router.post("/submit", quizController.submitQuiz);
 // Review quiz (answers + result)
 router.get("/review/:quizId/:studentId", quizController.getQuizReview);
 
+//
+// 7. Update question (Admin)
+router.put("/update/:quizId/:questionIndex", quizController.updateQuestion);
 module.exports = router;

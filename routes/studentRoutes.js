@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 
-// Dono controllers ko alag-alag naam se import karo
+// Dono controllers ko alag-alag naam se import karo//ab dekh
 const studentController = require("../controllers/studentController");
 const examController = require("../controllers/examController"); 
 

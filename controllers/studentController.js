@@ -1,15 +1,16 @@
 const bcrypt = require("bcryptjs");
-const db = require("../db"); // PostgreSQL connection
+const db = require("../db");
 const multer = require("multer");
-const cloudinary = require("cloudinary").v2;
-const path = require("path");
+const { createClient } = require("@supabase/supabase-js");
+
+// --------------------- Supabase Setup ---------------------
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
 // --------------------- Multer Setup ---------------------
-const storage = multer.diskStorage({
-  filename: function (req, file, cb) {
-    cb(null, Date.now() + path.extname(file.originalname));
-  }
-});
+const storage = multer.memoryStorage();
 
 const upload = multer({
   storage,
@@ -23,11 +24,6 @@ const upload = multer({
   }
 });
 
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
 // --------------------- CRUD STUDENT ---------------------
 
 // Get all students
@@ -47,17 +43,24 @@ exports.getStudents = async (req, res) => {
 exports.addStudent = async (req, res) => {
   const { name, class: studentClass, password, mobile = null, address = null } = req.body;
 
-  if (!name || !studentClass || !password)
+  if (!name || !studentClass || !password) {
     return res.json({ success: false, message: "Name, class and password are required" });
+  }
 
   try {
     const hashedPassword = await bcrypt.hash(password, 10);
+
     const result = await db.query(
-      "INSERT INTO students (name, \"class\", password, mobile, address, role) VALUES ($1, $2, $3, $4, $5, 'student') RETURNING id",
+      "INSERT INTO students (name, \"class\", password, mobile, address, role) VALUES ($1,$2,$3,$4,$5,'student') RETURNING id",
       [name, studentClass, hashedPassword, mobile, address]
     );
 
-    res.json({ success: true, message: "Student added successfully", id: result.rows[0].id });
+    res.json({
+      success: true,
+      message: "Student added successfully",
+      id: result.rows[0].id
+    });
+
   } catch (err) {
     console.log("DB ERROR:", err);
     res.status(500).json({ success: false, message: err.message });
@@ -67,9 +70,11 @@ exports.addStudent = async (req, res) => {
 // Delete student
 exports.deleteStudent = async (req, res) => {
   const { id } = req.params;
+
   try {
     await db.query("DELETE FROM students WHERE id = $1", [id]);
     res.json({ success: true, message: "Student deleted successfully" });
+
   } catch (err) {
     console.log("DB ERROR:", err);
     res.status(500).json({ success: false, message: err.message });
@@ -78,7 +83,6 @@ exports.deleteStudent = async (req, res) => {
 
 // --------------------- PROFILE PHOTO ---------------------
 
-// Admin upload / update profile photo
 exports.uploadProfilePhoto = async (req, res) => {
   try {
     const { id } = req.params;
@@ -87,29 +91,47 @@ exports.uploadProfilePhoto = async (req, res) => {
       return res.status(400).json({ success: false, message: "No file uploaded" });
     }
 
-    const student = await db.query("SELECT * FROM students WHERE id = $1", [id]);
+    const student = await db.query("SELECT * FROM students WHERE id=$1", [id]);
+
     if (student.rows.length === 0) {
       return res.status(404).json({ success: false, message: "Student not found" });
     }
 
-    // Upload to cloudinary
-    const result = await cloudinary.uploader.upload(req.file.path, {
-      folder: "profile_photos",
-      resource_type: "image",
-      transformation: [{ width: 300, height: 300, crop: "fill" }]
-    });
+    const fileName = `student-${id}-${Date.now()}.jpg`;
 
-    // Save URL in DB
-    await db.query("UPDATE students SET profile_photo = $1 WHERE id = $2", [result.secure_url, id]);
+    // Upload to Supabase bucket
+    const { error } = await supabase.storage
+      .from(process.env.SUPABASE_STUDENT_BUCKET)
+      .upload(fileName, req.file.buffer, {
+        contentType: req.file.mimetype
+      });
+
+    if (error) {
+      console.log(error);
+      return res.status(500).json({ success: false, message: "Upload failed" });
+    }
+
+    // Get public URL
+    const { data } = supabase.storage
+      .from(process.env.SUPABASE_STUDENT_BUCKET)
+      .getPublicUrl(fileName);
+
+    const photoUrl = data.publicUrl;
+
+    // Save URL in database
+    await db.query(
+      "UPDATE students SET profile_photo=$1 WHERE id=$2",
+      [photoUrl, id]
+    );
 
     res.json({
       success: true,
       message: "Profile photo uploaded successfully",
-      profile_photo: result.secure_url
+      profile_photo: photoUrl
     });
 
   } catch (error) {
-    console.error("Profile Photo Upload Error:", error);
+    console.log("Upload Error:", error);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
@@ -118,17 +140,22 @@ exports.uploadProfilePhoto = async (req, res) => {
 exports.getProfilePhoto = async (req, res) => {
   try {
     const { id } = req.params;
-    const result = await db.query("SELECT id, name, profile_photo FROM students WHERE id = $1", [id]);
+
+    const result = await db.query(
+      "SELECT id,name,profile_photo FROM students WHERE id=$1",
+      [id]
+    );
 
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, message: "Student not found" });
     }
 
     res.json({ success: true, user: result.rows[0] });
+
   } catch (error) {
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
-// Export multer for router
+// Export multer
 exports.uploadMiddleware = upload;

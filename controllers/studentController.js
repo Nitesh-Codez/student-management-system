@@ -162,7 +162,7 @@ const getStudentClassHistory = async (req,res)=>{
 
   const studentId = req.query.id;
 
-  const result = await pool.query(
+  const result = await db.query(
    "SELECT class,year FROM student_class_history WHERE student_id=$1 ORDER BY year",
    [studentId]
   );
@@ -176,5 +176,8 @@ const getStudentClassHistory = async (req,res)=>{
   res.status(500).json({success:false,message:"Server error"});
  }
 };
+
+exports.getStudentClassHistory = getStudentClassHistory;
+
 // Export multer
 exports.uploadMiddleware = upload;

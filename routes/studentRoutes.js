@@ -29,6 +29,6 @@ router.get("/my-exam-details", examController.getMyExamDetails);
 router.post("/finalize-exam", examController.finalizeExamSubmission);
 
 //for saving history
-router.get("/class-history", getStudentClassHistory);
+router.get("/class-history", studentController.getStudentClassHistory);
 
 module.exports = router;

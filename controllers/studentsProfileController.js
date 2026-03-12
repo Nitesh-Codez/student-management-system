@@ -44,7 +44,6 @@ const insertStudent = async (req, res) => {
       return res.status(400).json({ success: false, message: "Code, Name, Class and Mobile are required" });
     }
 
-    // SQL query mein 'district' aur placeholder '$18' add kiya gaya hai
     const query = `
       INSERT INTO students (
         code, name, class, mobile, address, role,
@@ -68,7 +67,18 @@ const insertStudent = async (req, res) => {
 
     const { rows } = await pool.query(query, values);
 
-    res.status(201).json({ success: true, message: "Student inserted successfully", student: rows[0] });
+    // 🔴 CLASS HISTORY SAVE
+    await pool.query(
+      "INSERT INTO student_class_history (student_id, class, year) VALUES ($1,$2,$3)",
+      [rows[0].id, studentClass, new Date().getFullYear()]
+    );
+
+    res.status(201).json({
+      success: true,
+      message: "Student inserted successfully",
+      student: rows[0]
+    });
+
   } catch (error) {
     if (error.code === "23505") {
       return res.status(409).json({ success: false, message: "Student code already exists" });
@@ -77,18 +87,18 @@ const insertStudent = async (req, res) => {
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
-
 // ================= UPDATE STUDENT PROFILE =================
 // ================= UPDATE STUDENT PROFILE (Fixed with CODE) =================
 const updateStudentProfile = async (req, res) => {
   try {
     const studentId = Number(req.params.id);
+
     if (!studentId || isNaN(studentId)) {
       return res.status(400).json({ success: false, message: "Valid Student ID required" });
     }
 
     const {
-      code,          // <--- Ye missing tha!
+      code,
       name,
       class: studentClass,
       mobile,
@@ -109,46 +119,46 @@ const updateStudentProfile = async (req, res) => {
 
     const query = `
       UPDATE students SET
-        code = $1,      -- <--- Query mein add kiya
-        name = $2, 
-        class = $3, 
-        mobile = $4, 
+        code = $1,
+        name = $2,
+        class = $3,
+        mobile = $4,
         address = $5,
-        father_name = $6, 
-        mother_name = $7, 
-        gender = $8, 
+        father_name = $6,
+        mother_name = $7,
+        gender = $8,
         dob = $9,
-        email = $10, 
-        aadhaar = $11, 
-        blood_group = $12, 
+        email = $10,
+        aadhaar = $11,
+        blood_group = $12,
         category = $13,
-        city = $14, 
-        state = $15, 
-        pincode = $16, 
+        city = $14,
+        state = $15,
+        pincode = $16,
         district = $17
-      WHERE id = $18    -- <--- Index change ho gaya
+      WHERE id = $18
       RETURNING *
     `;
 
     const values = [
-      code,             // $1
-      name,             // $2
-      studentClass,     // $3
-      mobile,           // $4
-      address,          // $5
-      father_name,      // $6
-      mother_name,      // $7
-      gender,           // $8
-      dob,              // $9
-      email,            // $10
-      aadhaar,          // $11
-      blood_group,      // $12
-      category,         // $13
-      city,             // $14
-      state,            // $15
-      pincode,          // $16
-      district,         // $17
-      studentId         // $18
+      code,
+      name,
+      studentClass,
+      mobile,
+      address,
+      father_name,
+      mother_name,
+      gender,
+      dob,
+      email,
+      aadhaar,
+      blood_group,
+      category,
+      city,
+      state,
+      pincode,
+      district,
+      studentId
     ];
 
     const { rows } = await pool.query(query, values);
@@ -157,10 +167,16 @@ const updateStudentProfile = async (req, res) => {
       return res.status(404).json({ success: false, message: "Student not found" });
     }
 
+    // 🔴 CLASS HISTORY SAVE (update ke baad)
+    await pool.query(
+      "INSERT INTO student_class_history (student_id, class, year) VALUES ($1,$2,$3)",
+      [studentId, studentClass, new Date().getFullYear()]
+    );
+
     res.json({
       success: true,
       message: "Profile updated successfully",
-      student: rows[0], // Ye rows[0] ab naya 'code' lekar jayega frontend pe
+      student: rows[0],
     });
 
   } catch (error) {

@@ -28,4 +28,7 @@ router.get("/my-exam-details", examController.getMyExamDetails);
 // Exam Form page is route ko use karega status 'Submitted' karne ke liye
 router.post("/finalize-exam", examController.finalizeExamSubmission);
 
+//for saving history
+router.get("/class-history", getStudentClassHistory);
+
 module.exports = router;

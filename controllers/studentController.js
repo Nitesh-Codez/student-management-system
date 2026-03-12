@@ -157,5 +157,24 @@ exports.getProfilePhoto = async (req, res) => {
   }
 };
 
+const getStudentClassHistory = async (req,res)=>{
+ try{
+
+  const studentId = req.query.id;
+
+  const result = await pool.query(
+   "SELECT class,year FROM student_class_history WHERE student_id=$1 ORDER BY year",
+   [studentId]
+  );
+
+  res.json({
+   success:true,
+   history:result.rows
+  });
+
+ }catch(err){
+  res.status(500).json({success:false,message:"Server error"});
+ }
+};
 // Export multer
 exports.uploadMiddleware = upload;

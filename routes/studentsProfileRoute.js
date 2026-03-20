@@ -4,37 +4,37 @@ const router = express.Router();
 const {
   getStudentProfile,
   insertStudent,
-updateStudentProfile,
+  updateStudentProfile,
   requestProfileEdit,
   handleEditRequest,
   getPendingEditRequests,
-    getEditRequests,
+  getEditRequests,
 } = require("../controllers/studentsProfileController");
 
-// GET profile
-// /api/students/profile?id=27
+// ================= STUDENT PROFILE ROUTES =================
+
+// GET profile: /api/students/profile?id=27
 router.get("/profile", getStudentProfile);
 
-// INSERT student
-// /api/students/add
+// INSERT new student: /api/students/add
 router.post("/add", insertStudent);
-// UPDATE profile
-// /api/students/update/27
+
+// UPDATE student profile: /api/students/update/27
 router.put("/update/:id", updateStudentProfile);
 
-// student → request edit
+// ================= PROFILE EDIT REQUESTS (Workflow) =================
+
+// Student side: Request an edit
 router.post("/request-edit", requestProfileEdit);
 
-// admin → approve / reject
+// Admin side: Approve or Reject a request
 router.post("/handle-edit", handleEditRequest);
 
-// GET /api/students/pending-edit-requests
+// Admin side: Get all pending requests
 router.get("/pending-edit-requests", getPendingEditRequests);
 
-// GET all edit requests for a student
+// Student/Admin side: Get all history of edit requests for a specific student
+// /api/students/edit-requests?id=27
 router.get("/edit-requests", getEditRequests);
-
-
-
 
 module.exports = router;

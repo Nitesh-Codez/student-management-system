@@ -13,7 +13,7 @@ const getStudentProfile = async (req, res) => {
         id, code, name, class, mobile, address, role, 
         father_name, mother_name, gender, dob, email, 
         aadhaar, blood_group, category, city, state, 
-        pincode, profile_photo, district
+        pincode, profile_photo, district, session, stream
       FROM students
       WHERE id = $1
     `;
@@ -31,13 +31,14 @@ const getStudentProfile = async (req, res) => {
   }
 };
 
-// ================= INSERT STUDENT (Fixed District) =================
+// ================= INSERT STUDENT =================
 const insertStudent = async (req, res) => {
   try {
     const {
       code, name, class: studentClass, mobile, address, role,
       father_name, mother_name, gender, dob, email, aadhaar,
       blood_group, category, city, state, pincode, district,
+      session, stream
     } = req.body;
 
     if (!code || !name || !studentClass || !mobile) {
@@ -52,11 +53,11 @@ const insertStudent = async (req, res) => {
         code, name, class, mobile, address, role,
         father_name, mother_name, gender, dob,
         email, aadhaar, blood_group, category,
-        city, state, pincode, district
+        city, state, pincode, district, session, stream
       )
       VALUES (
         $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
-        $11,$12,$13,$14,$15,$16,$17,$18
+        $11,$12,$13,$14,$15,$16,$17,$18, $19, $20
       )
       RETURNING *
     `;
@@ -65,17 +66,17 @@ const insertStudent = async (req, res) => {
       code, name, studentClass, mobile, address || null, role || "student",
       father_name || null, mother_name || null, gender || null, dob || null,
       email || null, aadhaar || null, blood_group || null, category || null,
-      city || null, state || null, pincode || null, district || null
+      city || null, state || null, pincode || null, district || null,
+      session || null, stream || null
     ];
 
     const { rows } = await pool.query(query, values);
-
     const student = rows[0];
 
     // -------- CLASS HISTORY SAVE --------
     await pool.query(
-      `INSERT INTO student_class_history (student_id,class,year)
-       VALUES ($1,$2,$3)`,
+      `INSERT INTO student_class_history (student_id, class, year)
+       VALUES ($1, $2, $3)`,
       [student.id, student.class, new Date().getFullYear()]
     );
 
@@ -86,141 +87,78 @@ const insertStudent = async (req, res) => {
     });
 
   } catch (error) {
-
     if (error.code === "23505") {
-      return res.status(409).json({
-        success: false,
-        message: "Student code already exists"
-      });
+      return res.status(409).json({ success: false, message: "Student code already exists" });
     }
-
     console.error("Insert student error:", error);
-
-    res.status(500).json({
-      success: false,
-      message: "Server Error"
-    });
+    res.status(500).json({ success: false, message: "Server Error" });
   }
 };
+
 // ================= UPDATE STUDENT PROFILE =================
-// ================= UPDATE STUDENT PROFILE (Fixed with CODE) =================
 const updateStudentProfile = async (req, res) => {
   try {
-
     const studentId = Number(req.params.id);
 
     if (!studentId || isNaN(studentId)) {
-      return res.status(400).json({
-        success:false,
-        message:"Valid Student ID required"
-      });
+      return res.status(400).json({ success: false, message: "Valid Student ID required" });
     }
 
     const {
-      code,
-      name,
-      class: studentClass,
-      mobile,
-      address,
-      father_name,
-      mother_name,
-      gender,
-      dob,
-      email,
-      aadhaar,
-      blood_group,
-      category,
-      city,
-      state,
-      pincode,
-      district
+      code, name, class: studentClass, mobile, address,
+      father_name, mother_name, gender, dob, email,
+      aadhaar, blood_group, category, city, state,
+      pincode, session, stream, district
     } = req.body;
 
     // -------- OLD CLASS FETCH --------
-    const oldStudent = await pool.query(
-      "SELECT class FROM students WHERE id=$1",
-      [studentId]
-    );
+    const oldStudent = await pool.query("SELECT class FROM students WHERE id=$1", [studentId]);
 
-    if(oldStudent.rows.length === 0){
-      return res.status(404).json({
-        success:false,
-        message:"Student not found"
-      });
+    if (oldStudent.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Student not found" });
     }
 
     const oldClass = oldStudent.rows[0].class;
 
     // -------- SAVE OLD CLASS HISTORY --------
     await pool.query(
-      `INSERT INTO student_class_history (student_id,class,year)
-       VALUES ($1,$2,$3)`,
+      `INSERT INTO student_class_history (student_id, class, year)
+       VALUES ($1, $2, $3)`,
       [studentId, oldClass, new Date().getFullYear()]
     );
 
     // -------- UPDATE STUDENT --------
     const query = `
       UPDATE students SET
-        code=$1,
-        name=$2,
-        class=$3,
-        mobile=$4,
-        address=$5,
-        father_name=$6,
-        mother_name=$7,
-        gender=$8,
-        dob=$9,
-        email=$10,
-        aadhaar=$11,
-        blood_group=$12,
-        category=$13,
-        city=$14,
-        state=$15,
-        pincode=$16,
-        district=$17
-      WHERE id=$18
+        code=$1, name=$2, class=$3, mobile=$4, address=$5,
+        father_name=$6, mother_name=$7, gender=$8, dob=$9,
+        email=$10, aadhaar=$11, blood_group=$12, category=$13,
+        city=$14, state=$15, pincode=$16, session=$17, stream=$18, district=$19
+      WHERE id=$20
       RETURNING *
     `;
 
     const values = [
-      code,
-      name,
-      studentClass,
-      mobile,
-      address,
-      father_name,
-      mother_name,
-      gender,
-      dob,
-      email,
-      aadhaar,
-      blood_group,
-      category,
-      city,
-      state,
-      pincode,
-      district,
-      studentId
+      code, name, studentClass, mobile, address,
+      father_name, mother_name, gender, dob, email,
+      aadhaar, blood_group, category, city, state,
+      pincode, session, stream, district, studentId
     ];
 
     const { rows } = await pool.query(query, values);
 
     res.json({
-      success:true,
-      message:"Profile updated successfully",
-      student:rows[0]
+      success: true,
+      message: "Profile updated successfully",
+      student: rows[0]
     });
 
   } catch (error) {
-
     console.error("Update profile error:", error);
-
-    res.status(500).json({
-      success:false,
-      message:"Server error"
-    });
+    res.status(500).json({ success: false, message: "Server error" });
   }
 };
+
 // ================= REQUEST PROFILE EDIT =================
 const requestProfileEdit = async (req, res) => {
   try {

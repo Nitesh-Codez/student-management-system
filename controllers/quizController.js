@@ -1,21 +1,35 @@
 const db = require("../db");
 
 /**
- * QUIZ CONTROLLER - IMPROVED VERSION
- * Features: Strict One-Attempt, Admin Reports with Joins, Real-time Grading
+ * QUIZ CONTROLLER - FINAL VERSION
+ * Features:
+ * ✔ Class + Session + Stream Filtering
+ * ✔ Strict One Attempt
+ * ✔ Admin Reports (Advanced Filter)
+ * ✔ Real-time grading
  */
 
+// =======================================================
 // 1. CREATE QUIZ (Admin)
+// =======================================================
 exports.createQuiz = async (req, res) => {
   try {
-    const { class_name, subject, title, timer_minutes, questions } = req.body;
-    // Total marks is the number of questions
+    const {
+      class_name,
+      subject,
+      title,
+      timer_minutes,
+      questions,
+      session,
+      stream
+    } = req.body;
+
     const total_marks = questions.length;
 
     const sql = `
       INSERT INTO quizzes 
-      (class_name, subject, title, timer_minutes, questions, total_marks)
-      VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`;
+      (class_name, subject, title, timer_minutes, questions, total_marks, session, stream)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`;
 
     const result = await db.query(sql, [
       class_name,
@@ -24,71 +38,115 @@ exports.createQuiz = async (req, res) => {
       timer_minutes,
       JSON.stringify(questions),
       total_marks,
+      session,
+      stream
     ]);
 
     res.status(201).json({ success: true, data: result.rows[0] });
+
   } catch (err) {
     console.error("Create Quiz Error:", err);
-    res.status(500).json({ success: false, message: "Server error while creating quiz" });
-  }
-};
-
-// 2. GET QUIZ LIST (Student Dashboard)
-exports.getQuizByClass = async (req, res) => {
-  try {
-    const { class_name } = req.params;
-    // We only fetch basic info, not the questions to prevent cheating before start
-    const result = await db.query(
-      `SELECT id, title, subject, timer_minutes, total_marks, created_at 
-       FROM quizzes WHERE class_name=$1 ORDER BY created_at DESC`,
-      [class_name]
-    );
-    res.json(result.rows);
-  } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 };
 
-// 3. GET SINGLE QUIZ (For Attempt Page)
+// =======================================================
+// 2. GET QUIZ LIST (CLASS + SESSION + STREAM FILTER)
+// =======================================================
+exports.getQuizByFilter = async (req, res) => {
+  try {
+    const { class_name, session, stream } = req.query;
+
+    let sql = `
+      SELECT id, title, subject, timer_minutes, total_marks, created_at
+      FROM quizzes
+      WHERE 1=1
+    `;
+
+    const values = [];
+    let index = 1;
+
+    if (class_name) {
+      sql += ` AND class_name = $${index++}`;
+      values.push(class_name);
+    }
+
+    if (session) {
+      sql += ` AND session = $${index++}`;
+      values.push(session);
+    }
+
+    if (stream) {
+      sql += ` AND stream = $${index++}`;
+      values.push(stream);
+    }
+
+    sql += ` ORDER BY created_at DESC`;
+
+    const result = await db.query(sql, values);
+
+    res.json(result.rows);
+
+  } catch (err) {
+    console.error("Filter Error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// =======================================================
+// 3. GET SINGLE QUIZ
+// =======================================================
 exports.getSingleQuiz = async (req, res) => {
   try {
     const { id } = req.params;
-    const result = await db.query(`SELECT * FROM quizzes WHERE id=$1`, [id]);
+
+    const result = await db.query(
+      `SELECT * FROM quizzes WHERE id=$1`,
+      [id]
+    );
 
     if (result.rowCount === 0) {
       return res.status(404).json({ success: false, message: "Quiz not found" });
     }
+
     res.json(result.rows[0]);
+
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 };
 
-// 4. CHECK ATTEMPT STATUS (Guard for Frontend)
+// =======================================================
+// 4. CHECK ATTEMPT STATUS
+// =======================================================
 exports.checkAttemptStatus = async (req, res) => {
-    try {
-      const { quizId, studentId } = req.params;
-      const check = await db.query(
-        `SELECT * FROM quiz_results WHERE quiz_id=$1 AND student_id=$2`, 
-        [quizId, studentId]
-      );
-      
-      if (check.rowCount > 0) {
-        return res.json({ attempted: true, result: check.rows[0] });
-      }
-      res.json({ attempted: false });
-    } catch (err) {
-      res.status(500).json({ success: false, message: err.message });
+  try {
+    const { quizId, studentId } = req.params;
+
+    const check = await db.query(
+      `SELECT * FROM quiz_results WHERE quiz_id=$1 AND student_id=$2`,
+      [quizId, studentId]
+    );
+
+    if (check.rowCount > 0) {
+      return res.json({ attempted: true, result: check.rows[0] });
     }
+
+    res.json({ attempted: false });
+
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
 };
 
-// 5. SUBMIT QUIZ (Strict 1-Attempt Logic & Real-time Calc)
-// ✅ 5. SUBMIT QUIZ (Updated to handle Finish Time)
+// =======================================================
+// 5. SUBMIT QUIZ
+// =======================================================
 exports.submitQuiz = async (req, res) => {
   try {
     const { student_id, quiz_id, answers } = req.body;
 
-    // 1. Check already attempted
+    // check already attempted
     const check = await db.query(
       `SELECT id FROM quiz_results WHERE student_id=$1 AND quiz_id=$2`,
       [student_id, quiz_id]
@@ -98,7 +156,7 @@ exports.submitQuiz = async (req, res) => {
       return res.status(403).json({ success: false, message: "Already submitted!" });
     }
 
-    // 2. Get quiz
+    // get quiz
     const quizRes = await db.query(
       `SELECT questions, total_marks FROM quizzes WHERE id=$1`,
       [quiz_id]
@@ -109,19 +167,17 @@ exports.submitQuiz = async (req, res) => {
     }
 
     const quiz = quizRes.rows[0];
+
     const questions =
       typeof quiz.questions === "string"
         ? JSON.parse(quiz.questions)
         : quiz.questions;
 
-    // 3. Calculate Score
+    // calculate score
     let score = 0;
 
     questions.forEach((q, index) => {
-      if (
-        answers[index] &&
-        answers[index].trim() === q.correctAnswer.trim()
-      ) {
+      if (answers[index] && answers[index].trim() === q.correctAnswer.trim()) {
         score++;
       }
     });
@@ -132,10 +188,8 @@ exports.submitQuiz = async (req, res) => {
       percentage >= 90 ? "A+" :
       percentage >= 80 ? "A" :
       percentage >= 70 ? "B" :
-      percentage >= 60 ? "C" :
-      "D";
+      percentage >= 60 ? "C" : "D";
 
-    // 4. Insert with answers
     const insertRes = await db.query(
       `INSERT INTO quiz_results
       (student_id, quiz_id, score, percentage, grade, answers)
@@ -148,173 +202,78 @@ exports.submitQuiz = async (req, res) => {
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
-};// 6. ADMIN REPORT (Fetch all student results with names & timestamp)
-// 6. ADMIN REPORT (Class wise results)
-exports.getAdminResults = async (req, res) => {
-    try {
-        const { class_name } = req.params;
-        
-        // SQL JOIN: students table se naam aur quizzes table se title lane ke liye
-        const sql = `
-            SELECT 
-                qr.id as result_id,
-                s.name as student_name,
-                q.title as quiz_title,
-                q.subject,
-                qr.score,
-                q.total_marks,
-                qr.percentage,
-                qr.grade,
-                qr.attempted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata' as created_at
-            FROM quiz_results qr
-            JOIN students s ON qr.student_id = s.id
-            JOIN quizzes q ON qr.quiz_id = q.id
-            WHERE q.class_name = $1
-            ORDER BY qr.attempted_at DESC
-        `;
-
-        const result = await db.query(sql, [class_name]);
-        
-        // Frontend ko direct array bhejna asaan hota hai map karne ke liye
-        res.json(result.rows); 
-    } catch (err) {
-        console.error("Admin Report Error:", err);
-        res.status(500).json({ success: false, message: "Database error" });
-    }
 };
-//============================================================================
-// ✅ GET QUIZ REVIEW (Questions + Correct Answers + Student Response)
-//===============================================================================
-exports.getQuizReview = async (req, res) => {
+
+// =======================================================
+// 6. ADMIN REPORT (FULL FILTER)
+// =======================================================
+exports.getAdminResults = async (req, res) => {
   try {
-    const { quizId, studentId } = req.params;
+    const { class_name, session, stream } = req.query;
 
-    // 1. Get quiz
-    const quizRes = await db.query(
-      `SELECT * FROM quizzes WHERE id=$1`,
-      [quizId]
-    );
+    let sql = `
+      SELECT 
+        qr.id as result_id,
+        s.name as student_name,
+        q.title as quiz_title,
+        q.subject,
+        q.class_name,
+        q.session,
+        q.stream,
+        qr.score,
+        q.total_marks,
+        qr.percentage,
+        qr.grade,
+        qr.attempted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata' as created_at
+      FROM quiz_results qr
+      JOIN students s ON qr.student_id = s.id
+      JOIN quizzes q ON qr.quiz_id = q.id
+      WHERE 1=1
+    `;
 
-    if (quizRes.rowCount === 0)
-      return res.status(404).json({ success: false, message: "Quiz not found" });
+    const values = [];
+    let index = 1;
 
-    const quiz = quizRes.rows[0];
+    if (class_name) {
+      sql += ` AND q.class_name = $${index++}`;
+      values.push(class_name);
+    }
 
-    // 2. Get student result
-    const resultRes = await db.query(
-      `SELECT *,
-      attempted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata' as finish_time
-      FROM quiz_results
-      WHERE quiz_id=$1 AND student_id=$2`,
-      [quizId, studentId]
-    );
+    if (session) {
+      sql += ` AND q.session = $${index++}`;
+      values.push(session);
+    }
 
-    if (resultRes.rowCount === 0)
-      return res.status(404).json({ success: false, message: "Result not found" });
+    if (stream) {
+      sql += ` AND q.stream = $${index++}`;
+      values.push(stream);
+    }
 
-    const studentResult = resultRes.rows[0];
+    sql += ` ORDER BY qr.attempted_at DESC`;
 
-    res.json({
-      success: true,
-      data: {
-        quiz_info: {
-          title: quiz.title,
-          subject: quiz.subject,
-          total_marks: quiz.total_marks,
-        },
-        questions:
-          typeof quiz.questions === "string"
-            ? JSON.parse(quiz.questions)
-            : quiz.questions,
-        student_answers: studentResult.answers,
-        student_result: studentResult,
-      },
-    });
+    const result = await db.query(sql, values);
+
+    res.json(result.rows);
 
   } catch (err) {
+    console.error("Admin Report Error:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 };
-//==============================================
-// 7. UPDATE QUESTION / OPTION (Admin Only)
-//==============================================
-exports.updateQuestion = async (req, res) => {
-  try {
-    const { quizId, questionIndex } = req.params;
-    const { question, options, correctAnswer } = req.body;
 
-    // Step 1: Get existing quiz
-    const quizRes = await db.query(
-      `SELECT questions FROM quizzes WHERE id=$1`,
-      [quizId]
-    );
-
-    if (quizRes.rowCount === 0) {
-      return res.status(404).json({ success: false, message: "Quiz not found" });
-    }
-
-    let questions = quizRes.rows[0].questions;
-
-    // If string convert to JSON
-    if (typeof questions === "string") {
-      questions = JSON.parse(questions);
-    }
-
-    // Step 2: Update specific question
-    if (!questions[questionIndex]) {
-      return res.status(404).json({ success: false, message: "Question index invalid" });
-    }
-
-    if (question) questions[questionIndex].question = question;
-    if (options) questions[questionIndex].options = options;
-    if (correctAnswer) questions[questionIndex].correctAnswer = correctAnswer;
-
-    // Step 3: Save updated JSON
-    const updateRes = await db.query(
-      `UPDATE quizzes SET questions=$1 WHERE id=$2 RETURNING *`,
-      [JSON.stringify(questions), quizId]
-    );
-
-    res.json({ success: true, data: updateRes.rows[0] });
-
-  } catch (err) {
-    console.error("Update Question Error:", err);
-    res.status(500).json({ success: false, message: "Server error while updating question" });
-  }
-};
-
-//========================================
-// 8. DELETE QUIZ (Admin Only)
+// =======================================================
+// 7. DELETE QUIZ
+// =======================================================
 exports.deleteQuiz = async (req, res) => {
   try {
     const { quizId } = req.params;
 
-    // Check quiz exists
-    const check = await db.query(
-      `SELECT id FROM quizzes WHERE id=$1`,
-      [quizId]
-    );
-
-    if (check.rowCount === 0) {
-      return res.status(404).json({ success: false, message: "Quiz not found" });
-    }
-
-    // First delete related results (to avoid foreign key error)
-    await db.query(
-      `DELETE FROM quiz_results WHERE quiz_id=$1`,
-      [quizId]
-    );
-
-    // Then delete quiz
-    await db.query(
-      `DELETE FROM quizzes WHERE id=$1`,
-      [quizId]
-    );
+    await db.query(`DELETE FROM quiz_results WHERE quiz_id=$1`, [quizId]);
+    await db.query(`DELETE FROM quizzes WHERE id=$1`, [quizId]);
 
     res.json({ success: true, message: "Quiz deleted successfully" });
 
   } catch (err) {
-    console.error("Delete Quiz Error:", err);
-    res.status(500).json({ success: false, message: "Server error while deleting quiz" });
+    res.status(500).json({ success: false, message: err.message });
   }
 };

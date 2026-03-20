@@ -2,36 +2,45 @@ const express = require("express");
 const router = express.Router();
 const quizController = require("../controllers/quizController");
 
-/** * ADMIN SIDE ROUTES 
- */
-// 1. Create a new quiz
+/** =========================
+ * ADMIN SIDE ROUTES
+ ========================== */
+
+// 1. Create Quiz
 router.post("/create", quizController.createQuiz);
-// 2. View all results for a class (Includes Student Names, Grade, Time)
-router.get("/admin/results/:class_name", quizController.getAdminResults);
 
-/** * STUDENT SIDE ROUTES 
- */
-// 3. Get all quizzes assigned to student's class
-router.get("/class/:class_name", quizController.getQuizByClass);
+// 2. Admin Results (FILTER BASED)
+router.get("/admin/results", quizController.getAdminResults);
 
-// 4. Get full quiz details (Questions/Timer) for attempting
+
+/** =========================
+ * STUDENT SIDE ROUTES
+ ========================== */
+
+// 3. Get Quiz List (FILTER BASED)
+router.get("/", quizController.getQuizByFilter);
+
+// 4. Get Single Quiz
 router.get("/:id", quizController.getSingleQuiz);
 
-// 5. Check if student has already done this quiz (Lock mechanism)
+// 5. Check Attempt Status
 router.get("/status/:quizId/:studentId", quizController.checkAttemptStatus);
 
-// 6. Final submission and score calculation
+// 6. Submit Quiz
 router.post("/submit", quizController.submitQuiz);
 
-
-// Review quiz (answers + result)
+// 7. Review Quiz
 router.get("/review/:quizId/:studentId", quizController.getQuizReview);
 
-//
-// 7. Update question (Admin)
+
+/** =========================
+ * ADMIN EXTRA ROUTES
+ ========================== */
+
+// 8. Update Question
 router.put("/update/:quizId/:questionIndex", quizController.updateQuestion);
 
-//// 8. Delete quiz (Admin)
+// 9. Delete Quiz
 router.delete("/delete/:quizId", quizController.deleteQuiz);
 
 module.exports = router;

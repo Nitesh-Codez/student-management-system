@@ -39,7 +39,8 @@ async function loginController(req, res) {
         role: user.role,
         class: user.class,
         session: user.session, // 🔥 Dashboard filters ke liye
-        stream: user.stream,   // 🔥 Dashboard filters ke liye
+        stream: user.stream, 
+        joining_date: user.joining_date,     // 🔥 Dashboard filters ke liye
       },
     });
   } catch (err) {

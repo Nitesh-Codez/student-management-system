@@ -219,6 +219,22 @@ async function phonePeCallback(req, res) {
 }
 
 
+const getFeeByClass = async (req, res) => {
+  const { className } = req.params;
+  try {
+    const { data, error } = await supabase
+      .from('fee_structure')
+      .select('monthly_fee')
+      .eq('class_name', className)
+      .single();
+
+    if (error) throw error;
+    res.json({ success: true, monthly_fee: data.monthly_fee });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 
 
 module.exports = {
@@ -228,5 +244,6 @@ module.exports = {
     updateFee,
     deleteFee,
      createPhonePePayment,
-    phonePeCallback
+    phonePeCallback,
+    getFeeByClass
 };

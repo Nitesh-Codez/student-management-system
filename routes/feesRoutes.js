@@ -8,7 +8,8 @@ const {
   updateFee,
   deleteFee,
   createPhonePePayment,
-  phonePeCallback
+  phonePeCallback,
+  getFeeByClass
 } = require("../controllers/feesController");
 
 // Admin Routes
@@ -25,5 +26,6 @@ router.delete("/:id", deleteFee);
 /* ===== PHONEPE PAYMENT ROUTES ===== */
 router.post("/phonepe/pay", createPhonePePayment);
 router.post("/phonepe/callback", phonePeCallback);
+router.get("/get-fee/:className", getFeeByClass);
 
 module.exports = router;

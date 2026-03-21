@@ -7,7 +7,7 @@ async function loginController(req, res) {
   try {
     // 🔍 Query mein "session" aur "stream" bhi add kiya hai
     const results = await db.query(
-      'SELECT id, name, password, role, "class", session, stream FROM students WHERE name = $1',
+      'SELECT id, name, password, role, "class", session,joining_date, stream FROM students WHERE name = $1',
       [name]
     );
 

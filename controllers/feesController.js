@@ -6,48 +6,120 @@ const axios = require("axios");
 const MERCHANT_ID = process.env.PHONEPE_MID;
 const SALT_KEY = process.env.PHONEPE_SALT;
 const SALT_INDEX = "1";
-
 const PHONEPE_BASE_URL = "https://api-preprod.phonepe.com/apis/pg-sandbox";
+
+/* ================= UTILITY: GET CURRENT SESSION START DATE ================= */
+// Yeh function sirf CURRENT YEAR ki sabse pehli registration date nikalega
+async function getMinDateOfCurrentYear() {
+    const currentYear = new Date().getFullYear();
+    const { rows } = await db.query(
+        `SELECT MIN(joining_date) as first_date 
+         FROM students 
+         WHERE joining_date LIKE $1 AND joining_date != ''`, 
+        [`${currentYear}%`] // Sirf current year (e.g., 2026-%) ke records dekhega
+    );
+    return rows[0].first_date || null;
+}
+
+/* ================= GET STUDENT FEES (With Registration Check) ================= */
+async function getStudentFees(req, res) {
+    try {
+        const { id } = req.params;
+        const { session } = req.query;
+
+        // 1. Student data aur Current Year ki pehli date lo
+        const studentRes = await db.query("SELECT joining_date, name, class FROM students WHERE id = $1", [id]);
+        const firstDateInDB = await getMinDateOfCurrentYear();
+
+        if (studentRes.rows.length === 0) return res.status(404).json({ success: false, message: "Student not found" });
+
+        const student = studentRes.rows[0];
+        let regStatus = "On Time";
+
+        // 2. Logic: Agar bache ki date 'firstDateInDB' ke baad ki hai
+        if (firstDateInDB && student.joining_date && student.joining_date > firstDateInDB) {
+            regStatus = "Late Registered";
+        }
+
+        // 3. Fees Filter (Session wise)
+        let feeQuery = "SELECT * FROM fees WHERE student_id = $1";
+        let params = [id];
+        if (session) {
+            feeQuery += " AND session = $2";
+            params.push(session);
+        }
+        feeQuery += " ORDER BY id DESC";
+
+        const feeRes = await db.query(feeQuery, params);
+
+        res.json({
+            success: true,
+            registrationStatus: regStatus, // Frontend pe alert dikhane ke liye
+            joiningDate: student.joining_date,
+            fees: feeRes.rows
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false });
+    }
+}
+
+/* ================= GET ALL FEES (Admin History) ================= */
+async function getAllFees(req, res) {
+    try {
+        const { session, class_name } = req.query;
+        let query = "SELECT * FROM fees WHERE 1=1";
+        let params = [];
+
+        if (session) {
+            params.push(session);
+            query += ` AND session = $${params.length}`;
+        }
+        if (class_name) {
+            params.push(class_name);
+            query += ` AND class_name = $${params.length}`;
+        }
+        query += " ORDER BY payment_date DESC, id DESC";
+
+        const { rows } = await db.query(query, params);
+        res.json({ success: true, fees: rows });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false });
+    }
+}
 
 /* ================= ADD FEE (CASH) ================= */
 async function addFee(req, res) {
-  try {
-    const {
-      student_id,
-      student_name,
-      class_name,
-      amount,
-      payment_date,
-      payment_time,
-      status,
-      session, // Frontend se session aayega
-      stream,  // Frontend se stream aayega (if any)
-      payment_mode = "CASH"
-    } = req.body;
+    try {
+        const { student_id, student_name, class_name, amount, payment_date, payment_time, status, session, stream, payment_mode, fee_month } = req.body;
 
-    await db.query(
-      `INSERT INTO fees 
-      (student_id, student_name, class_name, amount, payment_date, payment_time, status, payment_mode, payment_status, session, stream) 
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'SUCCESS',$9,$10)`,
-      [
-        student_id,
-        student_name,
-        class_name,
-        amount,
-        payment_date,
-        payment_time,
-        status || "On Time",
-        payment_mode,
-        session, // Save Session
-        stream   // Save Stream
-      ]
-    );
+        await db.query(
+            `INSERT INTO fees 
+            (student_id, student_name, class_name, amount, payment_date, payment_time, status, payment_mode, payment_status, session, stream, fee_month) 
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'SUCCESS',$9,$10,$11)`,
+            [student_id, student_name, class_name, amount, payment_date, payment_time, status || "On Time", payment_mode || "CASH", session, stream, fee_month]
+        );
+        res.json({ success: true });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false });
+    }
+}
 
-    res.json({ success: true });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false });
-  }
+/* ================= PHONEPE & OTHER CRUD ================= */
+async function updateFee(req, res) {
+    try {
+        await db.query(`UPDATE fees SET amount=$1 WHERE id=$2`, [req.body.amount, req.params.id]);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ success: false }); }
+}
+
+async function deleteFee(req, res) {
+    try {
+        await db.query("DELETE FROM fees WHERE id=$1", [req.params.id]);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ success: false }); }
 }
 
 /* ================= CREATE PHONEPE PAYMENT ================= */
@@ -146,74 +218,15 @@ async function phonePeCallback(req, res) {
   }
 }
 
-/* ================= CRUD & FILTERS ================= */
 
-// UPDATE & DELETE (Same as before)
-async function updateFee(req, res) {
-  try {
-    await db.query(`UPDATE fees SET amount=$1 WHERE id=$2`, [req.body.amount, req.params.id]);
-    res.json({ success: true });
-  } catch {
-    res.status(500).json({ success: false });
-  }
-}
 
-async function deleteFee(req, res) {
-  await db.query("DELETE FROM fees WHERE id=$1", [req.params.id]);
-  res.json({ success: true });
-}
-
-// Get Fees for a specific Student with Session Filter
-async function getStudentFees(req, res) {
-  const { id } = req.params;
-  const { session } = req.query; // Query parameter se session uthayenge
-
-  let query = "SELECT * FROM fees WHERE student_id=$1";
-  let params = [id];
-
-  if (session) {
-    query += " AND session=$2";
-    params.push(session);
-  }
-
-  query += " ORDER BY payment_date DESC";
-
-  try {
-    const { rows } = await db.query(query, params);
-    res.json({ success: true, fees: rows });
-  } catch (err) {
-    res.status(500).json({ success: false });
-  }
-}
-
-// Get All Fees with Session Filter (For Admin History)
-async function getAllFees(req, res) {
-  const { session } = req.query; // Admin dashboard se session select karein
-
-  let query = "SELECT * FROM fees";
-  let params = [];
-
-  if (session) {
-    query += " WHERE session=$1";
-    params.push(session);
-  }
-
-  query += " ORDER BY payment_date DESC";
-
-  try {
-    const { rows } = await db.query(query, params);
-    res.json({ success: true, fees: rows });
-  } catch (err) {
-    res.status(500).json({ success: false });
-  }
-}
 
 module.exports = {
-  addFee,
-  createPhonePePayment,
-  phonePeCallback,
-  updateFee,
-  deleteFee,
-  getStudentFees,
-  getAllFees
+    addFee,
+    getStudentFees,
+    getAllFees,
+    updateFee,
+    deleteFee,
+     createPhonePePayment,
+    phonePeCallback
 };

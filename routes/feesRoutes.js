@@ -11,10 +11,14 @@ const {
   phonePeCallback
 } = require("../controllers/feesController");
 
-/* ===== MANUAL FEE ROUTES ===== */
+// Admin Routes
+router.get("/", getAllFees); // Sab fees session wise dekhne ke liye
+
+// Student Routes
+router.get("/student/:id", getStudentFees); // Particular student ke liye + Late Tag logic
+
+// CRUD
 router.post("/", addFee);
-router.get("/", getAllFees);
-router.get("/student/:id", getStudentFees);
 router.put("/:id", updateFee);
 router.delete("/:id", deleteFee);
 

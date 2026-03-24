@@ -91,20 +91,32 @@ async function getAllFees(req, res) {
 
 /* ================= ADD FEE (CASH) ================= */
 async function addFee(req, res) {
-    try {
-        const { student_id, student_name, class_name, amount, payment_date, payment_time, status, session, stream, payment_mode, fee_month } = req.body;
+  try {
+    const { student_id, student_name, class_name, amount, payment_date, payment_time, status, payment_mode } = req.body;
 
-        await db.query(
-  `INSERT INTO fees 
-  (student_id, student_name, class_name, amount, payment_date, payment_time, status, payment_mode, payment_status, stream, session) 
-  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'SUCCESS',$9,$10)`,
-  [student_id, student_name, class_name, amount, payment_date, payment_time, status || "On Time", payment_mode || "CASH", stream, session]
-);
-        res.json({ success: true });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ success: false });
-    }
+    // 1️⃣ Student ke session & stream le lo
+    const studentRes = await db.query(
+      "SELECT session, stream FROM students WHERE id = $1",
+      [student_id]
+    );
+    if (studentRes.rows.length === 0)
+      return res.status(404).json({ success: false, message: "Student not found" });
+
+    const { session, stream } = studentRes.rows[0];
+
+    // 2️⃣ Fees table me insert karo
+    await db.query(
+      `INSERT INTO fees 
+      (student_id, student_name, class_name, amount, payment_date, payment_time, status, payment_mode, payment_status, stream, session) 
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'SUCCESS',$9,$10)`,
+      [student_id, student_name, class_name, amount, payment_date, payment_time, status || "On Time", payment_mode || "CASH", stream, session]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false });
+  }
 }
 
 /* ================= PHONEPE & OTHER CRUD ================= */

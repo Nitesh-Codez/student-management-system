@@ -95,11 +95,11 @@ async function addFee(req, res) {
         const { student_id, student_name, class_name, amount, payment_date, payment_time, status, session, stream, payment_mode, fee_month } = req.body;
 
         await db.query(
-            `INSERT INTO fees 
-            (student_id, student_name, class_name, amount, payment_date, payment_time, status, payment_mode, payment_status, session, stream, fee_month) 
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'SUCCESS',$9,$10,$11)`,
-            [student_id, student_name, class_name, amount, payment_date, payment_time, status || "On Time", payment_mode || "CASH", session, stream, fee_month]
-        );
+  `INSERT INTO fees 
+  (student_id, student_name, class_name, amount, payment_date, payment_time, status, payment_mode, payment_status, stream, session) 
+  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'SUCCESS',$9,$10)`,
+  [student_id, student_name, class_name, amount, payment_date, payment_time, status || "On Time", payment_mode || "CASH", stream, session]
+);
         res.json({ success: true });
     } catch (err) {
         console.error(err);

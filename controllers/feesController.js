@@ -94,7 +94,7 @@ async function addFee(req, res) {
   try {
     const { student_id, student_name, class_name, amount, payment_date, payment_time, status, payment_mode } = req.body;
 
-    // 1️⃣ Student ke session & stream le lo
+    // ✅ Student ke session & stream fetch karo
     const studentRes = await db.query(
       "SELECT session, stream FROM students WHERE id = $1",
       [student_id]
@@ -104,7 +104,7 @@ async function addFee(req, res) {
 
     const { session, stream } = studentRes.rows[0];
 
-    // 2️⃣ Fees table me insert karo
+    // ✅ Fees table me insert karo
     await db.query(
       `INSERT INTO fees 
       (student_id, student_name, class_name, amount, payment_date, payment_time, status, payment_mode, payment_status, stream, session) 
@@ -118,7 +118,6 @@ async function addFee(req, res) {
     res.status(500).json({ success: false });
   }
 }
-
 /* ================= PHONEPE & OTHER CRUD ================= */
 async function updateFee(req, res) {
     try {

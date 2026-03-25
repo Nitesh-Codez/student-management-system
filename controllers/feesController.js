@@ -9,24 +9,13 @@ const SALT_INDEX = "1";
 const PHONEPE_BASE_URL = "https://api-preprod.phonepe.com/apis/pg-sandbox";
 
 /* ================= UTILITY: GET CURRENT SESSION START DATE ================= */
-// Yeh function sirf CURRENT YEAR ki sabse pehli registration date nikalega
-async function getMinDateOfCurrentYear() {
-    const currentYear = new Date().getFullYear();
-    const { rows } = await db.query(
-        `SELECT MIN(joining_date) as first_date 
-         FROM students 
-         WHERE joining_date LIKE $1 AND joining_date != ''`, 
-        [`${currentYear}%`] // Sirf current year (e.g., 2026-%) ke records dekhega
-    );
-    return rows[0].first_date || null;
-}
+
 
 /* ================= GET STUDENT FEES (With Registration Check) ================= */
 const getStudentFees = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // 1️⃣ Student ka joining date lo
     const studentRes = await db.query(
       "SELECT joining_date FROM students WHERE id = $1",
       [id]
@@ -34,7 +23,6 @@ const getStudentFees = async (req, res) => {
 
     const joiningDate = studentRes.rows[0]?.joining_date;
 
-    // 2️⃣ Fees data lo
     const feeRes = await db.query(
       "SELECT * FROM fees WHERE student_id = $1",
       [id]
@@ -43,16 +31,37 @@ const getStudentFees = async (req, res) => {
     const fees = feeRes.rows;
 
     const today = new Date();
-    const join = new Date(joiningDate);
 
-    // 3️⃣ Days difference
-    const diffDays = Math.floor(
-      (today - join) / (1000 * 60 * 60 * 24)
-    );
+    /* =========================
+       🔥 FIX: SAFE DATE PARSE
+    ========================= */
 
-    const isNewStudent = diffDays < 30;
+    let isNewStudent = false;
 
-    // 4️⃣ Check paid this month
+    if (joiningDate) {
+      let join;
+
+      // 👉 handle DD/MM/YYYY format
+      if (joiningDate.includes("/")) {
+        const [day, month, year] = joiningDate.split("/");
+        join = new Date(`${year}-${month}-${day}`);
+      } else {
+        join = new Date(joiningDate);
+      }
+
+      const diffDays = Math.floor(
+        (today - join) / (1000 * 60 * 60 * 24)
+      );
+
+      if (diffDays < 30) {
+        isNewStudent = true;
+      }
+    }
+
+    /* =========================
+       ✅ CHECK PAID THIS MONTH
+    ========================= */
+
     const isPaidThisMonth = fees.some(f => {
       const fDate = new Date(f.payment_date);
       return (
@@ -62,7 +71,10 @@ const getStudentFees = async (req, res) => {
       );
     });
 
-    // 5️⃣ FINAL POPUP LOGIC
+    /* =========================
+       🚨 FINAL POPUP LOGIC
+    ========================= */
+
     let showPopup = false;
 
     if (!isNewStudent && !isPaidThisMonth) {
@@ -72,7 +84,7 @@ const getStudentFees = async (req, res) => {
     res.json({
       success: true,
       fees,
-      showPopup,   // 🔥 YE IMPORTANT
+      showPopup,
     });
 
   } catch (err) {
@@ -82,7 +94,6 @@ const getStudentFees = async (req, res) => {
     });
   }
 };
-
 /* ================= GET ALL FEES (Admin History) ================= */
 async function getAllFees(req, res) {
     try {

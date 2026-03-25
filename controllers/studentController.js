@@ -51,7 +51,7 @@ exports.addStudent = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const result = await db.query(
-      "INSERT INTO students (name, \"class\", password, mobile,joining_date, address, role) VALUES ($1,$2,$3,$4,$5,'student') RETURNING id",
+      "INSERT INTO students (name, \"class\", password, mobile,joining_date, address, role) VALUES ($1,$2,$3,$4,$5,$6,'student') RETURNING id",
       [name, studentClass, hashedPassword, mobile, address]
     );
 

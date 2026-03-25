@@ -41,7 +41,7 @@ exports.getStudents = async (req, res) => {
 
 // Add student
 exports.addStudent = async (req, res) => {
-  const { name, class: studentClass, password, mobile = null, address = null } = req.body;
+  const { name, class: studentClass, password, mobile = null, address = null, joining_date = null } = req.body;
 
   if (!name || !studentClass || !password) {
     return res.json({ success: false, message: "Name, class and password are required" });
@@ -51,8 +51,9 @@ exports.addStudent = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const result = await db.query(
-      "INSERT INTO students (name, \"class\", password, mobile,joining_date, address, role) VALUES ($1,$2,$3,$4,$5,$6,'student') RETURNING id",
-      [name, studentClass, hashedPassword, mobile, address]
+      `INSERT INTO students (name, "class", password, mobile, joining_date, address, role) 
+       VALUES ($1,$2,$3,$4,$5,$6,'student') RETURNING id`,
+      [name, studentClass, hashedPassword, mobile, joining_date, address]
     );
 
     res.json({
@@ -66,7 +67,6 @@ exports.addStudent = async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 };
-
 // Delete student
 exports.deleteStudent = async (req, res) => {
   const { id } = req.params;

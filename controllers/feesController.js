@@ -22,47 +22,66 @@ async function getMinDateOfCurrentYear() {
 }
 
 /* ================= GET STUDENT FEES (With Registration Check) ================= */
-async function getStudentFees(req, res) {
-    try {
-        const { id } = req.params;
-        const { session } = req.query;
+const getStudentFees = async (req, res) => {
+  try {
+    const { id } = req.params;
 
-        // 1. Student data aur Current Year ki pehli date lo
-        const studentRes = await db.query("SELECT joining_date, name, class FROM students WHERE id = $1", [id]);
-        const firstDateInDB = await getMinDateOfCurrentYear();
+    // 1️⃣ Student ka joining date lo
+    const studentRes = await db.query(
+      "SELECT joining_date FROM students WHERE id = $1",
+      [id]
+    );
 
-        if (studentRes.rows.length === 0) return res.status(404).json({ success: false, message: "Student not found" });
+    const joiningDate = studentRes.rows[0]?.joining_date;
 
-        const student = studentRes.rows[0];
-        let regStatus = "On Time";
+    // 2️⃣ Fees data lo
+    const feeRes = await db.query(
+      "SELECT * FROM fees WHERE student_id = $1",
+      [id]
+    );
 
-        // 2. Logic: Agar bache ki date 'firstDateInDB' ke baad ki hai
-        if (firstDateInDB && student.joining_date && student.joining_date > firstDateInDB) {
-            regStatus = "Late Registered";
-        }
+    const fees = feeRes.rows;
 
-        // 3. Fees Filter (Session wise)
-        let feeQuery = "SELECT * FROM fees WHERE student_id = $1";
-        let params = [id];
-        if (session) {
-            feeQuery += " AND session = $2";
-            params.push(session);
-        }
-        feeQuery += " ORDER BY id DESC";
+    const today = new Date();
+    const join = new Date(joiningDate);
 
-        const feeRes = await db.query(feeQuery, params);
+    // 3️⃣ Days difference
+    const diffDays = Math.floor(
+      (today - join) / (1000 * 60 * 60 * 24)
+    );
 
-        res.json({
-            success: true,
-            registrationStatus: regStatus, // Frontend pe alert dikhane ke liye
-            joiningDate: student.joining_date,
-            fees: feeRes.rows
-        });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ success: false });
+    const isNewStudent = diffDays < 30;
+
+    // 4️⃣ Check paid this month
+    const isPaidThisMonth = fees.some(f => {
+      const fDate = new Date(f.payment_date);
+      return (
+        fDate.getMonth() === today.getMonth() &&
+        fDate.getFullYear() === today.getFullYear() &&
+        f.payment_status === "SUCCESS"
+      );
+    });
+
+    // 5️⃣ FINAL POPUP LOGIC
+    let showPopup = false;
+
+    if (!isNewStudent && !isPaidThisMonth) {
+      showPopup = true;
     }
-}
+
+    res.json({
+      success: true,
+      fees,
+      showPopup,   // 🔥 YE IMPORTANT
+    });
+
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+};
 
 /* ================= GET ALL FEES (Admin History) ================= */
 async function getAllFees(req, res) {

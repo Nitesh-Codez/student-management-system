@@ -1,4 +1,4 @@
-const db = require("../db");
+ const db = require("../db");
 
 // -------------------------------------------
 // 1) GET all students + attendance for a date
@@ -184,9 +184,4 @@ exports.getAttendanceMarks = async (req, res) => {
     console.error(err);
     res.status(500).json({ success: false });
   }
-};
-
-
-
-//======================================================
-
+};   

@@ -24,4 +24,7 @@ router.get("/attendance-marks", attendanceController.getAttendanceMarks);
 // GET full attendance of a student (Student)
 router.get("/:id", attendanceController.getStudentAttendance);
 
+
+//--------------------------------------------------------
+
 module.exports = router;

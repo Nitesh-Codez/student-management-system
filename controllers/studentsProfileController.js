@@ -111,14 +111,34 @@ const updateStudentProfile = async (req, res) => {
       pincode, session, stream, district
     } = req.body;
 
-    // -------- OLD CLASS FETCH --------
-    const oldStudent = await pool.query("SELECT class FROM students WHERE id=$1", [studentId]);
+    // 🔥 OLD DATA FETCH
+    const oldStudentRes = await pool.query(
+      "SELECT class, session, update_count FROM students WHERE id=$1",
+      [studentId]
+    );
 
-    if (oldStudent.rows.length === 0) {
+    if (oldStudentRes.rows.length === 0) {
       return res.status(404).json({ success: false, message: "Student not found" });
     }
 
-    const oldClass = oldStudent.rows[0].class;
+    const oldStudent = oldStudentRes.rows[0];
+    const oldClass = oldStudent.class;
+    const oldSession = oldStudent.session;
+    let updateCount = oldStudent.update_count || 0;
+
+    // 🔥 RULE: SAME SESSION → MAX 3 TIMES
+    if (session === oldSession) {
+      if (updateCount >= 3) {
+        return res.status(400).json({
+          success: false,
+          message: "❌ Update limit reached (Max 3 times in same session)"
+        });
+      }
+      updateCount += 1;
+    } else {
+      // 🔥 NEW SESSION → RESET COUNT
+      updateCount = 1;
+    }
 
     // -------- SAVE OLD CLASS HISTORY --------
     await pool.query(
@@ -127,14 +147,21 @@ const updateStudentProfile = async (req, res) => {
       [studentId, oldClass, new Date().getFullYear()]
     );
 
+    // 🔥 DELETE ATTENDANCE (IMPORTANT)
+    await pool.query(
+      `DELETE FROM attendance WHERE student_id = $1`,
+      [studentId]
+    );
+
     // -------- UPDATE STUDENT --------
     const query = `
       UPDATE students SET
         code=$1, name=$2, class=$3, mobile=$4, address=$5,
         father_name=$6, mother_name=$7, gender=$8, dob=$9,
         email=$10, aadhaar=$11, blood_group=$12, category=$13,
-        city=$14, state=$15, pincode=$16, session=$17, stream=$18, district=$19
-      WHERE id=$20
+        city=$14, state=$15, pincode=$16, session=$17, stream=$18, district=$19,
+        update_count=$20
+      WHERE id=$21
       RETURNING *
     `;
 
@@ -142,14 +169,18 @@ const updateStudentProfile = async (req, res) => {
       code, name, studentClass, mobile, address,
       father_name, mother_name, gender, dob, email,
       aadhaar, blood_group, category, city, state,
-      pincode, session, stream, district, studentId
+      pincode, session, stream, district,
+      updateCount,
+      studentId
     ];
 
     const { rows } = await pool.query(query, values);
 
     res.json({
       success: true,
-      message: "Profile updated successfully",
+      message: "⚠️ Profile updated. Attendance reset!",
+      warning: "Your attendance has been reset",
+      remainingUpdates: 3 - updateCount,
       student: rows[0]
     });
 
@@ -158,7 +189,6 @@ const updateStudentProfile = async (req, res) => {
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
-
 // ================= REQUEST PROFILE EDIT =================
 const requestProfileEdit = async (req, res) => {
   try {

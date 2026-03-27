@@ -80,6 +80,18 @@ async function uploadAssignment(req, res) {
       .from(ASSIGNMENT_BUCKET)
       .getPublicUrl(filePath);
 
+    // ================= FETCH SESSION FOR STUDENT =================
+    let session = null;
+    if (uploader_role === "student") {
+      const sessionResult = await db.query(
+        "SELECT session FROM students WHERE id = $1",
+        [uploader_id]
+      );
+      if (sessionResult.rows.length > 0) {
+        session = sessionResult.rows[0].session;
+      }
+    }
+
     // ================= DB INSERT =================
     const sql = `
       INSERT INTO assignment_uploads
@@ -94,9 +106,10 @@ async function uploadAssignment(req, res) {
         file_path,
         status,
         storage_type,
-        uploaded_at
+        uploaded_at,
+        session
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
       RETURNING *;
     `;
 
@@ -112,6 +125,7 @@ async function uploadAssignment(req, res) {
       uploader_role === "student" ? "SUBMITTED" : null,
       "supabase",
       new Date(),
+      session, // <-- yahi session insert ho raha hai
     ];
 
     const { rows } = await db.query(sql, values);
@@ -131,7 +145,6 @@ async function uploadAssignment(req, res) {
     });
   }
 }
-
 // ============================================================
 // ================= DELETE STUDENT SUBMISSION =================
 // ============================================================
@@ -262,7 +275,25 @@ async function getSubmissionsByTask(req, res) {
   try {
     const { task_title } = req.params;
     const className = req.query.class;
+    const studentId = req.query.studentId; // student id ko query se lo
 
+    if (!studentId) {
+      return res.status(400).json({ success: false, message: "studentId required" });
+    }
+
+    // 🔹 Step 1: Fetch current session of the student
+    const sessionResult = await db.query(
+      "SELECT session FROM students WHERE id=$1",
+      [studentId]
+    );
+
+    if (!sessionResult.rows.length) {
+      return res.status(404).json({ success: false, message: "Student not found" });
+    }
+
+    const currentSession = sessionResult.rows[0].session;
+
+    // 🔹 Step 2: Fetch submissions only for that session
     const { rows } = await db.query(
       `
       SELECT
@@ -286,18 +317,20 @@ async function getSubmissionsByTask(req, res) {
       WHERE s.uploader_role='student'
         AND s.task_title=$1
         AND s.class=$2
+        AND s.session=$3  -- ✅ current session dynamically
 
       ORDER BY s.uploaded_at ASC
       `,
-      [task_title, className]
+      [task_title, className, currentSession]
     );
 
     res.json({ success: true, submissions: rows });
+
   } catch (err) {
+    console.error("ERROR:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 }
-
 // ============================================================
 // ================= UPDATE RATING =============================
 // ============================================================

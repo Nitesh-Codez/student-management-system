@@ -34,12 +34,23 @@ const addMarks = async (req, res) => {
       return res.json({ success: false, message: "Missing fields" });
     }
 
+    // Student ka session fetch karo
+    const studentSql = `SELECT session FROM students WHERE id = $1`;
+    const { rows: studentRows } = await db.query(studentSql, [studentId]);
+
+    if (studentRows.length === 0) {
+      return res.json({ success: false, message: "Invalid student ID" });
+    }
+
+    const studentSession = studentRows[0].session;
+
+    // Marks insert karo session ke saath
     const sql = `
-      INSERT INTO marks (student_id, subject, total_marks, obtained_marks, test_date)
-      VALUES ($1, $2, $3, $4, $5)
+      INSERT INTO marks (student_id, subject, total_marks, obtained_marks, test_date, session)
+      VALUES ($1, $2, $3, $4, $5, $6)
     `;
 
-    await db.query(sql, [studentId, subject, maxMarks, marks, date]);
+    await db.query(sql, [studentId, subject, maxMarks, marks, date, studentSession]);
 
     res.json({ success: true, message: "Marks added successfully" });
   } catch (err) {
@@ -47,25 +58,27 @@ const addMarks = async (req, res) => {
     res.json({ success: false, message: "Error adding marks" });
   }
 };
-
 // ================= CHECK MARKS (STUDENT VIEW) =================
+// ================= CHECK MARKS (STUDENT VIEW WITH CLASS & SESSION FILTER) =================
 const checkMarks = async (req, res) => {
   try {
-    const { studentId, studentName } = req.body;
+    const { studentId, studentName, session } = req.body; // session bhi bhejna hoga frontend se
 
-    if (!studentId || !studentName) {
-      return res.json({ success: false, message: "Student ID and Name required" });
+    if (!studentId || !studentName || !session) {
+      return res.json({ success: false, message: "Student ID, Name and Session required" });
     }
 
-    const studentSql =
-      `SELECT id FROM students WHERE id = $1 AND name = $2`;
-    const { rows: studentRows } =
-      await db.query(studentSql, [studentId, studentName]);
+    // 🔹 Check if student exists
+    const studentSql = `SELECT id, class FROM students WHERE id = $1 AND name = $2`;
+    const { rows: studentRows } = await db.query(studentSql, [studentId, studentName]);
 
     if (studentRows.length === 0) {
       return res.json({ success: false, message: "Invalid Student ID or Name" });
     }
 
+    const studentClass = studentRows[0].class;
+
+    // 🔹 Fetch marks for student filtered by class + session
     const marksSql = `
       SELECT 
         m.id,
@@ -82,13 +95,15 @@ const checkMarks = async (req, res) => {
       FROM marks m
       JOIN students s ON s.id = m.student_id
       WHERE m.student_id = $1
+        AND s.class = $2
+        AND s.session = $3
       ORDER BY m.test_date DESC
     `;
 
-    const { rows } = await db.query(marksSql, [studentId]);
+    const { rows } = await db.query(marksSql, [studentId, studentClass, session]);
 
     if (rows.length === 0) {
-      return res.json({ success: false, message: "No marks found" });
+      return res.json({ success: false, message: "No marks found for this session" });
     }
 
     res.json({ success: true, data: rows });
@@ -97,7 +112,6 @@ const checkMarks = async (req, res) => {
     res.json({ success: false, message: "Error fetching marks" });
   }
 };
-
 // ================= GET ALL MARKS (ADMIN) =================
 const getAllMarks = async (req, res) => {
   try {

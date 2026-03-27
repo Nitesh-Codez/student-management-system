@@ -103,9 +103,11 @@ exports.getTodayAttendancePercent = async (req, res) => {
       SELECT 
         s.id AS "studentId",
         s.name AS name,
-        s.class AS class, -- Yeh missing tha
+        s.class AS class,
+        -- Sirf 'Present' status ko count karo
         COALESCE(SUM(CASE WHEN a.status='Present' THEN 1 ELSE 0 END), 0) AS present,
-        COALESCE(SUM(CASE WHEN a.status='Present' OR a.status='Absent' THEN 1 ELSE 0 END), 0) AS total
+        -- Har wo entry jo attendance table mein hai (Present, Absent, Leave) wo total class mani jayegi
+        COALESCE(COUNT(a.id), 0) AS total 
       FROM students s
       LEFT JOIN attendance a ON s.id = a.student_id
       WHERE s.role='student'
@@ -118,17 +120,20 @@ exports.getTodayAttendancePercent = async (req, res) => {
     const result = rows.map(r => {
       const present = parseInt(r.present);
       const total = parseInt(r.total);
+      
+      // Agar total 0 hai toh percentage 0, warna calculation
       const percentage = total === 0 ? 0 : (present / total) * 100;
       
+      // Marks logic (75% se upar har 5% par 1 mark)
       let marks = 0;
       if (percentage > 75) {
-        marks = Math.ceil((percentage - 75) / 5);
+        marks = Math.min(5, Math.ceil((percentage - 75) / 5)); // Limit to 5 marks max if needed
       }
 
       return {
         studentId: r.studentId,
         name: r.name,
-        class: r.class, // Class add kar di
+        class: r.class,
         present: present,
         total: total,
         percentage: percentage.toFixed(2),

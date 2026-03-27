@@ -62,23 +62,23 @@ const addMarks = async (req, res) => {
 // ================= CHECK MARKS (STUDENT VIEW WITH CLASS & SESSION FILTER) =================
 const checkMarks = async (req, res) => {
   try {
-    const { studentId, studentName, session } = req.body; // session bhi bhejna hoga frontend se
+    const { studentId, studentName, session } = req.body; 
 
     if (!studentId || !studentName || !session) {
       return res.json({ success: false, message: "Student ID, Name and Session required" });
     }
 
-    // 🔹 Check if student exists
-    const studentSql = `SELECT id, class FROM students WHERE id = $1 AND name = $2`;
-    const { rows: studentRows } = await db.query(studentSql, [studentId, studentName]);
+    // 1. Pehle student validate karo aur uska session check karo
+    const studentSql = `SELECT id, class, session FROM students WHERE id = $1 AND name = $2 AND session = $3`;
+    const { rows: studentRows } = await db.query(studentSql, [studentId, studentName, session]);
 
     if (studentRows.length === 0) {
-      return res.json({ success: false, message: "Invalid Student ID or Name" });
+      return res.json({ success: false, message: "Invalid Student Details or Session Mismatch" });
     }
 
     const studentClass = studentRows[0].class;
 
-    // 🔹 Fetch marks for student filtered by class + session
+    // 2. Marks fetch karo jahan marks ka session aur student ka session dono match ho
     const marksSql = `
       SELECT 
         m.id,
@@ -88,6 +88,8 @@ const checkMarks = async (req, res) => {
         m.total_marks,
         m.obtained_marks,
         m.test_date,
+        m.session as marks_session,
+        s.session as student_session,
         CASE 
           WHEN m.obtained_marks >= m.total_marks * 0.33 
           THEN 'Pass' ELSE 'Fail' 
@@ -96,14 +98,15 @@ const checkMarks = async (req, res) => {
       JOIN students s ON s.id = m.student_id
       WHERE m.student_id = $1
         AND s.class = $2
-        AND s.session = $3
+        AND s.session = $3       -- Student table ka session match ho
+        AND m.session = $3       -- Marks table ka session bhi match ho
       ORDER BY m.test_date DESC
     `;
 
     const { rows } = await db.query(marksSql, [studentId, studentClass, session]);
 
     if (rows.length === 0) {
-      return res.json({ success: false, message: "No marks found for this session" });
+      return res.json({ success: false, message: `No marks found for session ${session}` });
     }
 
     res.json({ success: true, data: rows });

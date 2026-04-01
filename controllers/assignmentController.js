@@ -34,7 +34,6 @@ async function uploadAssignment(req, res) {
 
     const className = req.body.class;
 
-    // ================= BASIC VALIDATION =================
     if (
       !req.file ||
       !uploader_id ||
@@ -49,7 +48,6 @@ async function uploadAssignment(req, res) {
       });
     }
 
-    // ================= ROLE BASED VALIDATION =================
     if (uploader_role === "admin" && !deadline) {
       return res.status(400).json({
         success: false,
@@ -59,6 +57,7 @@ async function uploadAssignment(req, res) {
 
     // ================= FILE PATH =================
     const fileName = `${Date.now()}-${req.file.originalname}`;
+
     const folder =
       uploader_role === "admin"
         ? `assignments/admin/class-${className}`
@@ -80,19 +79,34 @@ async function uploadAssignment(req, res) {
       .from(ASSIGNMENT_BUCKET)
       .getPublicUrl(filePath);
 
-    // ================= FETCH SESSION FOR STUDENT =================
+    // ================= SESSION FETCH =================
     let session = null;
+
+    // 🔹 student upload
     if (uploader_role === "student") {
-      const sessionResult = await db.query(
+      const result = await db.query(
         "SELECT session FROM students WHERE id = $1",
         [uploader_id]
       );
-      if (sessionResult.rows.length > 0) {
-        session = sessionResult.rows[0].session;
+
+      if (result.rows.length > 0) {
+        session = result.rows[0].session;
       }
     }
 
-    // ================= DB INSERT =================
+    // 🔹 admin upload (auto session by class)
+    if (uploader_role === "admin") {
+      const result = await db.query(
+        "SELECT session FROM students WHERE class = $1 LIMIT 1",
+        [className]
+      );
+
+      if (result.rows.length > 0) {
+        session = result.rows[0].session;
+      }
+    }
+
+    // ================= INSERT DB =================
     const sql = `
       INSERT INTO assignment_uploads
       (
@@ -125,17 +139,17 @@ async function uploadAssignment(req, res) {
       uploader_role === "student" ? "SUBMITTED" : null,
       "supabase",
       new Date(),
-      session, // <-- yahi session insert ho raha hai
+      session,
     ];
 
     const { rows } = await db.query(sql, values);
 
-    // ================= RESPONSE =================
     res.json({
       success: true,
       message: "Assignment uploaded successfully ✅",
       data: rows[0],
     });
+
   } catch (err) {
     console.error("UPLOAD ERROR:", err);
     res.status(500).json({

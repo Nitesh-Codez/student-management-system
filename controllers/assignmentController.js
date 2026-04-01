@@ -219,6 +219,10 @@ async function getAssignmentsByClass(req, res) {
         END AS status
 
       FROM assignment_uploads a
+
+      JOIN students st
+        ON st.id = $2
+
       LEFT JOIN assignment_uploads s
         ON s.task_title = a.task_title
        AND s.class = a.class
@@ -227,6 +231,9 @@ async function getAssignmentsByClass(req, res) {
 
       WHERE a.uploader_role = 'admin'
         AND a.class = $1
+        AND st.session = (
+            SELECT session FROM students WHERE id = $2
+        )
 
       ORDER BY a.uploaded_at DESC
     `;
@@ -234,7 +241,9 @@ async function getAssignmentsByClass(req, res) {
     const { rows } = await db.query(sql, [className, studentId]);
 
     res.json({ success: true, assignments: rows });
+
   } catch (err) {
+    console.error(err);
     res.status(500).json({ success: false, message: err.message });
   }
 }

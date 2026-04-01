@@ -231,9 +231,7 @@ async function getAssignmentsByClass(req, res) {
 
       WHERE a.uploader_role = 'admin'
         AND a.class = $1
-        AND st.session = (
-            SELECT session FROM students WHERE id = $2
-        )
+        AND a.session = st.session   -- ✅ YEH IMPORTANT LINE
 
       ORDER BY a.uploaded_at DESC
     `;
@@ -247,7 +245,6 @@ async function getAssignmentsByClass(req, res) {
     res.status(500).json({ success: false, message: err.message });
   }
 }
-
 // ============================================================
 // ================= GET ADMIN TASKS ===========================
 // ============================================================

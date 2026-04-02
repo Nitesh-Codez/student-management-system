@@ -3,31 +3,11 @@ const pool = require("../db");
 // ================= GET STUDENT PROFILE =================
 const getStudentProfile = async (req, res) => {
   try {
-    // 1. URL/Query se requested ID lo
-    const requestedId = Number(req.query.id);
-
-    // 2. Auth Middleware se aayi hui logged-in user ki ID
-    // Dono ko Number mein convert kar rahe hain taaki string vs number ka issue na aaye
-    const loggedInUserId = req.user ? Number(req.user.id) : null;
-
-    // Validation: Check karo requestedId valid number hai ya nahi
-    if (!requestedId || isNaN(requestedId)) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Valid Student ID is required" 
-      });
+    const studentId = Number(req.query.id);
+    if (!studentId || isNaN(studentId)) {
+      return res.status(400).json({ success: false, message: "Valid Student ID is required" });
     }
 
-    // 3. SECURITY CHECK: Validate karo ki user apni hi ID maang raha hai
-    // Agar login user ki ID requested ID se match nahi hoti toh error bhej do
-    if (requestedId !== loggedInUserId) {
-      return res.status(403).json({ 
-        success: false, 
-        message: "Pls Enter correct id" 
-      });
-    }
-
-    // 4. Database Query (Sirf tab chalegi jab ID match hogi)
     const query = `
       SELECT 
         id, code, name, class, mobile, address, role, 
@@ -38,29 +18,19 @@ const getStudentProfile = async (req, res) => {
       WHERE id = $1
     `;
 
-    const { rows } = await pool.query(query, [requestedId]);
+    const { rows } = await pool.query(query, [studentId]);
 
     if (rows.length === 0) {
-      return res.status(404).json({ 
-        success: false, 
-        message: "Student profile not found in database" 
-      });
+      return res.status(404).json({ success: false, message: "Student not found" });
     }
 
-    // Sab sahi hai, data bhej do
-    res.status(200).json({ 
-      success: true, 
-      student: rows[0] 
-    });
-
+    res.status(200).json({ success: true, student: rows[0] });
   } catch (error) {
     console.error("Error fetching student profile:", error);
-    res.status(500).json({ 
-      success: false, 
-      message: "Internal Server Error" 
-    });
+    res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 };
+
 // ================= INSERT STUDENT =================
 const insertStudent = async (req, res) => {
   try {

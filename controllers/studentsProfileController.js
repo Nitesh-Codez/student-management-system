@@ -208,7 +208,7 @@ const requestProfileEdit = async (req, res) => {
     const { student_id, field_name, requested_value, reason } = req.body;
 
     if (!student_id || !field_name || !reason) {
-      return res.status(400).json({ success: false, message: "Student, field and reason are required" });
+      return res.status(400).json({ success: false, message: "Student, field and reason are required.." });
     }
 
     const oldQuery = `SELECT ${field_name} FROM students WHERE id = $1`;

@@ -3,11 +3,30 @@ const pool = require("../db");
 // ================= GET STUDENT PROFILE =================
 const getStudentProfile = async (req, res) => {
   try {
-    const studentId = Number(req.query.id);
-    if (!studentId || isNaN(studentId)) {
-      return res.status(400).json({ success: false, message: "Valid Student ID is required" });
+    // 1. URL se wo ID lo jo access karni hai
+    const requestedId = Number(req.query.id);
+
+    // 2. Local/Session se login user ki ID lo 
+    // (Ye req.user tumhare auth middleware se aana chahiye jo token verify karta hai)
+    const loggedInUserId = req.user ? req.user.id : null;
+
+    // Validation: Agar ID nahi hai ya Number nahi hai
+    if (!requestedId || isNaN(requestedId)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Valid Student ID is required" 
+      });
     }
 
+    // 3. SECURITY CHECK: Agar requested ID login user ki ID se alag hai
+    if (requestedId !== loggedInUserId) {
+      return res.status(403).json({ 
+        success: false, 
+        message: "Pls Enter correct id" // Ye message frontend pe alert dikhayega
+      });
+    }
+
+    // 4. Agar ID sahi hai, tabhi Database query chalegi
     const query = `
       SELECT 
         id, code, name, class, mobile, address, role, 
@@ -18,19 +37,20 @@ const getStudentProfile = async (req, res) => {
       WHERE id = $1
     `;
 
-    const { rows } = await pool.query(query, [studentId]);
+    const { rows } = await pool.query(query, [requestedId]);
 
     if (rows.length === 0) {
       return res.status(404).json({ success: false, message: "Student not found" });
     }
 
+    // Success response
     res.status(200).json({ success: true, student: rows[0] });
+
   } catch (error) {
     console.error("Error fetching student profile:", error);
     res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 };
-
 // ================= INSERT STUDENT =================
 const insertStudent = async (req, res) => {
   try {

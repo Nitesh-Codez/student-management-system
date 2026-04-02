@@ -97,6 +97,9 @@ const insertStudent = async (req, res) => {
 
 // ================= UPDATE STUDENT PROFILE =================
 const updateStudentProfile = async (req, res) => {
+  // Transaction shuru karenge taaki agar ek query fail ho toh kuch bhi update na ho
+  const client = await pool.connect();
+  
   try {
     const studentId = Number(req.params.id);
 
@@ -111,24 +114,28 @@ const updateStudentProfile = async (req, res) => {
       pincode, session, stream, district
     } = req.body;
 
-    // 🔥 OLD DATA FETCH
-    const oldStudentRes = await pool.query(
-      "SELECT class, session, update_count FROM students WHERE id=$1",
+    await client.query('BEGIN'); // Transaction Start
+
+    // 1. OLD DATA FETCH
+    const oldStudentRes = await client.query(
+      'SELECT "class", session, update_count FROM students WHERE id=$1',
       [studentId]
     );
 
     if (oldStudentRes.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ success: false, message: "Student not found" });
     }
 
     const oldStudent = oldStudentRes.rows[0];
     const oldClass = oldStudent.class;
     const oldSession = oldStudent.session;
-    let updateCount = oldStudent.update_count || 0;
+    let updateCount = Number(oldStudent.update_count) || 0;
 
-    // 🔥 RULE: SAME SESSION → MAX 3 TIMES
+    // 2. UPDATE LIMIT LOGIC
     if (session === oldSession) {
       if (updateCount >= 3) {
+        await client.query('ROLLBACK');
         return res.status(400).json({
           success: false,
           message: "❌ Update limit reached (Max 3 times in same session)"
@@ -136,57 +143,63 @@ const updateStudentProfile = async (req, res) => {
       }
       updateCount += 1;
     } else {
-      // 🔥 NEW SESSION → RESET COUNT
-      updateCount = 1;
+      updateCount = 1; // New session reset
     }
 
-    // -------- SAVE OLD CLASS HISTORY --------
-    await pool.query(
-      `INSERT INTO student_class_history (student_id, class, year)
-       VALUES ($1, $2, $3)`,
-      [studentId, oldClass, new Date().getFullYear()]
-    );
+    // 3. SAVE HISTORY (Only if class changed)
+    if (oldClass !== studentClass) {
+      await client.query(
+        `INSERT INTO student_class_history (student_id, "class", year)
+         VALUES ($1, $2, $3)`,
+        [studentId, oldClass, new Date().getFullYear()]
+      );
 
-    // 🔥 DELETE ATTENDANCE (IMPORTANT)
-    await pool.query(
-      `DELETE FROM attendance WHERE student_id = $1`,
-      [studentId]
-    );
+      // 4. DELETE ATTENDANCE (Sirf class change hone par delete karna better hai, 
+      // par agar aapko har update pe karna hai toh condition hata dena)
+      await client.query(
+        `DELETE FROM attendance WHERE student_id = $1`,
+        [studentId]
+      );
+    }
 
-    // -------- UPDATE STUDENT --------
-    const query = `
+    // 5. UPDATE STUDENT (Handling reserved keyword "class")
+    const updateQuery = `
       UPDATE students SET
-        code=$1, name=$2, class=$3, mobile=$4, address=$5,
+        code=$1, name=$2, "class"=$3, mobile=$4, address=$5,
         father_name=$6, mother_name=$7, gender=$8, dob=$9,
         email=$10, aadhaar=$11, blood_group=$12, category=$13,
-        city=$14, state=$15, pincode=$16, session=$17, stream=$18, district=$19,
-        update_count=$20
+        city=$14, state=$15, pincode=$16, session=$17, stream=$18, 
+        district=$19, update_count=$20
       WHERE id=$21
       RETURNING *
     `;
 
+    // Empty strings ko null handle karna zaroori hai for DATE fields
     const values = [
-      code, name, studentClass, mobile, address,
-      father_name, mother_name, gender, dob, email,
-      aadhaar, blood_group, category, city, state,
-      pincode, session, stream, district,
-      updateCount,
-      studentId
+      code || null, name, studentClass, mobile || null, address || null,
+      father_name || null, mother_name || null, gender || null, dob || null,
+      email || null, aadhaar || null, blood_group || null, category || null,
+      city || null, state || null, pincode || null, session || null, 
+      stream || null, district || null, updateCount, studentId
     ];
 
-    const { rows } = await pool.query(query, values);
+    const { rows } = await client.query(updateQuery, values);
+    
+    await client.query('COMMIT'); // Transaction Success!
 
     res.json({
       success: true,
       message: "⚠️ Profile updated. Attendance reset!",
-      warning: "Your attendance has been reset",
       remainingUpdates: 3 - updateCount,
       student: rows[0]
     });
 
   } catch (error) {
-    console.error("Update profile error:", error);
-    res.status(500).json({ success: false, message: "Server error" });
+    await client.query('ROLLBACK'); // Error aane par rollback
+    console.error("Update profile error details:", error.message);
+    res.status(500).json({ success: false, message: "Server error", error: error.message });
+  } finally {
+    client.release(); // Connection free karein
   }
 };
 // ================= REQUEST PROFILE EDIT =================

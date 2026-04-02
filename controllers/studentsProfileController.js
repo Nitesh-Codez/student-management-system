@@ -3,14 +3,14 @@ const pool = require("../db");
 // ================= GET STUDENT PROFILE =================
 const getStudentProfile = async (req, res) => {
   try {
-    // 1. URL se wo ID lo jo access karni hai
+    // 1. URL/Query se requested ID lo
     const requestedId = Number(req.query.id);
 
-    // 2. Local/Session se login user ki ID lo 
-    // (Ye req.user tumhare auth middleware se aana chahiye jo token verify karta hai)
-    const loggedInUserId = req.user ? req.user.id : null;
+    // 2. Auth Middleware se aayi hui logged-in user ki ID
+    // Dono ko Number mein convert kar rahe hain taaki string vs number ka issue na aaye
+    const loggedInUserId = req.user ? Number(req.user.id) : null;
 
-    // Validation: Agar ID nahi hai ya Number nahi hai
+    // Validation: Check karo requestedId valid number hai ya nahi
     if (!requestedId || isNaN(requestedId)) {
       return res.status(400).json({ 
         success: false, 
@@ -18,15 +18,16 @@ const getStudentProfile = async (req, res) => {
       });
     }
 
-    // 3. SECURITY CHECK: Agar requested ID login user ki ID se alag hai
+    // 3. SECURITY CHECK: Validate karo ki user apni hi ID maang raha hai
+    // Agar login user ki ID requested ID se match nahi hoti toh error bhej do
     if (requestedId !== loggedInUserId) {
       return res.status(403).json({ 
         success: false, 
-        message: "Pls Enter correct id" // Ye message frontend pe alert dikhayega
+        message: "Pls Enter correct id" 
       });
     }
 
-    // 4. Agar ID sahi hai, tabhi Database query chalegi
+    // 4. Database Query (Sirf tab chalegi jab ID match hogi)
     const query = `
       SELECT 
         id, code, name, class, mobile, address, role, 
@@ -40,15 +41,24 @@ const getStudentProfile = async (req, res) => {
     const { rows } = await pool.query(query, [requestedId]);
 
     if (rows.length === 0) {
-      return res.status(404).json({ success: false, message: "Student not found" });
+      return res.status(404).json({ 
+        success: false, 
+        message: "Student profile not found in database" 
+      });
     }
 
-    // Success response
-    res.status(200).json({ success: true, student: rows[0] });
+    // Sab sahi hai, data bhej do
+    res.status(200).json({ 
+      success: true, 
+      student: rows[0] 
+    });
 
   } catch (error) {
     console.error("Error fetching student profile:", error);
-    res.status(500).json({ success: false, message: "Internal Server Error" });
+    res.status(500).json({ 
+      success: false, 
+      message: "Internal Server Error" 
+    });
   }
 };
 // ================= INSERT STUDENT =================

@@ -19,7 +19,7 @@ const teacherAssignmentsRoutes = require("./routes/teacherAssignmentsRoutes");
 const teacherRoutes = require("./routes/teacherRoutes")
 const resultRoutes = require('./routes/resultRoutes');
 const quizRoutes =require ("./routes/quizRoutes.js");
-
+const dropRoutes =require ("./routes/dropRoutes.js");
 // ==================== DB INIT ====================
 const db = require("./db"); 
 
@@ -51,6 +51,7 @@ app.use("/api/teachers", teacherRoutes);
 app.use("/api/teacher-assignments", teacherAssignmentsRoutes);
 app.use('/api/results', resultRoutes);
 app.use("/api/quiz", quizRoutes);
+app.use("/api/drop", dropRoutes);
 
 // ==================== STATIC FILES ====================
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));

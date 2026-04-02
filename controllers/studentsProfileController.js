@@ -97,7 +97,6 @@ const insertStudent = async (req, res) => {
 
 // ================= UPDATE STUDENT PROFILE =================
 const updateStudentProfile = async (req, res) => {
-  // Transaction shuru karenge taaki agar ek query fail ho toh kuch bhi update na ho
   const client = await pool.connect();
   
   try {
@@ -114,9 +113,9 @@ const updateStudentProfile = async (req, res) => {
       pincode, session, stream, district
     } = req.body;
 
-    await client.query('BEGIN'); // Transaction Start
+    await client.query('BEGIN');
 
-    // 1. OLD DATA FETCH
+    // 1. Purana data nikalna (Quotes used for "class")
     const oldStudentRes = await client.query(
       'SELECT "class", session, update_count FROM students WHERE id=$1',
       [studentId]
@@ -132,7 +131,7 @@ const updateStudentProfile = async (req, res) => {
     const oldSession = oldStudent.session;
     let updateCount = Number(oldStudent.update_count) || 0;
 
-    // 2. UPDATE LIMIT LOGIC
+    // 2. Update Limit Logic
     if (session === oldSession) {
       if (updateCount >= 3) {
         await client.query('ROLLBACK');
@@ -143,10 +142,10 @@ const updateStudentProfile = async (req, res) => {
       }
       updateCount += 1;
     } else {
-      updateCount = 1; // New session reset
+      updateCount = 1; 
     }
 
-    // 3. SAVE HISTORY (Only if class changed)
+    // 3. History & Attendance (Sirf class change par)
     if (oldClass !== studentClass) {
       await client.query(
         `INSERT INTO student_class_history (student_id, "class", year)
@@ -154,15 +153,13 @@ const updateStudentProfile = async (req, res) => {
         [studentId, oldClass, new Date().getFullYear()]
       );
 
-      // 4. DELETE ATTENDANCE (Sirf class change hone par delete karna better hai, 
-      // par agar aapko har update pe karna hai toh condition hata dena)
       await client.query(
         `DELETE FROM attendance WHERE student_id = $1`,
         [studentId]
       );
     }
 
-    // 5. UPDATE STUDENT (Handling reserved keyword "class")
+    // 4. Final Update (Sahi parameter counting ke saath)
     const updateQuery = `
       UPDATE students SET
         code=$1, name=$2, "class"=$3, mobile=$4, address=$5,
@@ -174,32 +171,51 @@ const updateStudentProfile = async (req, res) => {
       RETURNING *
     `;
 
-    // Empty strings ko null handle karna zaroori hai for DATE fields
     const values = [
-      code || null, name, studentClass, mobile || null, address || null,
-      father_name || null, mother_name || null, gender || null, dob || null,
-      email || null, aadhaar || null, blood_group || null, category || null,
-      city || null, state || null, pincode || null, session || null, 
-      stream || null, district || null, updateCount, studentId
+      code || null, 
+      name || null, 
+      studentClass || null, 
+      mobile || null, 
+      address || null,
+      father_name || null, 
+      mother_name || null, 
+      gender || null, 
+      (dob === "" || !dob) ? null : dob, // Date empty string fix
+      email || null, 
+      aadhaar || null, 
+      blood_group || null, 
+      category || null,
+      city || null, 
+      state || null, 
+      pincode || null, 
+      session || null, 
+      stream || null, 
+      district || null, 
+      updateCount, 
+      studentId // This is $21
     ];
 
     const { rows } = await client.query(updateQuery, values);
     
-    await client.query('COMMIT'); // Transaction Success!
+    await client.query('COMMIT');
 
     res.json({
       success: true,
-      message: "⚠️ Profile updated. Attendance reset!",
+      message: "⚠️ Profile updated successfully!",
       remainingUpdates: 3 - updateCount,
       student: rows[0]
     });
 
   } catch (error) {
-    await client.query('ROLLBACK'); // Error aane par rollback
-    console.error("Update profile error details:", error.message);
-    res.status(500).json({ success: false, message: "Server error", error: error.message });
+    await client.query('ROLLBACK');
+    console.error("FULL ERROR DETAILS:", error); // Terminal check karein iske liye
+    res.status(500).json({ 
+      success: false, 
+      message: "Server error", 
+      details: error.message 
+    });
   } finally {
-    client.release(); // Connection free karein
+    client.release();
   }
 };
 // ================= REQUEST PROFILE EDIT =================

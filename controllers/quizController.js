@@ -105,25 +105,34 @@ exports.checkAttemptStatus = async (req, res) => {
     }
 };
 
-// 5. SUBMIT QUIZ (Strict 1-Attempt Logic & Real-time Calc)
+
+// 5. SUBMIT QUIZ (Fixed & Robust Version)
 exports.submitQuiz = async (req, res) => {
   try {
     const { student_id, quiz_id, answers } = req.body;
 
-    // 1. Check if already attempted
+    // 1. Inputs validate karein (Integer conversion zaroori hai)
+    const sId = parseInt(student_id);
+    const qId = parseInt(quiz_id);
+
+    if (isNaN(sId) || isNaN(qId)) {
+      return res.status(400).json({ success: false, message: "Invalid Student or Quiz ID" });
+    }
+
+    // 2. Check if already attempted
     const check = await db.query(
       `SELECT id FROM quiz_results WHERE student_id=$1 AND quiz_id=$2`,
-      [student_id, quiz_id]
+      [sId, qId]
     );
 
     if (check.rowCount > 0) {
       return res.status(403).json({ success: false, message: "Already submitted!" });
     }
 
-    // 2. Fetch Quiz Questions
+    // 3. Fetch Quiz Questions
     const quizRes = await db.query(
       `SELECT questions, total_marks FROM quizzes WHERE id=$1`,
-      [quiz_id]
+      [qId]
     );
 
     if (quizRes.rowCount === 0) {
@@ -131,81 +140,101 @@ exports.submitQuiz = async (req, res) => {
     }
 
     const quiz = quizRes.rows[0];
-    const questions = typeof quiz.questions === "string" ? JSON.parse(quiz.questions) : quiz.questions;
+    
+    // JSONB handle karne ka sahi tarika
+    let questions = quiz.questions;
+    if (typeof questions === "string") {
+      questions = JSON.parse(questions);
+    }
 
-    // 3. Calculate Score
+    // 4. Calculate Score (Null checks ke saath)
     let score = 0;
     questions.forEach((q, index) => {
-      if (answers[index] && answers[index].trim() === q.correctAnswer.trim()) {
+      const studentAns = answers[index];
+      const correctAns = q.correctAnswer;
+
+      if (studentAns && correctAns && 
+          studentAns.toString().trim().toLowerCase() === correctAns.toString().trim().toLowerCase()) {
         score++;
       }
     });
 
-    const percentage = ((score / quiz.total_marks) * 100).toFixed(2);
-    let grade = percentage >= 90 ? "A+" : percentage >= 80 ? "A" : percentage >= 70 ? "B" : percentage >= 60 ? "C" : "D";
+    // 5. Calculations for DB
+    const totalMarks = parseInt(quiz.total_marks) || questions.length;
+    const percentage = parseFloat(((score / totalMarks) * 100).toFixed(2));
+    
+    let grade = "F";
+    if (percentage >= 90) grade = "A+";
+    else if (percentage >= 80) grade = "A";
+    else if (percentage >= 70) grade = "B";
+    else if (percentage >= 60) grade = "C";
+    else if (percentage >= 33) grade = "D";
 
-    // 4. Insert Result
+    // 6. Insert Result (Answers ko JSON stringify karke bhejenge)
     const insertRes = await db.query(
-      `INSERT INTO quiz_results
-      (student_id, quiz_id, score, percentage, grade, answers)
-      VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-      [student_id, quiz_id, score, percentage, grade, JSON.stringify(answers)]
+      `INSERT INTO quiz_results 
+      (student_id, quiz_id, score, percentage, grade, answers) 
+      VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [sId, qId, score, percentage, grade, JSON.stringify(answers)]
     );
 
     res.json({ success: true, data: insertRes.rows[0] });
 
   } catch (err) {
     console.error("Submit Quiz Error:", err);
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ success: false, message: "Server Error: " + err.message });
   }
 };
 
-// 6. ADMIN REPORT (With Name Join and Filter by Session/Stream)
+// 6. ADMIN REPORT (Fixed Query & Timezone)
 exports.getAdminResults = async (req, res) => {
-    try {
-        const { class_name } = req.params;
-        const { session, stream } = req.query;
-        
-        let sql = `
-            SELECT 
-                qr.id as result_id,
-                s.name as student_name,
-                q.title as quiz_title,
-                q.subject,
-                q.session,
-                q.stream,
-                qr.score,
-                q.total_marks,
-                qr.percentage,
-                qr.grade,
-                qr.attempted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata' as created_at
-            FROM quiz_results qr
-            JOIN students s ON qr.student_id = s.id
-            JOIN quizzes q ON qr.quiz_id = q.id
-            WHERE q.class_name = $1
-        `;
+  try {
+    const { class_name } = req.params;
+    const { session, stream } = req.query;
 
-        let params = [class_name];
+    // Base SQL (Join with students to get name)
+    let sql = `
+      SELECT 
+        qr.id as result_id,
+        s.name as student_name,
+        q.title as quiz_title,
+        q.subject,
+        q.session,
+        q.stream,
+        qr.score,
+        q.total_marks,
+        qr.percentage,
+        qr.grade,
+        qr.attempted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata' as formatted_date
+      FROM quiz_results qr
+      JOIN students s ON qr.student_id = s.id
+      JOIN quizzes q ON qr.quiz_id = q.id
+      WHERE q.class_name = $1
+    `;
 
-        if (session) {
-          sql += ` AND q.session = $2`;
-          params.push(session);
-        }
-        
-        if (stream && parseInt(class_name) >= 11) {
-          const streamIdx = params.length + 1;
-          sql += ` AND q.stream = $${streamIdx}`;
-          params.push(stream);
-        }
+    let params = [class_name];
 
-        sql += ` ORDER BY qr.attempted_at DESC`;
-
-        const result = await db.query(sql, params);
-        res.json(result.rows); 
-    } catch (err) {
-        console.error("Admin Report Error:", err);
-        res.status(500).json({ success: false, message: "Database error" });
+    // Dynamic Filters
+    if (session) {
+      params.push(session);
+      sql += ` AND q.session = $${params.length}`;
     }
+
+    // Stream filter only for high school
+    if (stream && parseInt(class_name) >= 11) {
+      params.push(stream);
+      sql += ` AND q.stream = $${params.length}`;
+    }
+
+    sql += ` ORDER BY qr.attempted_at DESC`;
+
+    const result = await db.query(sql, params);
+    res.json(result.rows);
+
+  } catch (err) {
+    console.error("Admin Report Error:", err);
+    res.status(500).json({ success: false, message: "Database Error" });
+  }
 };
 
 // 7. GET QUIZ REVIEW

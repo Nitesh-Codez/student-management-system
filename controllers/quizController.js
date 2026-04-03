@@ -275,7 +275,7 @@ exports.updateQuestion = async (req, res) => {
     res.json({ success: true, data: updateRes.rows[0] });
   } catch (err) {
     console.error("Update Question Error:", err);
-    res.status(500).json({ success: false, message: "Server error" });
+    res.status(500).json({ success: false, message: "Server. error" });
   }
 };
 

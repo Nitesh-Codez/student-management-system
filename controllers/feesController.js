@@ -96,29 +96,37 @@ const getStudentFees = async (req, res) => {
 };
 /* ================= GET ALL FEES (Admin History) ================= */
 async function getAllFees(req, res) {
-    try {
-        const { session, class_name } = req.query;
-        let query = "SELECT * FROM fees WHERE 1=1";
-        let params = [];
+  try {
 
-        if (session) {
-            params.push(session);
-            query += ` AND session = $${params.length}`;
-        }
-        if (class_name) {
-            params.push(class_name);
-            query += ` AND class_name = $${params.length}`;
-        }
-        query += " ORDER BY payment_date DESC, id DESC";
+    const { session, month } = req.query;
 
-        const { rows } = await db.query(query, params);
-        res.json({ success: true, fees: rows });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ success: false });
+    let query = `SELECT * FROM fees WHERE payment_status='SUCCESS'`;
+    let params = [];
+
+    if (session) {
+      params.push(session);
+      query += ` AND session = $${params.length}`;
     }
-}
 
+    if (month) {
+      params.push(month);
+      query += ` AND EXTRACT(MONTH FROM payment_date) = $${params.length}`;
+    }
+
+    query += ` ORDER BY payment_date DESC`;
+
+    const { rows } = await db.query(query, params);
+
+    res.json({
+      success: true,
+      fees: rows
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success:false });
+  }
+}
 /* ================= ADD FEE (CASH) ================= */
 async function addFee(req, res) {
   try {

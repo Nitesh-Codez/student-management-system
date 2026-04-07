@@ -158,10 +158,24 @@ async function addFee(req, res) {
 }
 /* ================= PHONEPE & OTHER CRUD ================= */
 async function updateFee(req, res) {
-    try {
-        await db.query(`UPDATE fees SET amount=$1 WHERE id=$2`, [req.body.amount, req.params.id]);
-        res.json({ success: true });
-    } catch (err) { res.status(500).json({ success: false }); }
+  try {
+    const { amount, class_name, payment_date, status } = req.body;
+
+    await db.query(
+      `UPDATE fees 
+       SET amount=$1,
+           class_name=$2,
+           payment_date=$3,
+           status=$4
+       WHERE id=$5`,
+      [amount, class_name, payment_date, status, req.params.id]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false });
+  }
 }
 
 async function deleteFee(req, res) {

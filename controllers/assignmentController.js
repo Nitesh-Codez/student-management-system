@@ -51,8 +51,41 @@ async function uploadAssignment(req, res) {
     if (uploader_role === "admin" && !deadline) {
       return res.status(400).json({
         success: false,
-        message: "Deadline is required for admin uploads",
+        message: "Deadline required for admin",
       });
+    }
+
+    // ================= SESSION FETCH =================
+    let session = null;
+
+    if (uploader_role === "student") {
+      const { rows } = await db.query(
+        "SELECT session FROM students WHERE id=$1",
+        [uploader_id]
+      );
+
+      if (!rows.length) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Student not found" });
+      }
+
+      session = rows[0].session;
+    }
+
+    if (uploader_role === "admin") {
+      const { rows } = await db.query(
+        "SELECT session FROM students WHERE class=$1 LIMIT 1",
+        [className]
+      );
+
+      if (!rows.length) {
+        return res
+          .status(404)
+          .json({ success: false, message: "No students found in this class" });
+      }
+
+      session = rows[0].session;
     }
 
     // ================= FILE PATH =================
@@ -70,41 +103,15 @@ async function uploadAssignment(req, res) {
       .from(ASSIGNMENT_BUCKET)
       .upload(filePath, req.file.buffer, {
         contentType: req.file.mimetype,
-        upsert: false,
       });
 
     if (uploadError) throw uploadError;
 
-    const { data: publicData } = supabase.storage
+    const { data } = supabase.storage
       .from(ASSIGNMENT_BUCKET)
       .getPublicUrl(filePath);
 
-    // ================= SESSION FETCH =================
-    let session = null;
-
-    // 🔹 student upload
-    if (uploader_role === "student") {
-      const result = await db.query(
-        "SELECT session FROM students WHERE id = $1",
-        [uploader_id]
-      );
-
-      if (result.rows.length > 0) {
-        session = result.rows[0].session;
-      }
-    }
-
-    // 🔹 admin upload (auto session by class)
-    if (uploader_role === "admin") {
-      const result = await db.query(
-        "SELECT session FROM students WHERE class = $1 LIMIT 1",
-        [className]
-      );
-
-      if (result.rows.length > 0) {
-        session = result.rows[0].session;
-      }
-    }
+    const publicUrl = data.publicUrl;
 
     // ================= INSERT DB =================
     const sql = `
@@ -135,11 +142,11 @@ async function uploadAssignment(req, res) {
       subject,
       className,
       uploader_role === "admin" ? deadline : null,
-      publicData.publicUrl,
+      publicUrl,
       uploader_role === "student" ? "SUBMITTED" : null,
       "supabase",
       new Date(),
-      session,
+      session, // ✅ session automatically insert
     ];
 
     const { rows } = await db.query(sql, values);
@@ -149,13 +156,11 @@ async function uploadAssignment(req, res) {
       message: "Assignment uploaded successfully ✅",
       data: rows[0],
     });
-
   } catch (err) {
     console.error("UPLOAD ERROR:", err);
     res.status(500).json({
       success: false,
-      message: "Assignment upload failed",
-      error: err.message,
+      message: err.message,
     });
   }
 }

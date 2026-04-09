@@ -55,9 +55,10 @@ async function uploadAssignment(req, res) {
       });
     }
 
-    // ================= SESSION FETCH =================
+    // ================= SESSION =================
     let session = null;
 
+    // 🔹 Student → session students table se
     if (uploader_role === "student") {
       const { rows } = await db.query(
         "SELECT session FROM students WHERE id=$1",
@@ -65,27 +66,18 @@ async function uploadAssignment(req, res) {
       );
 
       if (!rows.length) {
-        return res
-          .status(404)
-          .json({ success: false, message: "Student not found" });
+        return res.status(404).json({
+          success: false,
+          message: "Student not found",
+        });
       }
 
       session = rows[0].session;
     }
 
+    // 🔹 Admin → hardcoded session
     if (uploader_role === "admin") {
-      const { rows } = await db.query(
-        "SELECT session FROM students WHERE class=$1 LIMIT 1",
-        [className]
-      );
-
-      if (!rows.length) {
-        return res
-          .status(404)
-          .json({ success: false, message: "No students found in this class" });
-      }
-
-      session = rows[0].session;
+      session = "2026-27";
     }
 
     // ================= FILE PATH =================
@@ -146,7 +138,7 @@ async function uploadAssignment(req, res) {
       uploader_role === "student" ? "SUBMITTED" : null,
       "supabase",
       new Date(),
-      session, // ✅ session automatically insert
+      session,
     ];
 
     const { rows } = await db.query(sql, values);
@@ -156,6 +148,7 @@ async function uploadAssignment(req, res) {
       message: "Assignment uploaded successfully ✅",
       data: rows[0],
     });
+
   } catch (err) {
     console.error("UPLOAD ERROR:", err);
     res.status(500).json({

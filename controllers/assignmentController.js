@@ -293,25 +293,7 @@ async function getSubmissionsByTask(req, res) {
   try {
     const { task_title } = req.params;
     const className = req.query.class;
-    const studentId = req.query.studentId; // student id ko query se lo
 
-    if (!studentId) {
-      return res.status(400).json({ success: false, message: "studentId required" });
-    }
-
-    // 🔹 Step 1: Fetch current session of the student
-    const sessionResult = await db.query(
-      "SELECT session FROM students WHERE id=$1",
-      [studentId]
-    );
-
-    if (!sessionResult.rows.length) {
-      return res.status(404).json({ success: false, message: "Student not found" });
-    }
-
-    const currentSession = sessionResult.rows[0].session;
-
-    // 🔹 Step 2: Fetch submissions only for that session
     const { rows } = await db.query(
       `
       SELECT
@@ -335,11 +317,10 @@ async function getSubmissionsByTask(req, res) {
       WHERE s.uploader_role='student'
         AND s.task_title=$1
         AND s.class=$2
-        AND s.session=$3  -- ✅ current session dynamically
 
       ORDER BY s.uploaded_at ASC
       `,
-      [task_title, className, currentSession]
+      [task_title, className]
     );
 
     res.json({ success: true, submissions: rows });

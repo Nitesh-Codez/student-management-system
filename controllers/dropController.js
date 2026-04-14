@@ -31,8 +31,6 @@ exports.applyDrop = async (req, res) => {
   }
 };
 
-
-
 exports.getMyDropRequests = async (req, res) => {
   try {
     const { student_id } = req.query;
@@ -45,7 +43,10 @@ exports.getMyDropRequests = async (req, res) => {
 
     const { rows } = await db.query(query, [student_id]);
 
-    res.json({ success: true, data: rows });
+    res.json({
+      success: true,
+      data: rows
+    });
 
   } catch (error) {
     console.error(error);

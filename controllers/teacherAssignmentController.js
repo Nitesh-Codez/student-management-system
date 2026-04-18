@@ -113,10 +113,6 @@ exports.getStudentLectures = async (req,res)=>{
     AND ta.day_of_week=$3
     AND $2 >= ta.class_date
     AND ($2 <= ta.repeat_until OR ta.repeat_until IS NULL)
-
-    -- 🔥 ONLY TODAY + TOMORROW FILTER
-    AND $2::date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '1 day'
-
     ORDER BY ta.start_time
     `;
 

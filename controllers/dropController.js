@@ -1,7 +1,5 @@
 const db = require("../db");
 
-const db = require("../db");
-
 exports.applyDrop = async (req, res) => {
   const client = await db.connect();
 

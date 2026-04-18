@@ -111,11 +111,12 @@ exports.getStudentLectures = async (req,res)=>{
     LEFT JOIN teachers t ON ta.teacher_id=t.id
     WHERE ta.class_name=$1
     AND ta.day_of_week=$3
-    
-    -- 🔥 FIX: only today + tomorrow
-    AND $2::date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '1 day'
-    
+    AND $2 >= ta.class_date
     AND ($2 <= ta.repeat_until OR ta.repeat_until IS NULL)
+
+    -- 🔥 ONLY TODAY + TOMORROW FILTER
+    AND $2::date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '1 day'
+
     ORDER BY ta.start_time
     `;
 

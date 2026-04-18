@@ -1,84 +1,90 @@
 const db = require("../db");
 
+const db = require("../db");
 
 exports.applyDrop = async (req, res) => {
-  const client = await db.connect(); // 🔥 better transaction handling
+  const client = await db.connect();
 
   try {
-    const { student_id, start_date, end_date, reason } = req.body;
+    const { student_id, start_date, end_date, reason, drop_type } = req.body;
 
     // ✅ Validation
-    if (!student_id || !start_date || !end_date || !reason) {
+    if (!student_id || !reason || !drop_type) {
       return res.status(400).json({
         success: false,
-        message: "All fields are required"
+        message: "Required fields missing"
       });
     }
 
-    // ✅ Date validation
-    if (new Date(start_date) > new Date(end_date)) {
-      return res.status(400).json({
-        success: false,
-        message: "Start date cannot be after end date"
-      });
+    // ✅ Logic based on type
+    let finalStart = start_date;
+    let finalEnd = end_date;
+
+    if (drop_type === "1_day") {
+      finalEnd = start_date; // same day
+    }
+
+    if (drop_type === "permanent") {
+      finalStart = null;
+      finalEnd = null;
     }
 
     await client.query("BEGIN");
 
-    // ✅ 1. Insert into student_drop
+    // ✅ 1. student_drop
     const dropQuery = `
-      INSERT INTO student_drop (student_id, start_date, end_date)
-      VALUES ($1, $2, $3)
+      INSERT INTO student_drop 
+      (student_id, start_date, end_date, drop_type)
+      VALUES ($1, $2, $3, $4)
       RETURNING *
     `;
 
     const dropRes = await client.query(dropQuery, [
       student_id,
-      start_date,
-      end_date
+      finalStart,
+      finalEnd,
+      drop_type
     ]);
 
-    // ✅ 2. Insert into profile_edit_requests (FIXED)
+    // ✅ 2. profile_edit_requests
     const requestQuery = `
       INSERT INTO profile_edit_requests
-      (student_id, field_name, request_type, start_date, end_date, reason)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      (student_id, field_name, request_type, start_date, end_date, reason, drop_type)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING *
     `;
 
     const requestRes = await client.query(requestQuery, [
       student_id,
-      "drop",       // ✅ field_name fix
-      "DROP",       // request_type
-      start_date,
-      end_date,
-      reason
+      "drop",
+      "DROP",
+      finalStart,
+      finalEnd,
+      reason,
+      drop_type
     ]);
 
     await client.query("COMMIT");
 
     res.json({
       success: true,
-      message: "Drop request submitted successfully",
+      message: "Drop request submitted",
       drop: dropRes.rows[0],
       request: requestRes.rows[0]
     });
 
   } catch (error) {
     await client.query("ROLLBACK");
-
-    console.error("DROP ERROR:", error.message); // ✅ better debug
+    console.error("DROP ERROR:", error.message);
 
     res.status(500).json({
       success: false,
       message: "Server error"
     });
-
   } finally {
-    client.release(); // 🔥 important
+    client.release();
   }
 };
-
 
 exports.getMyDropRequests = async (req, res) => {
   try {

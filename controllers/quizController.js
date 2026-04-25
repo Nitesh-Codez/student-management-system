@@ -111,6 +111,7 @@ exports.submitQuiz = async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid Student or Quiz ID" });
     }
 
+    // 🔒 Prevent multiple attempts
     const check = await db.query(
       `SELECT id FROM quiz_results WHERE student_id=$1 AND quiz_id=$2`,
       [sId, qId]
@@ -120,6 +121,7 @@ exports.submitQuiz = async (req, res) => {
       return res.status(403).json({ success: false, message: "Already submitted!" });
     }
 
+    // 📥 Get quiz
     const quizRes = await db.query(
       `SELECT questions, total_marks FROM quizzes WHERE id=$1`,
       [qId]
@@ -130,24 +132,46 @@ exports.submitQuiz = async (req, res) => {
     }
 
     let questions = quizRes.rows[0].questions;
-    if (typeof questions === "string") questions = JSON.parse(questions);
+    if (typeof questions === "string") {
+      questions = JSON.parse(questions);
+    }
 
-    // ✅ Score Calculation (Safe)
+    // 🧠 SAFE NORMALIZE FUNCTION
+    const normalize = (val) => {
+      if (val === null || val === undefined) return "";
+      return String(val)
+        .toLowerCase()
+        .replace(/\s+/g, "")      // remove spaces
+        .replace(/,/g, ",")       // normalize commas
+        .trim();
+    };
+
+    // ✅ SCORE CALCULATION (FIXED 🔥)
     let score = 0;
+
     questions.forEach((q, index) => {
       const studentAns = answers[index];
       const correctAns = q.correctAnswer;
 
-      if (studentAns !== undefined && correctAns !== undefined) {
-        if (String(studentAns).trim().toLowerCase() === String(correctAns).trim().toLowerCase()) {
-          score++;
-        }
+      // skip if no answer
+      if (!studentAns || !correctAns) return;
+
+      const sAns = normalize(studentAns);
+      const cAns = normalize(correctAns);
+
+      if (sAns === cAns) {
+        score++;
       }
     });
 
-    const totalMarks = questions.length || 1;
-    const percentage = parseFloat(((score / totalMarks) * 100).toFixed(2));
+    // 🎯 USE DB total_marks (NOT questions.length blindly)
+    const totalMarks = quizRes.rows[0].total_marks || questions.length;
 
+    const percentage = parseFloat(
+      totalMarks > 0 ? ((score / totalMarks) * 100).toFixed(2) : 0
+    );
+
+    // 🎓 Grade Logic
     let grade = "F";
     if (percentage >= 90) grade = "A+";
     else if (percentage >= 80) grade = "A";
@@ -155,6 +179,7 @@ exports.submitQuiz = async (req, res) => {
     else if (percentage >= 60) grade = "C";
     else if (percentage >= 33) grade = "D";
 
+    // 💾 Save result
     const insertRes = await db.query(
       `INSERT INTO quiz_results 
       (student_id, quiz_id, score, percentage, grade, answers) 
@@ -163,6 +188,7 @@ exports.submitQuiz = async (req, res) => {
     );
 
     res.json({ success: true, data: insertRes.rows[0] });
+
   } catch (err) {
     console.error("Submit Quiz Error:", err);
     res.status(500).json({ success: false, message: "Server Error: " + err.message });

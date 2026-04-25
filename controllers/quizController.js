@@ -151,17 +151,20 @@ exports.submitQuiz = async (req, res) => {
 
     questions.forEach((q, index) => {
       const studentAns = answers[index];
-      const correctAns = q.correctAnswer;
+      const correctAns = q.correctAnswer || q.answer;
 
-      // skip if no answer
-      if (!studentAns || !correctAns) return;
+     if (studentAns === undefined || correctAns === undefined) return;
 
       const sAns = normalize(studentAns);
       const cAns = normalize(correctAns);
 
-      if (sAns === cAns) {
-        score++;
-      }
+      const sortAns = (val) =>
+  val.split(",").map(v => v.trim()).sort().join(",");
+
+if (sortAns(sAns) === sortAns(cAns)) {
+  score++;
+} 
+      
     });
 
     // 🎯 USE DB total_marks (NOT questions.length blindly)
@@ -281,6 +284,7 @@ exports.updateQuestion = async (req, res) => {
   try {
     const { quizId, questionIndex } = req.params;
     const { question, options, correctAnswer } = req.body;
+  
 
     const quizRes = await db.query(`SELECT questions FROM quizzes WHERE id=$1`, [quizId]);
     if (quizRes.rowCount === 0) return res.status(404).json({ success: false, message: "Quiz not found" });

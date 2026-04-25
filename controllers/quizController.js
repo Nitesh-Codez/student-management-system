@@ -33,14 +33,14 @@ exports.createQuiz = async (req, res) => {
     res.status(500).json({ success: false, message: "Server error while creating quiz" });
   }
 };
-
-// 2. GET QUIZ LIST (Student Dashboard)
+// 2. GET QUIZ LIST - Updated SQL to include 'questions'
 exports.getQuizByClass = async (req, res) => {
   try {
     const { class_name } = req.params;
     const { session, stream, subject } = req.query; 
 
-    let query = `SELECT id, title, subject, session, stream, timer_minutes, total_marks, created_at 
+    // Yahan "questions" field add kar diya hai
+    let query = `SELECT id, title, subject, session, stream, timer_minutes, questions, total_marks, created_at 
                  FROM quizzes WHERE class_name=$1 AND session=$2`;
     let params = [class_name, session];
 

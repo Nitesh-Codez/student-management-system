@@ -1,78 +1,77 @@
-const db = require("../db");
-const cloudinary = require("cloudinary").v2;
-const multer = require("multer");
+const { GoogleGenerativeAI } = require("@google/generative-ai");
+const pool = require("../db");
 
-const storage = multer.diskStorage({});
-const upload = multer({ storage });
+const genAI = new GoogleGenerativeAI(
+  process.env.GEMINI_API_KEY
+);
 
-cloudinary.config({
-  cloud_name: process.env.CLOUD_NAME,
-  api_key: process.env.CLOUD_API_KEY,
-  api_secret: process.env.CLOUD_API_SECRET,
-});
-
-// 1. Send Message
-exports.sendMessage = async (req, res) => {
+const chatWithGemini = async (req, res) => {
   try {
-    const { from_user, to_user, text } = req.body;
-    let image_url = null;
+    const { message, student_id } = req.body;
 
-    if (req.file) {
-      const result = await cloudinary.uploader.upload(req.file.path, { folder: "chat_images" });
-      image_url = result.secure_url;
+    // ================= VALIDATION =================
+    if (!message || message.trim() === "") {
+      return res.status(400).json({
+        success: false,
+        message: "Message is required"
+      });
     }
 
-    const msg = await db.query(
-      "INSERT INTO messages (from_user, to_user, text, image_url, is_read, timestamp) VALUES ($1,$2,$3,$4, FALSE, NOW()) RETURNING *",
-      [from_user, to_user, text || null, image_url]
-    );
+    // ================= MODEL =================
+    const model = genAI.getGenerativeModel({
+      model: "gemini-1.5-flash"
+    });
 
-    res.json({ success: true, message: msg.rows[0] });
-  } catch (err) {
-    console.error("Send Error:", err);
-    res.status(500).json({ success: false, message: "Server error" });
+    // ================= PROMPT =================
+    const prompt = `
+You are a safe and friendly AI chatbot for school students.
+
+Rules:
+- Reply in simple Hindi + English.
+- Help in studies, coding, maths, science and english.
+- Never answer adult or harmful questions.
+- Keep answers short and clear.
+
+Student Question:
+${message}
+`;
+
+    // ================= GEMINI RESPONSE =================
+    const result = await model.generateContent(prompt);
+
+    const reply =
+      result.response.text() || "No response generated";
+
+    // ================= SAVE CHAT (OPTIONAL) =================
+    if (student_id) {
+      await pool.query(
+        `
+        INSERT INTO chat_messages
+        (student_id, user_message, bot_reply)
+        VALUES ($1, $2, $3)
+        `,
+        [student_id, message, reply]
+      );
+    }
+
+    // ================= FINAL RESPONSE =================
+    res.status(200).json({
+      success: true,
+      user_message: message,
+      reply
+    });
+
+  } catch (error) {
+    console.error("Gemini Error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "AI Server Error",
+      error: error.message
+    });
   }
 };
 
-// 2. Get Chat & Mark as Read
-exports.getChat = async (req, res) => {
-  try {
-    const { user1, user2 } = req.params;
-    
-    // Mark messages as read when user opens the chat
-    await db.query(
-      "UPDATE messages SET is_read = TRUE WHERE from_user = $1 AND to_user = $2",
-      [user2, user1]
-    );
-
-    const msgs = await db.query(
-      "SELECT * FROM messages WHERE (from_user=$1 AND to_user=$2) OR (from_user=$2 AND to_user=$1) ORDER BY timestamp ASC",
-      [user1, user2]
-    );
-    res.json({ success: true, messages: msgs.rows });
-  } catch (err) {
-    res.status(500).json({ success: false, message: "Server error" });
-  }
+module.exports = {
+  chatWithGemini
 };
-
-// 3. Delete Message
-exports.deleteMessage = async (req, res) => {
-  try {
-    const { id } = req.params;
-    await db.query("DELETE FROM messages WHERE id = $1", [id]);
-    res.json({ success: true, message: "Message deleted successfully" });
-  } catch (err) {
-    res.status(500).json({ success: false, message: "Delete error" });
-  }
-};
-
-exports.getAllChats = async (req, res) => {
-  try {
-    const msgs = await db.query("SELECT * FROM messages ORDER BY timestamp ASC");
-    res.json({ success: true, messages: msgs.rows });
-  } catch (err) {
-    res.status(500).json({ success: false, message: "Server error" });
-  }
-};
-
-exports.uploadMiddleware = upload;

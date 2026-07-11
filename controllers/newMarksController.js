@@ -41,6 +41,8 @@ exports.addMarks = async (req, res) => {
       vivaMarks,
       attendanceMarks,
       totalMarks,
+      examType,
+      session,
       date
     } = req.body;
 
@@ -51,6 +53,8 @@ exports.addMarks = async (req, res) => {
       vivaMarks == null ||
       attendanceMarks == null ||
       totalMarks == null ||
+      !examType ||
+      !session ||
       !date
     ) {
       return res.json({ success: false, message: "All fields are required" });
@@ -63,8 +67,19 @@ exports.addMarks = async (req, res) => {
 
     const sql = `
       INSERT INTO marks_new
-      (student_id, subject, theory_marks, viva_marks, attendance_marks, total_marks, obtained_marks, test_date)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      (
+        student_id,
+        subject,
+        theory_marks,
+        viva_marks,
+        attendance_marks,
+        total_marks,
+        obtained_marks,
+        exam_type,
+        session,
+        test_date
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
     `;
 
     await db.query(sql, [
@@ -75,6 +90,8 @@ exports.addMarks = async (req, res) => {
       attendanceMarks,
       totalMarks,
       obtainedMarks,
+      examType,
+      session,
       date
     ]);
 
@@ -93,7 +110,6 @@ exports.addMarks = async (req, res) => {
     res.json({ success: false, message: "Server error while adding marks" });
   }
 };
-
 // ===============================
 // Check marks (Student Panel)
 // ===============================
@@ -106,42 +122,44 @@ exports.checkMarks = async (req, res) => {
     }
 
     // ✅ Verify student
-    const sqlStudent = `SELECT id FROM students WHERE id = $1 AND name = $2`;
-    const { rows: studentRows } = await db.query(sqlStudent, [studentId, studentName]);
+const sqlStudent = `SELECT id FROM students WHERE id = $1 AND name = $2`;
+const { rows: studentRows } = await db.query(sqlStudent, [studentId, studentName]);
 
-    if (studentRows.length === 0) {
-      return res.json({ success: false, message: "Invalid Student ID or Name" });
-    }
+if (studentRows.length === 0) {
+  return res.json({ success: false, message: "Invalid Student ID or Name" });
+}
 
-    // ✅ Fetch marks
-    const sqlMarks = `
-      SELECT 
-        subject,
-        theory_marks,
-        viva_marks,
-        attendance_marks,
-        total_marks,
-        obtained_marks,
-        test_date,
-        status
-      FROM marks_new
-      WHERE student_id = $1
-      ORDER BY test_date DESC
-    `;
-    const { rows } = await db.query(sqlMarks, [studentId]);
+// ✅ Fetch marks
+const sqlMarks = `
+  SELECT 
+    subject,
+    theory_marks,
+    viva_marks,
+    attendance_marks,
+    total_marks,
+    obtained_marks,
+    exam_type,
+    session,
+    test_date,
+    status
+  FROM marks_new
+  WHERE student_id = $1
+  ORDER BY test_date DESC
+`;
 
-    if (rows.length === 0) {
-      return res.json({ success: false, message: "No marks found" });
-    }
+const { rows } = await db.query(sqlMarks, [studentId]);
 
-    res.json({ success: true, data: rows });
+if (rows.length === 0) {
+  return res.json({ success: false, message: "No marks found" });
+}
 
-  } catch (error) {
-    console.error(error);
-    res.json({ success: false, message: "Error fetching marks" });
-  }
+res.json({ success: true, data: rows });
+
+} catch (error) {
+  console.error(error);
+  res.json({ success: false, message: "Error fetching marks" });
+}
 };
-
 
 
 // --------------------------------------------------

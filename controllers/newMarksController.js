@@ -141,3 +141,88 @@ exports.checkMarks = async (req, res) => {
     res.json({ success: false, message: "Error fetching marks" });
   }
 };
+
+
+
+// --------------------------------------------------
+exports.getCurrentAttendanceMarks = async (req, res) => {
+  try {
+    const { studentId } = req.query;
+
+    if (!studentId) {
+      return res.status(400).json({
+        success: false,
+        message: "studentId required",
+      });
+    }
+
+    const today = new Date();
+
+    // Current Session Year
+    const sessionYear =
+      today.getMonth() + 1 >= 4
+        ? today.getFullYear()
+        : today.getFullYear() - 1;
+
+    const startDate = `${sessionYear}-04-01`;
+    const endDate = today.toISOString().split("T")[0];
+
+    const { rows } = await db.query(
+      `
+      SELECT
+        EXTRACT(MONTH FROM date)::int AS month,
+        status
+      FROM attendance
+      WHERE student_id = $1
+      AND date BETWEEN $2 AND $3
+      `,
+      [studentId, startDate, endDate]
+    );
+
+    let totalMarks = 0;
+    let totalMonths = 0;
+
+    // April (4) → Current Month
+    const lastMonth =
+      today.getFullYear() === sessionYear
+        ? today.getMonth() + 1
+        : 12;
+
+    for (let month = 4; month <= lastMonth; month++) {
+      const monthData = rows.filter((r) => r.month === month);
+
+      if (monthData.length === 0) continue;
+
+      const validDays = monthData.filter(
+        (r) => r.status === "Present" || r.status === "Absent"
+      ).length;
+
+      const presentDays = monthData.filter(
+        (r) => r.status === "Present"
+      ).length;
+
+      const percentage =
+        validDays === 0 ? 0 : (presentDays / validDays) * 100;
+
+      const marks =
+        percentage <= 75 ? 0 : Math.ceil((percentage - 75) / 5);
+
+      totalMarks += marks;
+      totalMonths++;
+    }
+
+    const attendanceMarks =
+      totalMonths === 0 ? 0 : Number((totalMarks / totalMonths).toFixed(2));
+
+    return res.json({
+      success: true,
+      attendanceMarks,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+    });
+  }
+};

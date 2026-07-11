@@ -52,3 +52,10 @@ const finalizeExamSubmission = async (req, res) => {
 };
 
 module.exports = { getMyExamDetails, finalizeExamSubmission };
+
+
+
+//ATTENDANCE MARKS
+// --------------------------------------------------
+// GET CURRENT SESSION ATTENDANCE MARKS
+// Session: April → Current Month

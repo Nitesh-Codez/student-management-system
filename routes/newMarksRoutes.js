@@ -7,4 +7,6 @@ router.get("/students/:className", newMarksController.getStudentsByClass);
 router.post("/add", newMarksController.addMarks);
 router.post("/check", newMarksController.checkMarks);
 
+router.get("/attendance/current-marks", newMarksController.getCurrentAttendanceMarks);
+
 module.exports = router;

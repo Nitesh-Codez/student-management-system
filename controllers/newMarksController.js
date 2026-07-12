@@ -28,7 +28,6 @@ exports.getStudentsByClass = async (req, res) => {
     res.json({ success: false, message: "Error getting students" });
   }
 };
-
 // ===============================
 // Add marks (NO DUPLICATE)
 // ===============================
@@ -40,6 +39,7 @@ exports.addMarks = async (req, res) => {
       theoryMarks,
       vivaMarks,
       attendanceMarks,
+      task,
       totalMarks,
       examType,
       session,
@@ -52,18 +52,23 @@ exports.addMarks = async (req, res) => {
       theoryMarks == null ||
       vivaMarks == null ||
       attendanceMarks == null ||
+      task == null ||
       totalMarks == null ||
       !examType ||
       !session ||
       !date
     ) {
-      return res.json({ success: false, message: "All fields are required" });
+      return res.json({
+        success: false,
+        message: "All fields are required"
+      });
     }
 
     const obtainedMarks =
       Number(theoryMarks) +
       Number(vivaMarks) +
-      Number(attendanceMarks);
+      Number(attendanceMarks) +
+      Number(task);
 
     const sql = `
       INSERT INTO marks_new
@@ -73,13 +78,14 @@ exports.addMarks = async (req, res) => {
         theory_marks,
         viva_marks,
         attendance_marks,
+        task,
         total_marks,
         obtained_marks,
         exam_type,
         session,
         test_date
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
     `;
 
     await db.query(sql, [
@@ -88,6 +94,7 @@ exports.addMarks = async (req, res) => {
       theoryMarks,
       vivaMarks,
       attendanceMarks,
+      task,
       totalMarks,
       obtainedMarks,
       examType,
@@ -95,10 +102,12 @@ exports.addMarks = async (req, res) => {
       date
     ]);
 
-    res.json({ success: true, message: "Marks added successfully" });
+    res.json({
+      success: true,
+      message: "Marks added successfully"
+    });
 
   } catch (err) {
-    // 🔴 PostgreSQL duplicate entry error code
     if (err.code === "23505") {
       return res.json({
         success: false,
@@ -107,9 +116,13 @@ exports.addMarks = async (req, res) => {
     }
 
     console.error(err);
-    res.json({ success: false, message: "Server error while adding marks" });
+    res.json({
+      success: false,
+      message: "Server error while adding marks"
+    });
   }
 };
+
 // ===============================
 // Check marks (Student Panel)
 // ===============================
@@ -118,49 +131,72 @@ exports.checkMarks = async (req, res) => {
     const { studentId, studentName } = req.body;
 
     if (!studentId || !studentName) {
-      return res.json({ success: false, message: "Student ID and Name required" });
+      return res.json({
+        success: false,
+        message: "Student ID and Name required"
+      });
     }
 
     // ✅ Verify student
-const sqlStudent = `SELECT id FROM students WHERE id = $1 AND name = $2`;
-const { rows: studentRows } = await db.query(sqlStudent, [studentId, studentName]);
+    const sqlStudent = `
+      SELECT id
+      FROM students
+      WHERE id = $1 AND name = $2
+    `;
 
-if (studentRows.length === 0) {
-  return res.json({ success: false, message: "Invalid Student ID or Name" });
-}
+    const { rows: studentRows } = await db.query(sqlStudent, [
+      studentId,
+      studentName
+    ]);
 
-// ✅ Fetch marks
-const sqlMarks = `
-  SELECT 
-    subject,
-    theory_marks,
-    viva_marks,
-    attendance_marks,
-    total_marks,
-    obtained_marks,
-    exam_type,
-    session,
-    test_date,
-    status
-  FROM marks_new
-  WHERE student_id = $1
-  ORDER BY test_date DESC
-`;
+    if (studentRows.length === 0) {
+      return res.json({
+        success: false,
+        message: "Invalid Student ID or Name"
+      });
+    }
 
-const { rows } = await db.query(sqlMarks, [studentId]);
+    // ✅ Fetch marks
+    const sqlMarks = `
+      SELECT
+        subject,
+        theory_marks,
+        viva_marks,
+        attendance_marks,
+        task,
+        total_marks,
+        obtained_marks,
+        exam_type,
+        session,
+        test_date,
+        status
+      FROM marks_new
+      WHERE student_id = $1
+      ORDER BY test_date DESC
+    `;
 
-if (rows.length === 0) {
-  return res.json({ success: false, message: "No marks found" });
-}
+    const { rows } = await db.query(sqlMarks, [studentId]);
 
-res.json({ success: true, data: rows });
+    if (rows.length === 0) {
+      return res.json({
+        success: false,
+        message: "No marks found"
+      });
+    }
 
-} catch (error) {
-  console.error(error);
-  res.json({ success: false, message: "Error fetching marks" });
-}
+    res.json({
+      success: true,
+      data: rows
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.json({
+      success: false,
+      message: "Error fetching marks"
+    });
+  }
 };
-
 
 // --------------------------------------------------
 exports.getCurrentAttendanceMarks = async (req, res) => {

@@ -72,7 +72,6 @@ async function loginController(req, res) {
   }
 }
 
-module.exports = { loginController };
 
 
 
@@ -209,5 +208,6 @@ async function unbanStudent(req, res) {
 module.exports = {
   banStudent,
   unbanStudent,
-  getBannedStudents
+  getBannedStudents,
+  loginController
 };

@@ -17,4 +17,7 @@ router.post("/ban", banStudent);
 // Unban Student
 router.post("/unban", unbanStudent);
 
+//get all the banned students
+
+router.get("/banned-students", getBannedStudents);
 module.exports = router;

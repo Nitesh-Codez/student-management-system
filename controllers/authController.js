@@ -5,9 +5,20 @@ async function loginController(req, res) {
   const { name, password } = req.body;
 
   try {
-    // 🔍 Query mein "session" aur "stream" bhi add kiya hai
     const results = await db.query(
-      'SELECT id, name, password, role, "class", session,joining_date, stream FROM students WHERE name = $1',
+      `SELECT id,
+              name,
+              password,
+              role,
+              "class",
+              session,
+              joining_date,
+              stream,
+              is_banned,
+              ban_reason
+       FROM students
+       WHERE LOWER(TRIM(name)) = LOWER(TRIM($1))
+       LIMIT 1`,
       [name]
     );
 
@@ -20,7 +31,17 @@ async function loginController(req, res) {
 
     const user = results.rows[0];
 
-    // 🔐 Password Comparison
+    // 🚫 Account banned
+    if (user.is_banned) {
+      return res.json({
+        success: false,
+        message:
+          user.ban_reason ||
+          "Your Account suspended by Tuition teacher. Contact him.",
+      });
+    }
+
+    // 🔐 Password check
     const isMatch = await bcrypt.compare(password, user.password);
 
     if (!isMatch) {
@@ -30,22 +51,21 @@ async function loginController(req, res) {
       });
     }
 
-    // ✅ SUCCESS RESPONSE - Ab isme saara data hai jo Dashboard ko chahiye
-    res.json({
+    return res.json({
       success: true,
       user: {
         id: user.id,
         name: user.name,
         role: user.role,
         class: user.class,
-        session: user.session, // 🔥 Dashboard filters ke liye
-        stream: user.stream, 
-        joining_date: user.joining_date,     // 🔥 Dashboard filters ke liye
+        session: user.session,
+        stream: user.stream,
+        joining_date: user.joining_date,
       },
     });
   } catch (err) {
     console.error("Login Error:", err);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Server error",
     });

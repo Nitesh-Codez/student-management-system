@@ -2,9 +2,10 @@ const express = require("express");
 const router = express.Router();
 
 const {
-  loginController,
-  banStudent,
-  unbanStudent,
+ loginController,
+ banStudent,
+ unbanStudent,
+ getBannedStudents
 } = require("../controllers/authController");
 
 // Login

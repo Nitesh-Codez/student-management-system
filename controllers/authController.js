@@ -77,6 +77,49 @@ module.exports = { loginController };
 
 
 
+// Get All Banned Students
+async function getBannedStudents(req,res){
+
+  try{
+
+    const result = await db.query(
+      `
+      SELECT 
+        id,
+        name,
+        "class",
+        ban_reason,
+        is_banned
+      FROM students
+      WHERE is_banned = TRUE
+      ORDER BY id DESC
+      `
+    );
+
+
+    res.json({
+      success:true,
+      students:result.rows
+    });
+
+
+  }catch(err){
+
+    console.log("Get Banned Error:",err);
+
+    res.status(500).json({
+      success:false,
+      message:"Server error"
+    });
+
+  }
+
+}
+
+
+
+
+
 // Ban Student
 async function banStudent(req, res) {
   const { name, className, reason } = req.body;
@@ -166,4 +209,5 @@ async function unbanStudent(req, res) {
 module.exports = {
   banStudent,
   unbanStudent,
+  getBannedStudents
 };

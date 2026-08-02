@@ -78,15 +78,18 @@ exports.getLeaderboard = async (req, res) => {
     const result = await db.query(
       `
       SELECT
-        s.id,
-        s.name,
-        s.profile_photo,
+        ss.id,
+        ss.student_id,
+        ss.class_name,
+        ss.session,
         COALESCE(ss.stars, 0) AS stars,
-        COALESCE(ss.remarks, '') AS remarks
-      FROM students s
-      LEFT JOIN student_stars ss
-      ON s.id = ss.student_id AND ss.session = $2
-      WHERE s."class" = $1 AND s.role = 'student'
+        COALESCE(ss.remarks, '') AS remarks,
+        s.name,
+        s.profile_photo
+      FROM student_stars ss
+      JOIN students s
+      ON s.id = ss.student_id
+      WHERE ss.class_name = $1 AND ss.session = $2
       ORDER BY stars DESC, s.name ASC
       `,
       [className, session]
@@ -104,7 +107,6 @@ exports.getLeaderboard = async (req, res) => {
     });
   }
 };
-
 // ================= GET MY RANK =================
 exports.getMyRank = async (req, res) => {
   try {

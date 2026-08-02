@@ -75,8 +75,7 @@ exports.getLeaderboard = async (req, res) => {
   try {
     const { class: className, session } = req.query;
 
-    const result = await db.query(
-      `
+    let sql = `
       SELECT
         ss.id,
         ss.student_id,
@@ -88,19 +87,43 @@ exports.getLeaderboard = async (req, res) => {
         s.profile_photo
       FROM student_stars ss
       JOIN students s
-      ON s.id = ss.student_id
-      WHERE ss.class_name = $1 AND ss.session = $2
-      ORDER BY stars DESC, s.name ASC
-      `,
-      [className, session]
-    );
+        ON s.id = ss.student_id
+    `;
+
+    const conditions = [];
+    const values = [];
+
+    if (className) {
+      values.push(className);
+      conditions.push(`ss.class_name = $${values.length}`);
+    }
+
+    if (session) {
+      values.push(session);
+      conditions.push(`ss.session = $${values.length}`);
+    }
+
+    if (conditions.length > 0) {
+      sql += ` WHERE ` + conditions.join(" AND ");
+    }
+
+    sql += `
+      ORDER BY
+        ss.stars DESC,
+        s.name ASC
+    `;
+
+    const result = await db.query(sql, values);
 
     res.json({
       success: true,
+      total: result.rows.length,
       leaderboard: result.rows
     });
 
   } catch (err) {
+    console.error("Leaderboard Error:", err);
+
     res.status(500).json({
       success: false,
       message: err.message

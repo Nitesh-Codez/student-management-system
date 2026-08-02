@@ -237,3 +237,52 @@ exports.getMyRank = async (req, res) => {
     });
   }
 };
+
+exports.getMyTree = async (req, res) => {
+  try {
+    const { student_id, session } = req.query;
+
+    const student = await db.query(
+      `SELECT "class" FROM students WHERE id = $1`,
+      [student_id]
+    );
+
+    if (student.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Student not found"
+      });
+    }
+
+    const className = student.rows[0].class;
+
+    const result = await db.query(
+      `
+      SELECT
+        s.id,
+        s.name,
+        s.profile_photo,
+        ss.stars,
+        ss.remarks
+      FROM student_stars ss
+      JOIN students s
+      ON s.id = ss.student_id
+      WHERE ss.class_name = $1
+      AND ss.session = $2
+      ORDER BY ss.stars DESC, s.name
+      `,
+      [className, session]
+    );
+
+    res.json({
+      success: true,
+      students: result.rows
+    });
+
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err.message
+    });
+  }
+};

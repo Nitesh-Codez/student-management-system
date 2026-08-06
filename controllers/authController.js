@@ -205,9 +205,117 @@ async function unbanStudent(req, res) {
   }
 }
 
+
+//Setting lock
+async function setPattern(req, res) {
+  const { studentId, pattern } = req.body;
+
+  try {
+    const hash = await bcrypt.hash(pattern, 10);
+
+    await db.query(
+      `UPDATE students
+       SET pattern_lock = $1,
+           pattern_enabled = TRUE
+       WHERE id = $2`,
+      [hash, studentId]
+    );
+
+    res.json({
+      success: true,
+      message: "Pattern saved successfully."
+    });
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
+  }
+}
+
+async function verifyPattern(req, res) {
+  const { studentId, pattern } = req.body;
+
+  try {
+    const result = await db.query(
+      `SELECT pattern_lock, pattern_enabled
+       FROM students
+       WHERE id = $1`,
+      [studentId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.json({
+        success: false,
+        message: "Student not found."
+      });
+    }
+
+    const user = result.rows[0];
+
+    if (!user.pattern_enabled) {
+      return res.json({
+        success: false,
+        message: "Pattern not set."
+      });
+    }
+
+    const isMatch = await bcrypt.compare(pattern, user.pattern_lock);
+
+    if (!isMatch) {
+      return res.json({
+        success: false,
+        message: "Invalid pattern."
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Pattern verified."
+    });
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
+  }
+}
+
+
+//disable pattern
+async function disablePattern(req, res) {
+  const { studentId } = req.body;
+
+  try {
+    await db.query(
+      `UPDATE students
+       SET pattern_lock = NULL,
+           pattern_enabled = FALSE
+       WHERE id = $1`,
+      [studentId]
+    );
+
+    res.json({
+      success: true,
+      message: "Pattern disabled."
+    });
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
+  }
+}
+
 module.exports = {
   banStudent,
   unbanStudent,
   getBannedStudents,
-  loginController
+  loginController,
+  setPattern,
+  verifyPattern,
+  disablePattern
 };

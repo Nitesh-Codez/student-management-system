@@ -5,7 +5,10 @@ const {
  loginController,
  banStudent,
  unbanStudent,
- getBannedStudents
+ getBannedStudents,
+ setPattern,
+ verifyPattern,
+ disablePattern
 } = require("../controllers/authController");
 
 // Login
@@ -20,4 +23,11 @@ router.post("/unban", unbanStudent);
 //get all the banned students
 
 router.get("/banned-students", getBannedStudents);
+
+
+//Security pins
+
+router.post("/set-pattern", setPattern);
+router.post("/verify-pattern", verifyPattern);
+router.post("/disable-pattern", disablePattern);
 module.exports = router;

@@ -20,7 +20,7 @@ const teacherRoutes = require("./routes/teacherRoutes")
 const resultRoutes = require('./routes/resultRoutes');
 const quizRoutes =require ("./routes/quizRoutes.js");
 const dropRoutes =require ("./routes/dropRoutes.js");
-const examRoutes = require("./examRoutes.js")
+const examRoutes = require("./routes/examRoutes.js")
 
 const studentStarsRoutes = require("./routes/studentStarsRoutes");
 // ==================== DB INIT ====================

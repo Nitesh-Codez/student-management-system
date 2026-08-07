@@ -210,33 +210,52 @@ const getTotalExamSubmissions = async (req, res) => {
     });
   }
 };
-const getSubmittedStudentsForMarks = async (req, res) => {
-    try {
-        const query = `
-            SELECT 
-                e.id as registration_id,
-                e.student_id,
-                e.student_name,
-                e.student_class,
-                e.exam_type,
-                e.subjects,
-                e.session_year,
-                m.task_marks,
-                m.behavior_marks,
-                m.performance_marks
-            FROM exam_submission e
-            LEFT JOIN internal_marks m ON m.student_id = e.student_id AND m.exam_type = e.exam_type AND m.session_year = e.session_year
-            WHERE e.status = 'Applied' -- Or 'submitted' depending on how your status text is saved
-            ORDER BY e.student_class, e.student_name;
-        `;
-        const { rows } = await pool.query(query);
-        res.status(200).json({ success: true, data: rows });
-    } catch (error) {
-        console.error('Error fetching submitted students:', error);
-        res.status(500).json({ success: false, message: 'Server Error' });
-    }
-};
 
+
+// ======================================================
+// Get Submitted Students For Internal Marks
+// ======================================================
+const getSubmittedStudentsForMarks = async (req, res) => {
+  try {
+    const query = `
+      SELECT
+        e.id AS registration_id,
+        e.student_id,
+        e.student_name,
+        e.student_class,
+        e.exam_type,
+        e.subjects,
+        e.session_year,
+        e.status,
+        e.applied_at,
+        COALESCE(m.task_marks, 0) AS task_marks,
+        COALESCE(m.behavior_marks, 0) AS behavior_marks,
+        COALESCE(m.performance_marks, 0) AS performance_marks
+      FROM exam_registrations e
+      LEFT JOIN internal_marks m
+        ON m.student_id = e.student_id
+       AND m.exam_type = e.exam_type
+       AND m.session_year = e.session_year
+      WHERE e.status = 'Submitted'
+      ORDER BY e.student_class, e.student_name;
+    `;
+
+    const { rows } = await pool.query(query);
+
+    return res.status(200).json({
+      success: true,
+      total_students: rows.length,
+      data: rows,
+    });
+
+  } catch (error) {
+    console.error("Error fetching submitted students:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+    });
+  }
+};
 // Save the evaluation marks
 const saveInternalMarks = async (req, res) => {
     const { marksData } = req.body; // Array containing student_id, exam_type, session_year, and marks

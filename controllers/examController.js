@@ -160,10 +160,10 @@ const getMySubjects = async (req, res) => {
   }
 };
 
-//Admin Check All Exam Forms
-// 4. Get All Submitted Exam Forms (Admin)
 
+//==============================================================
 // 4. Get All Submitted Exam Forms (Admin)
+//===============================================================
 const getTotalExamSubmissions = async (req, res) => {
   try {
     const query = `
@@ -214,20 +214,20 @@ const getSubmittedStudentsForMarks = async (req, res) => {
     try {
         const query = `
             SELECT 
-                s.id as student_id,
-                s.name as student_name,
-                s.class_name,
-                s.roll_number,
-                e.exam_id,
-                e.subjects, -- Assuming JSON or array of subjects registered
+                e.id as registration_id,
+                e.student_id,
+                e.student_name,
+                e.student_class,
+                e.exam_type,
+                e.subjects,
+                e.session_year,
                 m.task_marks,
                 m.behavior_marks,
                 m.performance_marks
-            FROM exam_submissions e
-            JOIN students s ON e.student_id = s.id
-            LEFT JOIN internal_marks m ON m.student_id = s.id AND m.exam_id = e.exam_id
-            WHERE e.status = 'submitted'
-            ORDER BY s.class_name, s.name;
+            FROM exam_submission e
+            LEFT JOIN internal_marks m ON m.student_id = e.student_id AND m.exam_type = e.exam_type AND m.session_year = e.session_year
+            WHERE e.status = 'Applied' -- Or 'submitted' depending on how your status text is saved
+            ORDER BY e.student_class, e.student_name;
         `;
         const { rows } = await pool.query(query);
         res.status(200).json({ success: true, data: rows });
@@ -239,14 +239,14 @@ const getSubmittedStudentsForMarks = async (req, res) => {
 
 // Save the evaluation marks
 const saveInternalMarks = async (req, res) => {
-    const { marksData } = req.body; // Array of { student_id, exam_id, task_marks, behavior_marks, performance_marks }
+    const { marksData } = req.body; // Array containing student_id, exam_type, session_year, and marks
     
     try {
         for (const item of marksData) {
             const upsertQuery = `
-                INSERT INTO internal_marks (student_id, exam_id, task_marks, behavior_marks, performance_marks, updated_at)
-                VALUES ($1, $2, $3, $4, $5, NOW())
-                ON CONFLICT (student_id, exam_id) 
+                INSERT INTO internal_marks (student_id, exam_type, session_year, task_marks, behavior_marks, performance_marks, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, NOW())
+                ON CONFLICT (student_id, exam_type, session_year) 
                 DO UPDATE SET 
                     task_marks = EXCLUDED.task_marks,
                     behavior_marks = EXCLUDED.behavior_marks,
@@ -255,7 +255,8 @@ const saveInternalMarks = async (req, res) => {
             `;
             await pool.query(upsertQuery, [
                 item.student_id,
-                item.exam_id,
+                item.exam_type,
+                item.session_year || '2025-26',
                 item.task_marks || 0,
                 item.behavior_marks || 0,
                 item.performance_marks || 0

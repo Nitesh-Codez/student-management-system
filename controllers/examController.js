@@ -54,7 +54,7 @@ const getMyExamDetails = async (req, res) => {
 // 2. Finalize Exam Submission
 const finalizeExamSubmission = async (req, res) => {
   try {
-    const { student_id, exam_type } = req.body;
+    const { student_id, student_name, student_class, session_year, exam_type, subjects } = req.body;
 
     if (!student_id || !exam_type) {
       return res.status(400).json({
@@ -63,24 +63,27 @@ const finalizeExamSubmission = async (req, res) => {
       });
     }
 
+    const currentSession = session_year || "2026-2027";
+
     const query = `
-      UPDATE exam_registrations
-      SET
+      INSERT INTO exam_registrations (student_id, student_name, student_class, session_year, exam_type, subjects, status, applied_at)
+      VALUES ($1, $2, $3, $4, $5, $6, 'Submitted', NOW())
+      ON CONFLICT (student_id, exam_type, session_year) 
+      DO UPDATE SET 
         status = 'Submitted',
+        subjects = EXCLUDED.subjects,
         applied_at = NOW()
-      WHERE student_id = $1
-      AND exam_type = $2
       RETURNING *
     `;
 
-    const { rows } = await pool.query(query, [student_id, exam_type]);
-
-    if (rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "No registration record found to update."
-      });
-    }
+    const { rows } = await pool.query(query, [
+      student_id, 
+      student_name || 'N/A', 
+      student_class || 'N/A', 
+      currentSession, 
+      exam_type, 
+      subjects
+    ]);
 
     return res.json({
       success: true,
@@ -90,22 +93,12 @@ const finalizeExamSubmission = async (req, res) => {
 
   } catch (error) {
     console.error("Submit Exam Error:", error);
-
-    // Duplicate Entry (Unique Constraint)
-    if (error.code === "23505") {
-      return res.status(409).json({
-        success: false,
-        message: "Exam registration already exists."
-      });
-    }
-
     res.status(500).json({
       success: false,
       message: "Server Error"
     });
   }
 };
-
 // 3. Get My Subjects
 const getMySubjects = async (req, res) => {
   try {

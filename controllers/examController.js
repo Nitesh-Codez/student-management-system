@@ -161,30 +161,44 @@ const getMySubjects = async (req, res) => {
 };
 
 //Admin Check All Exam Forms
-// 4. Get Total Submitted Exam Forms (Admin)
+// 4. Get All Submitted Exam Forms (Admin)
 const getTotalExamSubmissions = async (req, res) => {
   try {
     const query = `
-      SELECT COUNT(*) AS total_submissions
+      SELECT
+        id,
+        student_id,
+        student_name,
+        student_class,
+        exam_type,
+        session_year,
+        status,
+        applied_at
       FROM exam_registrations
       WHERE status = 'Submitted'
+      ORDER BY applied_at DESC;
     `;
 
     const { rows } = await pool.query(query);
 
     return res.json({
       success: true,
-      total_submissions: Number(rows[0].total_submissions)
+      total_submissions: rows.length,
+      students: rows,
     });
+
   } catch (error) {
-    console.error("Total Exam Submissions Error:", error);
+    console.error("Get Submitted Exam Forms Error:", error);
     res.status(500).json({
       success: false,
-      message: "Server Error"
+      message: "Server Error",
     });
   }
 };
 
+module.exports = {
+  getTotalExamSubmissions,
+};
 module.exports = {
   getMyExamDetails,
   finalizeExamSubmission,

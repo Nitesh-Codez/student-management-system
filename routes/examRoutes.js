@@ -5,7 +5,9 @@ const {
   getMyExamDetails,
   finalizeExamSubmission,
   getMySubjects,
-  getTotalExamSubmissions
+  getTotalExamSubmissions,
+  saveInternalMarks,
+  getSubmittedStudentsForMarks
 } = require("../controllers/examController");
 
 // ==============================
@@ -27,5 +29,13 @@ router.get("/my-subjects", getMySubjects);
 // (Admin side )Get All Exan forms
 // ==============================
 router.get("/admin/total-submissions", getTotalExamSubmissions);
+
+
+//Internal marks section
+// Get students who submitted the exam form + available subjects
+router.get('/submitted-students', getSubmittedStudentsForMarks);
+
+// Save or update internal evaluation marks (Tasks, Behavior, Performance)
+router.post('/save-internal-marks', saveInternalMarks);
 
 module.exports = router;

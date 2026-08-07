@@ -210,9 +210,69 @@ const getTotalExamSubmissions = async (req, res) => {
     });
   }
 };
+const getSubmittedStudentsForMarks = async (req, res) => {
+    try {
+        const query = `
+            SELECT 
+                s.id as student_id,
+                s.name as student_name,
+                s.class_name,
+                s.roll_number,
+                e.exam_id,
+                e.subjects, -- Assuming JSON or array of subjects registered
+                m.task_marks,
+                m.behavior_marks,
+                m.performance_marks
+            FROM exam_submissions e
+            JOIN students s ON e.student_id = s.id
+            LEFT JOIN internal_marks m ON m.student_id = s.id AND m.exam_id = e.exam_id
+            WHERE e.status = 'submitted'
+            ORDER BY s.class_name, s.name;
+        `;
+        const { rows } = await pool.query(query);
+        res.status(200).json({ success: true, data: rows });
+    } catch (error) {
+        console.error('Error fetching submitted students:', error);
+        res.status(500).json({ success: false, message: 'Server Error' });
+    }
+};
+
+// Save the evaluation marks
+const saveInternalMarks = async (req, res) => {
+    const { marksData } = req.body; // Array of { student_id, exam_id, task_marks, behavior_marks, performance_marks }
+    
+    try {
+        for (const item of marksData) {
+            const upsertQuery = `
+                INSERT INTO internal_marks (student_id, exam_id, task_marks, behavior_marks, performance_marks, updated_at)
+                VALUES ($1, $2, $3, $4, $5, NOW())
+                ON CONFLICT (student_id, exam_id) 
+                DO UPDATE SET 
+                    task_marks = EXCLUDED.task_marks,
+                    behavior_marks = EXCLUDED.behavior_marks,
+                    performance_marks = EXCLUDED.performance_marks,
+                    updated_at = NOW();
+            `;
+            await pool.query(upsertQuery, [
+                item.student_id,
+                item.exam_id,
+                item.task_marks || 0,
+                item.behavior_marks || 0,
+                item.performance_marks || 0
+            ]);
+        }
+        res.status(200).json({ success: true, message: 'Marks saved successfully!' });
+    } catch (error) {
+        console.error('Error saving marks:', error);
+        res.status(500).json({ success: false, message: 'Failed to save marks' });
+    }
+};
+
 module.exports = {
   getMyExamDetails,
   finalizeExamSubmission,
   getMySubjects,
   getTotalExamSubmissions,
+  saveInternalMarks,
+  getSubmittedStudentsForMarks
 };

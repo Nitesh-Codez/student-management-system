@@ -196,12 +196,12 @@ const getTotalExamSubmissions = async (req, res) => {
   }
 };
 
-module.exports = {
-  getTotalExamSubmissions,
-};
+
+
 module.exports = {
   getMyExamDetails,
   finalizeExamSubmission,
   getMySubjects,
+  getTotalExamSubmissions,
   getTotalExamSubmissions
 };

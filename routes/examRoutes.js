@@ -5,6 +5,7 @@ const {
   getMyExamDetails,
   finalizeExamSubmission,
   getMySubjects,
+  getTotalExamSubmissions
 } = require("../controllers/examController");
 
 // ==============================
@@ -21,5 +22,10 @@ router.post("/finalize-exam-submission", finalizeExamSubmission);
 // Get My Subjects
 // ==============================
 router.get("/my-subjects", getMySubjects);
+
+// ==============================
+// (Admin side )Get All Exan forms
+// ==============================
+router.get("/admin/total-submissions", getTotalExamSubmissions);
 
 module.exports = router;

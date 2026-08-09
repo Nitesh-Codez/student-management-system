@@ -1,5 +1,7 @@
 const bcrypt = require("bcryptjs");
 const db = require("../db");
+const jwt = require("jsonwebtoken");
+
 
 async function loginController(req, res) {
   const { name, password } = req.body;
@@ -51,8 +53,25 @@ async function loginController(req, res) {
       });
     }
 
+    // 🎫 Generate JWT
+    const token = jwt.sign(
+      {
+        id: user.id,
+        name: user.name,
+        role: user.role,
+        class: user.class,
+        session: user.session,
+        stream: user.stream,
+      },
+      process.env.JWT_SECRET,
+      {
+        expiresIn: "6h",
+      }
+    );
+
     return res.json({
       success: true,
+      token,
       user: {
         id: user.id,
         name: user.name,
@@ -65,15 +84,13 @@ async function loginController(req, res) {
     });
   } catch (err) {
     console.error("Login Error:", err);
+
     return res.status(500).json({
       success: false,
       message: "Server error",
     });
   }
 }
-
-
-
 
 
 // Get All Banned Students

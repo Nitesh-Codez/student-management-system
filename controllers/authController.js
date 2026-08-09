@@ -67,6 +67,7 @@ async function loginController(req, res) {
       {
         expiresIn: "6h",
       }
+      
     );
 
     return res.json({

@@ -2,32 +2,38 @@ const express = require("express");
 const router = express.Router();
 
 const {
- loginController,
- banStudent,
- unbanStudent,
- getBannedStudents,
- setPattern,
- verifyPattern,
- disablePattern
+  loginController,
+  banStudent,
+  unbanStudent,
+  getBannedStudents,
+  setPattern,
+  verifyPattern,
+  disablePattern
 } = require("../controllers/authController");
 
-// Login
+const authMiddleware = require("../middleware/authMiddleware");
+const adminMiddleware = require("../middleware/adminMiddleware");
+
+// Login — middleware nahi
 router.post("/login", loginController);
 
-// Ban Student
-router.post("/ban", banStudent);
+// Admin routes
+router.post("/ban", authMiddleware, adminMiddleware, banStudent);
 
-// Unban Student
-router.post("/unban", unbanStudent);
+router.post("/unban", authMiddleware, adminMiddleware, unbanStudent);
 
-//get all the banned students
+router.get(
+  "/banned-students",
+  authMiddleware,
+  adminMiddleware,
+  getBannedStudents
+);
 
-router.get("/banned-students", getBannedStudents);
+// Pattern routes — logged-in user
+router.post("/set-pattern", authMiddleware, setPattern);
 
+router.post("/verify-pattern", authMiddleware, verifyPattern);
 
-//Security pins
+router.post("/disable-pattern", authMiddleware, disablePattern);
 
-router.post("/set-pattern", setPattern);
-router.post("/verify-pattern", verifyPattern);
-router.post("/disable-pattern", disablePattern);
 module.exports = router;

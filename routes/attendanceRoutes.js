@@ -1,6 +1,10 @@
 const express = require("express");
 const router = express.Router();
 
+//Middlewares
+const authMiddleware = require("../middlewares/authMiddleware");
+const adminMiddleware = require("../middlewares/adminMiddleware");
+
 // ✅ Single controller import (clean & safe)
 const attendanceController = require("../controllers/attendanceController");
 

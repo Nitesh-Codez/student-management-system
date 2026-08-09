@@ -12,6 +12,10 @@ const {
   getFeeByClass
 } = require("../controllers/feesController");
 
+//Middlewares
+const authMiddleware = require("../middlewares/authMiddleware");
+const adminMiddleware = require("../middlewares/adminMiddleware");
+
 // Admin Routes
 router.get("/", getAllFees); // Sab fees session wise dekhne ke liye
 

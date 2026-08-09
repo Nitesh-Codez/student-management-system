@@ -4,6 +4,10 @@ const router = express.Router();
 // Controllers
 const teacherAssignmentController = require("../controllers/teacherAssignmentController");
 
+//Middlewares
+const authMiddleware = require("../middlewares/authMiddleware");
+const adminMiddleware = require("../middlewares/adminMiddleware");
+
 
 // ================= CREATE / ASSIGN CLASS =================
 router.post("/assign", teacherAssignmentController.assignClass);

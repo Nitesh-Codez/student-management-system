@@ -2,6 +2,10 @@ const express = require("express");
 const router = express.Router();
 const multer = require("multer");
 
+//Middlewares
+const authMiddleware = require("../middlewares/authMiddleware");
+const adminMiddleware = require("../middlewares/adminMiddleware");
+
 // ✅ Use memory storage for multer so req.file.buffer is available
 const memoryStorage = multer.memoryStorage();
 

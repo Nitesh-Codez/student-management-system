@@ -6,6 +6,10 @@ const {
   deleteMaterial,
 } = require("../controllers/studyMaterialController");
 
+//Middlewares
+const authMiddleware = require("../middlewares/authMiddleware");
+const adminMiddleware = require("../middlewares/adminMiddleware");
+
 const router = express.Router();
 
 // ✅ Ye memory storage use karega taaki Render ka temp folder wala issue na ho

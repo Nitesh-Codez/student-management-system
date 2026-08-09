@@ -3,6 +3,10 @@ const router = express.Router();
 
 const starController = require("../controllers/studentStarsController");
 
+//Middlewares
+const authMiddleware = require("../middlewares/authMiddleware");
+const adminMiddleware = require("../middlewares/adminMiddleware");
+
 // Class wise students
 router.get("/students", starController.getStudentsByClass);
 

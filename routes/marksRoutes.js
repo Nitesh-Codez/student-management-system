@@ -12,7 +12,7 @@ const marksController = require("../controllers/marksController");
 router.get("/classes",authMiddleware, marksController.getClasses);
 
 // ================= GET STUDENTS BY CLASS =================
-router.get("/students/:className",authMiddleware, marksController.getStudentsByClass);
+router.get("/students/:className",authMiddleware,adminMiddleware, marksController.getStudentsByClass);
 
 // ================= ADD MARKS =================
 router.post("/add",authMiddleware,adminMiddleware, marksController.addMarks);

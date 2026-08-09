@@ -11,6 +11,10 @@ const {
   getEditRequests,
 } = require("../controllers/studentsProfileController");
 
+
+//Middlewares
+const authMiddleware = require("../middlewares/authMiddleware");
+const adminMiddleware = require("../middlewares/adminMiddleware");
 // ================= STUDENT PROFILE ROUTES =================
 
 // GET profile: /api/students/profile?id=27

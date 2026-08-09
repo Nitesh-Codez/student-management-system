@@ -28,33 +28,34 @@ const {
 // ================= ROUTES =================
 
 // Admin upload
-router.post("/admin/upload", adminUpload.single("file"), uploadAssignment);
+router.post("/admin/upload", authMiddleware,adminMiddleware, adminUpload.single("file"), uploadAssignment);
 
 // Student upload
-router.post("/student/upload", studentUpload.single("file"), uploadAssignment);
+router.post("/student/upload",authMiddleware, studentUpload.single("file"), uploadAssignment);
 
 // Get assignments by class
-router.get("/class/:className/:studentId", getAssignmentsByClass);
+router.get("/class/:className/:studentId",authMiddleware, getAssignmentsByClass);
 
 // Update student rating
-router.put("/rating/:id", updateRating);
+router.put("/rating/:id",authMiddleware,adminMiddleware, updateRating);
 
 // Get admin tasks by class (for dropdown)
-router.get("/admin/tasks/:className", getTasksByClass);
+router.get("/admin/tasks/:className",authMiddleware,adminMiddleware, getTasksByClass);
 
 //For assignment edit
 // routes/assignmentRoutes.js
 router.put(
   "/admin/assignment/:id",
+  authMiddleware,
   adminUpload.single("file"),
   updateAdminAssignment
 );
 
 
 // Get submissions for a task
-router.get("/admin/submissions/:task_title", getSubmissionsByTask);
+router.get("/admin/submissions/:task_title",authMiddleware,getSubmissionsByTask);
 
 // Delete assignment
-router.delete("/:id", deleteAssignment);
+router.delete("/:id", authMiddleware, deleteAssignment);
 
 module.exports = router;

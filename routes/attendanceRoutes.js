@@ -10,15 +10,15 @@ const attendanceController = require("../controllers/attendanceController");
 
 // ------------------------------------
 // GET students list for a specific date (Admin)
-router.get("/list",authMiddleware,adminMiddleware, attendanceController.getStudentsList);
+router.get("/list",authMiddleware, attendanceController.getStudentsList);
 
 // ------------------------------------
 // POST mark or update attendance (Admin)
-router.post("/mark",authMiddleware,adminMiddleware, attendanceController.markAttendance);
+router.post("/mark",authMiddleware,attendanceController.markAttendance);
 
 // ------------------------------------
 // GET today attendance percentage (Admin)
-router.get("/today-percent",authMiddleware,adminMiddleware, attendanceController.getTodayAttendancePercent);
+router.get("/today-percent",authMiddleware, attendanceController.getTodayAttendancePercent);
 
 // ------------------------------------
 // ✅ GET attendance marks (MONTHLY)

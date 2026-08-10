@@ -17,29 +17,29 @@ const adminMiddleware = require("../middlewares/adminMiddleware");
 // ==============================
 // Get Exam Details
 // ==============================
-router.get("/my-exam-details", getMyExamDetails);
+router.get("/my-exam-details",authMiddleware, getMyExamDetails);
 
 // ==============================
 // Submit / Finalize Exam Form
 // ==============================
-router.post("/finalize-exam-submission", finalizeExamSubmission);
+router.post("/finalize-exam-submission",authMiddleware, finalizeExamSubmission);
 
 // ==============================
 // Get My Subjects
 // ==============================
-router.get("/my-subjects", getMySubjects);
+router.get("/my-subjects",authMiddleware, getMySubjects);
 
 // ==============================
 // (Admin side )Get All Exan forms
 // ==============================
-router.get("/admin/total-submissions", getTotalExamSubmissions);
+router.get("/admin/total-submissions",authMiddleware, getTotalExamSubmissions);
 
 
 //Internal marks section
 // Get students who submitted the exam form + available subjects
-router.get('/submitted-students', getSubmittedStudentsForMarks);
+router.get('/submitted-students',authMiddleware, getSubmittedStudentsForMarks);
 
 // Save or update internal evaluation marks (Tasks, Behavior, Performance)
-router.post('/save-internal-marks', saveInternalMarks);
+router.post('/save-internal-marks',authMiddleware, saveInternalMarks);
 
 module.exports = router;

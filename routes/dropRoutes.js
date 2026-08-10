@@ -7,7 +7,7 @@ const authMiddleware = require("../middlewares/authMiddleware");
 const adminMiddleware = require("../middlewares/adminMiddleware");
 
 // student drop apply
-router.post("/apply-drop", dropController.applyDrop);
-router.get("/my-drop-requests", dropController.getMyDropRequests);
+router.post("/apply-drop",authMiddleware, dropController.applyDrop);
+router.get("/my-drop-requests",authMiddleware, dropController.getMyDropRequests);
 
 module.exports = router;

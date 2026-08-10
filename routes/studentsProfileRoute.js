@@ -18,27 +18,27 @@ const adminMiddleware = require("../middlewares/adminMiddleware");
 // ================= STUDENT PROFILE ROUTES =================
 
 // GET profile: /api/students/profile?id=27
-router.get("/profile", getStudentProfile);
+router.get("/profile",authMiddleware, getStudentProfile);
 
 // INSERT new student: /api/students/add
-router.post("/add", insertStudent);
+router.post("/add",authMiddleware,adminMiddleware, insertStudent);
 
 // UPDATE student profile: /api/students/update/27
-router.put("/update/:id", updateStudentProfile);
+router.put("/update/:id",authMiddleware, updateStudentProfile);
 
 // ================= PROFILE EDIT REQUESTS (Workflow) =================
 
 // Student side: Request an edit
-router.post("/request-edit", requestProfileEdit);
+router.post("/request-edit",authMiddleware, requestProfileEdit);
 
 // Admin side: Approve or Reject a request
-router.post("/handle-edit", handleEditRequest);
+router.post("/handle-edit",authMiddleware,adminMiddleware, handleEditRequest);
 
 // Admin side: Get all pending requests
-router.get("/pending-edit-requests", getPendingEditRequests);
+router.get("/pending-edit-requests",authMiddleware,adminMiddleware, getPendingEditRequests);
 
 // Student/Admin side: Get all history of edit requests for a specific student
 // /api/students/edit-requests?id=27
-router.get("/edit-requests", getEditRequests);
+router.get("/edit-requests",authMiddleware, getEditRequests);
 
 module.exports = router;

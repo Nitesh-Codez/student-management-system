@@ -10,23 +10,23 @@ const adminMiddleware = require("../middlewares/adminMiddleware");
 
 
 // ================= CREATE / ASSIGN CLASS =================
-router.post("/assign", teacherAssignmentController.assignClass);
+router.post("/assign",authMiddleware,adminMiddleware, teacherAssignmentController.assignClass);
 
 // ================= GET ALL ASSIGNMENTS =================
-router.get("/all", teacherAssignmentController.getAssignments);
+router.get("/all",authMiddleware,adminMiddleware, teacherAssignmentController.getAssignments);
 
-router.get("/student/:class_name/:date", teacherAssignmentController.getStudentLectures);
+router.get("/student/:class_name/:date",authMiddleware, teacherAssignmentController.getStudentLectures);
 
 // ================= UPDATE ASSIGNMENT =================
-router.put("/update/:id", teacherAssignmentController.updateAssignment);
+router.put("/update/:id",authMiddleware,adminMiddleware, teacherAssignmentController.updateAssignment);
 
 // ================= DELETE ASSIGNMENT =================
-router.delete("/delete/:id", teacherAssignmentController.deleteAssignment);
+router.delete("/delete/:id",authMiddleware,adminMiddleware, teacherAssignmentController.deleteAssignment);
 // ================= GET LECTURES BY TEACHER ID =================
 
 // ================= BULK SUSPEND / HOLIDAY =================
-router.post("/suspend-day", teacherAssignmentController.suspendDay);
+router.post("/suspend-day",authMiddleware,adminMiddleware, teacherAssignmentController.suspendDay);
 
-router.get("/teacher/:teacher_id", teacherAssignmentController.getTeacherLectures);
+router.get("/teacher/:teacher_id",authMiddleware,adminMiddleware, teacherAssignmentController.getTeacherLectures);
 
 module.exports = router;

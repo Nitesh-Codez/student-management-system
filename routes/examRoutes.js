@@ -10,7 +10,7 @@ const {
   getSubmittedStudentsForMarks
 } = require("../controllers/examController");
 
-//Middlewares
+//Middlewares//////
 const authMiddleware = require("../middlewares/authMiddleware");
 const adminMiddleware = require("../middlewares/adminMiddleware");
 

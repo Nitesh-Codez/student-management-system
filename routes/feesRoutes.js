@@ -17,19 +17,19 @@ const authMiddleware = require("../middlewares/authMiddleware");
 const adminMiddleware = require("../middlewares/adminMiddleware");
 
 // Admin Routes
-router.get("/", getAllFees); // Sab fees session wise dekhne ke liye
+router.get("/",authMiddleware,adminMiddleware, getAllFees); // Sab fees session wise dekhne ke liye
 
 // Student Routes
-router.get("/student/:id", getStudentFees); // Particular student ke liye + Late Tag logic
+router.get("/student/:id",authMiddleware, getStudentFees); // Particular student ke liye + Late Tag logic
 
 // CRUD
-router.post("/", addFee);
-router.put("/:id", updateFee);
-router.delete("/:id", deleteFee);
+router.post("/",authMiddleware,authMiddleware, addFee);
+router.put("/:id",authMiddleware,authMiddleware, updateFee);
+router.delete("/:id",authMiddleware,authMiddleware, deleteFee);
 
 /* ===== PHONEPE PAYMENT ROUTES ===== */
-router.post("/phonepe/pay", createPhonePePayment);
-router.post("/phonepe/callback", phonePeCallback);
-router.get("/get-fee/:className", getFeeByClass);
+router.post("/phonepe/pay",authMiddleware, createPhonePePayment);
+router.post("/phonepe/callback",authMiddleware, phonePeCallback);
+router.get("/get-fee/:className",authMiddleware, getFeeByClass);
 
 module.exports = router;

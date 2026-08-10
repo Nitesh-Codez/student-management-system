@@ -13,11 +13,11 @@ const authMiddleware = require("../middlewares/authMiddleware");
 const adminMiddleware = require("../middlewares/adminMiddleware");
 
 // Student
-router.post("/student/submit", submitFeedback);
-router.get("/student/:studentId", getStudentFeedback);
+router.post("/student/submit",authMiddleware, submitFeedback);
+router.get("/student/:studentId",authMiddleware, getStudentFeedback);
 
 // Admin
-router.get("/admin/all", getAllFeedback);
-router.get("/admin/summary", getAdminFeedbackSummary);
+router.get("/admin/all",authMiddleware,adminMiddleware, getAllFeedback);
+router.get("/admin/summary",authMiddleware,adminMiddleware, getAdminFeedbackSummary);
 
 module.exports = router;

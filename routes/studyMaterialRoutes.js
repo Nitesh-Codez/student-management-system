@@ -16,8 +16,8 @@ const router = express.Router();
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 
-router.post("/upload", upload.single("file"), uploadStudyMaterial);
-router.get("/:className", getMaterialByClass);
-router.delete("/:id", deleteMaterial);
+router.post("/upload",authMiddleware,adminMiddleware, upload.single("file"), uploadStudyMaterial);
+router.get("/:className",authMiddleware,getMaterialByClass);
+router.delete("/:id",authMiddleware,adminMiddleware, deleteMaterial);
 
 module.exports = router;

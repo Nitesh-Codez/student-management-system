@@ -14,18 +14,18 @@ const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
 // ADD TEACHER (photo)
-router.post("/add", upload.single("photo"), teacherController.addTeacher);
+router.post("/add",authMiddleware,adminMiddleware, upload.single("photo"), teacherController.addTeacher);
 
 // GET ALL
-router.get("/admin/teachers", teacherController.getTeachers); 
+router.get("/admin/teachers",authMiddleware,adminMiddleware, teacherController.getTeachers); 
 
 // UPDATE
-router.put("/admin/teachers/:id", upload.single("photo"), teacherController.updateTeacher);
+router.put("/admin/teachers/:id",authMiddleware,adminMiddleware, upload.single("photo"), teacherController.updateTeacher);
 
 // DELETE
-router.delete("/admin/teachers/:id", teacherController.deleteTeacher);
+router.delete("/admin/teachers/:id",authMiddleware,adminMiddleware, teacherController.deleteTeacher);
 
-router.get("/all", teacherController.getAllTeachers);
+router.get("/all",authMiddleware,adminMiddleware, teacherController.getAllTeachers);
 
 
 module.exports = router;

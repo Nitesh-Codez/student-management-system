@@ -8,18 +8,18 @@ const authMiddleware = require("../middlewares/authMiddleware");
 const adminMiddleware = require("../middlewares/adminMiddleware");
 
 // Class wise students
-router.get("/students", starController.getStudentsByClass);
+router.get("/students",authMiddleware, starController.getStudentsByClass);
 
 // Save stars
-router.post("/save", starController.saveStudentStars);
+router.post("/save",authMiddleware,adminMiddleware, starController.saveStudentStars);
 
 // Leaderboard
-router.get("/leaderboard", starController.getLeaderboard);
+router.get("/leaderboard",authMiddleware, starController.getLeaderboard);
 
 //get students side  star on their dashboard 
-router.get("/my-tree", starController.getMyTree);
+router.get("/my-tree",authMiddleware, starController.getMyTree);
 
 // Student Rank
-router.get("/my-rank", starController.getMyRank);
+router.get("/my-rank",authMiddleware,  starController.getMyRank);
 
 module.exports = router;

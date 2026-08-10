@@ -12,9 +12,9 @@ const {
     updateResult
 } = require('../controllers/resultController');
 
-router.post('/add', addResult);
-router.get('/all', getAllResults);
-router.get('/search', getStudentResult);
-router.put('/update/:id', updateResult);
+router.post('/add',authMiddleware,adminMiddleware, addResult);
+router.get('/all',authMiddleware,adminMiddleware, getAllResults);
+router.get('/search',authMiddleware,getStudentResult);
+router.put('/update/:id',authMiddleware,adminMiddleware, updateResult);
 
 module.exports = router;

@@ -226,3 +226,49 @@ exports.getMyTree = async (req, res) => {
     });
   }
 };
+
+
+
+//Admin
+// ================= ADMIN: GET ALL STUDENTS WITH STARS =================
+exports.getAllStudentsWithStars = async (req, res) => {
+  try {
+    const { session } = req.query;
+
+    const result = await db.query(
+      `
+      SELECT
+        s.id,
+        s.name,
+        s."class",
+        s.profile_photo,
+        COALESCE(ss.stars, 0) AS stars,
+        COALESCE(ss.remarks, '') AS remarks,
+        ss.id AS star_record_id
+      FROM students s
+      LEFT JOIN student_stars ss
+        ON s.id = ss.student_id
+        AND ss.session = $1
+      WHERE s.role = 'student'
+      ORDER BY
+        s."class" ASC,
+        s.name ASC
+      `,
+      [session]
+    );
+
+    res.json({
+      success: true,
+      total: result.rows.length,
+      students: result.rows
+    });
+
+  } catch (err) {
+    console.error("Get All Students With Stars Error:", err);
+
+    res.status(500).json({
+      success: false,
+      message: err.message
+    });
+  }
+};

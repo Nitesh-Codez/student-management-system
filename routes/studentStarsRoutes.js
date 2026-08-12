@@ -22,4 +22,11 @@ router.get("/my-tree",authMiddleware, starController.getMyTree);
 // Student Rank
 router.get("/my-rank",authMiddleware,  starController.getMyRank);
 
+router.get(
+  "/admin/all-students",
+  authMiddleware,
+  adminMiddleware,
+  starController.getAllStudentsWithStars
+);
+
 module.exports = router;

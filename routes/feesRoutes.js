@@ -9,7 +9,8 @@ const {
   deleteFee,
   createPhonePePayment,
   phonePeCallback,
-  getFeeByClass
+  getFeeByClass,
+  getSessionFeesByMonth
 } = require("../controllers/feesController");
 
 //Middlewares
@@ -18,6 +19,9 @@ const adminMiddleware = require("../middlewares/adminMiddleware");
 
 // Admin Routes
 router.get("/",authMiddleware,adminMiddleware, getAllFees); // Sab fees session wise dekhne ke liye
+router.get("/admin/session-monthly", getSessionFeesByMonth);
+
+
 
 // Student Routes
 router.get("/student/:id",authMiddleware, getStudentFees); // Particular student ke liye + Late Tag logic
@@ -31,5 +35,6 @@ router.delete("/:id",authMiddleware,authMiddleware, deleteFee);
 router.post("/phonepe/pay",authMiddleware, createPhonePePayment);
 router.post("/phonepe/callback",authMiddleware, phonePeCallback);
 router.get("/get-fee/:className",authMiddleware, getFeeByClass);
+
 
 module.exports = router;

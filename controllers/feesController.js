@@ -299,6 +299,91 @@ const getFeeByClass = async (req, res) => {
 };
 
 
+//Admin
+/* ================= GET SESSION FEES MONTH-WISE (ADMIN) ================= */
+const getSessionFeesByMonth = async (req, res) => {
+  try {
+    const { session } = req.query;
+
+    if (!session) {
+      return res.status(400).json({
+        success: false,
+        message: "Session is required",
+      });
+    }
+
+    // Session ke saare successful fee records
+    const { rows } = await db.query(
+      `SELECT *
+       FROM fees
+       WHERE session = $1
+         AND payment_status = 'SUCCESS'
+       ORDER BY payment_date ASC, payment_time ASC`,
+      [session]
+    );
+
+    // Academic session ke months
+    const months = [
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December",
+      "January",
+      "February",
+      "March",
+    ];
+
+    // Month-wise grouping
+    const monthlyFees = {};
+
+    months.forEach((month) => {
+      monthlyFees[month] = [];
+    });
+
+    rows.forEach((fee) => {
+      if (!fee.payment_date) return;
+
+      const date = new Date(fee.payment_date);
+      const monthName = date.toLocaleString("en-US", {
+        month: "long",
+      });
+
+      if (monthlyFees[monthName]) {
+        monthlyFees[monthName].push(fee);
+      }
+    });
+
+    // Har month ka total
+    const result = months.map((month) => ({
+      month,
+      total_records: monthlyFees[month].length,
+      total_amount: monthlyFees[month].reduce(
+        (sum, fee) => sum + Number(fee.amount || 0),
+        0
+      ),
+      fees: monthlyFees[month],
+    }));
+
+    res.json({
+      success: true,
+      session,
+      months: result,
+    });
+  } catch (err) {
+    console.error("Session month-wise fee error:", err);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch session fees",
+    });
+  }
+};
+
 
 module.exports = {
     addFee,
@@ -308,5 +393,6 @@ module.exports = {
     deleteFee,
      createPhonePePayment,
     phonePeCallback,
-    getFeeByClass
+    getFeeByClass,
+    getSessionFeesByMonth
 };

@@ -283,3 +283,244 @@ exports.getMeetingAttendance = async (req, res) => {
     });
   }
 };
+
+
+
+
+
+
+
+// Agar type nahi diya hai -> STUDENTS + PARENTS dono
+// ========================================
+exports.getStudentMeetings = async (req, res) => {
+  try {
+    const { type } = req.query;
+
+    let query = `
+      SELECT
+        m.id,
+        m.title,
+        m.meeting_type,
+        m.topic,
+        m.meeting_link,
+        m.meeting_date,
+        m.start_time,
+        m.end_time,
+        m.duration_minutes,
+        m.session,
+        m.status,
+        m.created_at,
+
+        CASE
+          WHEN ma.id IS NOT NULL THEN true
+          ELSE false
+        END AS attended,
+
+        COALESCE(ma.duration_minutes, 0) AS attended_minutes,
+
+        COALESCE(ma.attendance_status, 'ABSENT')
+          AS attendance_status
+
+      FROM meetings m
+
+      LEFT JOIN meeting_attendance ma
+        ON m.id = ma.meeting_id
+        AND ma.student_id = $1
+
+      WHERE m.session = '2026-2027'
+        AND m.status != 'CANCELLED'
+    `;
+
+    const params = [req.user.id];
+
+    // Agar type diya hai to sirf wahi meetings
+    if (type) {
+      query += ` AND UPPER(m.meeting_type) = UPPER($2)`;
+      params.push(type);
+    }
+
+    query += `
+      ORDER BY
+        m.meeting_date DESC,
+        m.start_time DESC
+    `;
+
+    const result = await db.query(query, params);
+
+    res.json({
+      success: true,
+      meetings: result.rows
+    });
+
+  } catch (error) {
+    console.error("STUDENT MEETINGS ERROR:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch meetings"
+    });
+  }
+};
+
+
+// ========================================
+// STUDENT - MARK ATTENDANCE
+// ========================================
+// POST /meeting/student/:meetingId/attendance
+//
+// Student meeting JOIN karega
+// -> attendance automatically create hogi
+// -> status = PRESENT
+// ========================================
+exports.markAttendance = async (req, res) => {
+  try {
+    const { meetingId } = req.params;
+    const studentId = req.user.id;
+
+    // ----------------------------------------
+    // CHECK MEETING
+    // ----------------------------------------
+    const meetingResult = await db.query(
+      `SELECT *
+       FROM meetings
+       WHERE id = $1
+       AND status != 'CANCELLED'`,
+      [meetingId]
+    );
+
+    if (meetingResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Meeting not found or cancelled"
+      });
+    }
+
+    const meeting = meetingResult.rows[0];
+
+    // ----------------------------------------
+    // CHECK STUDENT
+    // ----------------------------------------
+    const studentResult = await db.query(
+      `SELECT id, name
+       FROM students
+       WHERE id = $1`,
+      [studentId]
+    );
+
+    if (studentResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Student not found"
+      });
+    }
+
+    const student = studentResult.rows[0];
+
+    // ----------------------------------------
+    // CHECK ALREADY ATTENDED
+    // ----------------------------------------
+    const existing = await db.query(
+      `SELECT *
+       FROM meeting_attendance
+       WHERE meeting_id = $1
+       AND student_id = $2`,
+      [meetingId, studentId]
+    );
+
+    if (existing.rows.length > 0) {
+      return res.json({
+        success: true,
+        alreadyMarked: true,
+        message: "Attendance already marked",
+        attendance: existing.rows[0]
+      });
+    }
+
+    // ----------------------------------------
+    // MARK PRESENT
+    // ----------------------------------------
+    const result = await db.query(
+      `INSERT INTO meeting_attendance
+      (
+        meeting_id,
+        student_id,
+        student_name,
+        duration_minutes,
+        attendance_status,
+        remarks
+      )
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING *`,
+      [
+        meetingId,
+        studentId,
+        student.name,
+        0,
+        "PRESENT",
+        "Student joined the meeting"
+      ]
+    );
+
+    res.status(201).json({
+      success: true,
+      message: "Attendance marked PRESENT",
+      attendance: result.rows[0],
+      meeting_link: meeting.meeting_link
+    });
+
+  } catch (error) {
+    console.error("MARK ATTENDANCE ERROR:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to mark attendance"
+    });
+  }
+};
+
+
+// ========================================
+// ADMIN - GET MEETING ATTENDANCE
+// ========================================
+exports.getMeetingAttendance = async (req, res) => {
+  try {
+    const { meetingId } = req.params;
+
+    const result = await db.query(
+      `SELECT
+        ma.id,
+        ma.meeting_id,
+        ma.student_id,
+        ma.student_name,
+        ma.duration_minutes,
+        ma.attendance_status,
+        ma.remarks,
+        ma.created_at,
+
+        s."class"
+
+      FROM meeting_attendance ma
+
+      JOIN students s
+        ON s.id = ma.student_id
+
+      WHERE ma.meeting_id = $1
+
+      ORDER BY ma.created_at DESC`,
+      [meetingId]
+    );
+
+    res.json({
+      success: true,
+      attendance: result.rows
+    });
+
+  } catch (error) {
+    console.error("MEETING ATTENDANCE ERROR:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch attendance"
+    });
+  }
+};

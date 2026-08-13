@@ -13,7 +13,7 @@ const studyMaterialRoutes = require("./routes/studyMaterialRoutes");
 const newMarksRoutes = require("./routes/newMarksRoutes");
 const feedbackRoutes = require("./routes/feedbackRoutes");
 const assignmentRoutes = require("./routes/assignmentRoutes");
-const chatRoutes = require("./routes/chatRoutes"); 
+const meetingRoutes = require("./routes/meetingRoutes"); 
 const studentsProfileRoute = require("./routes/studentsProfileRoute");
 const teacherAssignmentsRoutes = require("./routes/teacherAssignmentsRoutes");
 const teacherRoutes = require("./routes/teacherRoutes")
@@ -48,7 +48,7 @@ app.use("/api/study-material", studyMaterialRoutes);
 app.use("/api/new-marks", newMarksRoutes);
 app.use("/api/feedback", feedbackRoutes);
 app.use("/api/assignments", assignmentRoutes);
-app.use("/api/chat", chatRoutes); 
+app.use("/api/meeting", meetingRoutes); 
 app.use("/api/students", studentsProfileRoute);
 app.use("/api/teachers", teacherRoutes);
 app.use("/api/teacher-assignments", teacherAssignmentsRoutes);

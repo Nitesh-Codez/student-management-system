@@ -290,62 +290,19 @@ exports.getMeetingAttendance = async (req, res) => {
 
 
 
-// Agar type nahi diya hai -> STUDENTS + PARENTS dono
+
+
+// ========================================
+// STUDENT - GET ALL MEETINGS
 // ========================================
 exports.getStudentMeetings = async (req, res) => {
   try {
-    const { type } = req.query;
-
-    let query = `
-      SELECT
-        m.id,
-        m.title,
-        m.meeting_type,
-        m.topic,
-        m.meeting_link,
-        m.meeting_date,
-        m.start_time,
-        m.end_time,
-        m.duration_minutes,
-        m.session,
-        m.status,
-        m.created_at,
-
-        CASE
-          WHEN ma.id IS NOT NULL THEN true
-          ELSE false
-        END AS attended,
-
-        COALESCE(ma.duration_minutes, 0) AS attended_minutes,
-
-        COALESCE(ma.attendance_status, 'ABSENT')
-          AS attendance_status
-
-      FROM meetings m
-
-      LEFT JOIN meeting_attendance ma
-        ON m.id = ma.meeting_id
-        AND ma.student_id = $1
-
-      WHERE m.session = '2026-2027'
-        AND m.status != 'CANCELLED'
-    `;
-
-    const params = [req.user.id];
-
-    // Agar type diya hai to sirf wahi meetings
-    if (type) {
-      query += ` AND UPPER(m.meeting_type) = UPPER($2)`;
-      params.push(type);
-    }
-
-    query += `
-      ORDER BY
-        m.meeting_date DESC,
-        m.start_time DESC
-    `;
-
-    const result = await db.query(query, params);
+    const result = await db.query(`
+      SELECT *
+      FROM meetings
+      WHERE status != 'CANCELLED'
+      ORDER BY meeting_date DESC, start_time DESC
+    `);
 
     res.json({
       success: true,
@@ -353,7 +310,7 @@ exports.getStudentMeetings = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("STUDENT MEETINGS ERROR:", error);
+    console.error("GET STUDENT MEETINGS ERROR:", error);
 
     res.status(500).json({
       success: false,
@@ -366,11 +323,88 @@ exports.getStudentMeetings = async (req, res) => {
 // ========================================
 // STUDENT - MARK ATTENDANCE
 // ========================================
-// POST /meeting/student/:meetingId/attendance
-//
-// Student meeting JOIN karega
-// -> attendance automatically create hogi
-// -> status = PRESENT
+exports.markAttendance = async (req, res) => {
+  try {
+    const { meetingId } = req.params;
+
+    const meeting = await db.query(
+      `SELECT *
+       FROM meetings
+       WHERE id = $1`,
+      [meetingId]
+    );
+
+    if (meeting.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Meeting not found"
+      });
+    }
+
+    // Check already attended
+    const existing = await db.query(
+      `SELECT id
+       FROM meeting_attendance
+       WHERE meeting_id = $1
+       AND student_id = $2`,
+      [meetingId, req.user.id]
+    );
+
+    if (existing.rows.length > 0) {
+      return res.status(200).json({
+        success: true,
+        alreadyMarked: true,
+        message: "Attendance already marked"
+      });
+    }
+
+    const result = await db.query(
+      `INSERT INTO meeting_attendance
+       (
+         meeting_id,
+         student_id,
+         student_name,
+         duration_minutes,
+         attendance_status,
+         remarks
+       )
+       SELECT
+         $1,
+         s.id,
+         s.name,
+         0,
+         'PRESENT',
+         'Joined meeting'
+       FROM students s
+       WHERE s.id = $2
+       RETURNING *`,
+      [meetingId, req.user.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Student not found"
+      });
+    }
+
+    res.status(201).json({
+      success: true,
+      message: "Attendance marked PRESENT",
+      attendance: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error("MARK ATTENDANCE ERROR:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to mark attendance"
+    });
+  }
+};
+
+
 // ========================================
 exports.markAttendance = async (req, res) => {
   try {

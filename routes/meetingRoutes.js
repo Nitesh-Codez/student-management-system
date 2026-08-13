@@ -40,30 +40,21 @@ router.get(
 // ========================================
 // STUDENT
 // ========================================
-
-// All meetings
+//
 router.get(
   "/student",
   authMiddleware,
   meetingController.getStudentMeetings
 );
 
-
-// Students meetings only
-// /meeting/student?type=STUDENTS
-
-
-// Parents meetings only
-// /meeting/student?type=PARENTS
-
-
-// Mark attendance when joining
+// ========================================
+// STUDENT - JOIN + MARK PRESENT
+// ========================================
 router.post(
   "/student/:meetingId/attendance",
   authMiddleware,
   meetingController.markAttendance
 );
-
 
 
 module.exports = router;

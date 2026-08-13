@@ -17,7 +17,7 @@ const upload = multer({ storage });
 router.post("/add",authMiddleware,adminMiddleware, upload.single("photo"), teacherController.addTeacher);
 
 // GET ALL
-router.get("/admin/teachers",authMiddleware,adminMiddleware, teacherController.getTeachers); 
+router.get("/admin/teachers",authMiddleware, teacherController.getTeachers); 
 
 // UPDATE
 router.put("/admin/teachers/:id",authMiddleware,adminMiddleware, upload.single("photo"), teacherController.updateTeacher);

@@ -190,7 +190,6 @@ exports.addMarks = async (req, res) => {
   }
 };
 
-
 // ===============================
 // Check marks (Student Panel)
 // ===============================

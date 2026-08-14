@@ -13,7 +13,7 @@ router.post("/check",authMiddleware, newMarksController.checkMarks);
 router.get("/attendance/current-marks",authMiddleware,adminMiddleware, newMarksController.getCurrentAttendanceMarks);
 
 router.get("/by-date",authMiddleware,adminMiddleware, newMarksController.getMarksByDate);
-router.put("/update/:id",authMiddleware,adminMiddleware, updateMarks);
+router.put("/update/:id",authMiddleware,adminMiddleware, newMarksController.updateMarks);
 
 module.exports = router;
 //

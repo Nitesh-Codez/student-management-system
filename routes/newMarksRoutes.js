@@ -10,9 +10,9 @@ router.get("/students/:className",authMiddleware, adminMiddleware, newMarksContr
 router.post("/add",authMiddleware, adminMiddleware, newMarksController.addMarks);
 router.post("/check",authMiddleware, newMarksController.checkMarks);
 
-router.get("/attendance/current-marks", newMarksController.getCurrentAttendanceMarks);
+router.get("/attendance/current-marks",authMiddleware,adminMiddleware, newMarksController.getCurrentAttendanceMarks);
 
-router.get("/by-date", newMarksController.getMarksByDate);
+router.get("/by-date",authMiddleware,adminMiddleware, newMarksController.getMarksByDate);
 
 module.exports = router;
 //

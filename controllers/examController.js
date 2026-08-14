@@ -290,8 +290,6 @@ const saveInternalMarks = async (req, res) => {
 
 /////
 
-// const pool = require('../config/db'); // Apna DB pool yahan import karein
-
 
 module.exports = {
   getMyExamDetails,

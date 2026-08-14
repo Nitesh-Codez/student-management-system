@@ -13,7 +13,7 @@ exports.getClasses = async (req, res) => {
     res.json({ success: false, message: "Error getting classes" });
   }
 };
-
+//
 // ===============================
 // Get students by class
 // ===============================
@@ -277,6 +277,64 @@ exports.getCurrentAttendanceMarks = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Server Error",
+    });
+  }
+};
+
+
+// ===============================
+// Get Marks By Selected Date
+// ===============================
+exports.getMarksByDate = async (req, res) => {
+  try {
+    const { date } = req.query;
+
+    if (!date) {
+      return res.status(400).json({
+        success: false,
+        message: "Date is required"
+      });
+    }
+
+    const sql = `
+      SELECT
+        m.id,
+        m.student_id,
+        s.name AS student_name,
+        s."class" AS class_name,
+        m.subject,
+        m.theory_marks,
+        m.viva_marks,
+        m.attendance_marks,
+        m.task,
+        m.total_marks,
+        m.obtained_marks,
+        m.exam_type,
+        m.session,
+        m.test_date,
+        m.status
+      FROM marks_new m
+      LEFT JOIN students s
+        ON s.id = m.student_id
+      WHERE m.test_date = $1
+      ORDER BY s."class", s.name, m.subject
+    `;
+
+    const { rows } = await db.query(sql, [date]);
+
+    return res.json({
+      success: true,
+      date,
+      total: rows.length,
+      data: rows
+    });
+
+  } catch (error) {
+    console.error("Get marks by date error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Error fetching marks by date"
     });
   }
 };

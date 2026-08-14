@@ -12,7 +12,7 @@ router.post("/check",authMiddleware, newMarksController.checkMarks);
 
 router.get("/attendance/current-marks", newMarksController.getCurrentAttendanceMarks);
 
-app.use("/by-date", newMarksController.getMarksByDate);
+router.get("/by-date", newMarksController.getMarksByDate);
 
 module.exports = router;
 //

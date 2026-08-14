@@ -564,3 +564,115 @@ exports.getMarksByDate = async (req, res) => {
     });
   }
 };
+
+
+//
+// ==================================================
+// Edit / Update Marks
+// ==================================================
+exports.updateMarks = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const {
+      theoryMarks,
+      vivaMarks,
+      attendanceMarks,
+      task,
+      totalMarks,
+      behaviour,
+      examType,
+      session,
+      date
+    } = req.body;
+
+    // ===============================
+    // Validate
+    // ===============================
+    if (
+      !id ||
+      theoryMarks == null ||
+      vivaMarks == null ||
+      attendanceMarks == null ||
+      task == null ||
+      totalMarks == null ||
+      behaviour == null ||
+      !examType ||
+      !session ||
+      !date
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "All fields are required"
+      });
+    }
+
+    // ===============================
+    // Calculate Obtained Marks
+    // ===============================
+    const obtainedMarks =
+      Number(theoryMarks) +
+      Number(vivaMarks) +
+      Number(attendanceMarks) +
+      Number(task) +
+      Number(behaviour);
+
+    // ===============================
+    // Update Marks
+    // ===============================
+    const sql = `
+      UPDATE marks_new
+      SET
+        theory_marks = $1,
+        viva_marks = $2,
+        attendance_marks = $3,
+        task = $4,
+        total_marks = $5,
+        obtained_marks = $6,
+        exam_type = $7,
+        session = $8,
+        test_date = $9,
+        behaviour = $10
+      WHERE id = $11
+      RETURNING *
+    `;
+
+    const { rows } = await db.query(sql, [
+      theoryMarks,
+      vivaMarks,
+      attendanceMarks,
+      task,
+      totalMarks,
+      obtainedMarks,
+      examType,
+      session,
+      date,
+      behaviour,
+      id
+    ]);
+
+    // ===============================
+    // Marks Not Found
+    // ===============================
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Marks record not found"
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: "Marks updated successfully",
+      data: rows[0]
+    });
+
+  } catch (error) {
+    console.error("Update marks error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Error updating marks"
+    });
+  }
+};

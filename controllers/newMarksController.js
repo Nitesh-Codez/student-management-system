@@ -58,16 +58,17 @@ exports.getStudentsByClass = async (req, res) => {
 // ===============================
 // Add marks (NO DUPLICATE)
 // ===============================
+// ===============================
+// Add marks (NO DUPLICATE)
+// ===============================
 exports.addMarks = async (req, res) => {
   try {
-
     const {
       studentId,
       subject,
-      theoryMarks,
+      task,
       vivaMarks,
       attendanceMarks,
-      task,
       totalMarks,
       examType,
       session,
@@ -75,17 +76,16 @@ exports.addMarks = async (req, res) => {
       behaviour
     } = req.body;
 
-
     // ===============================
     // Validate Required Fields
     // ===============================
     if (
       !studentId ||
       !subject ||
-      theoryMarks == null ||
+      task == null ||
       vivaMarks == null ||
       attendanceMarks == null ||
-      task == null ||
+      behaviour == null ||
       totalMarks == null ||
       !examType ||
       !session ||
@@ -97,16 +97,14 @@ exports.addMarks = async (req, res) => {
       });
     }
 
-
     // ===============================
     // Calculate Obtained Marks
     // ===============================
     const obtainedMarks =
-      Number(theoryMarks) +
+      Number(task) +
       Number(vivaMarks) +
-      Number(attendanceMarks) +
-      Number(task);
-
+      Number(behaviour) +
+      Number(attendanceMarks);
 
     // ===============================
     // Insert Marks
@@ -116,16 +114,15 @@ exports.addMarks = async (req, res) => {
       (
         student_id,
         subject,
-        theory_marks,
-        viva_marks,
-        attendance_marks,
         task,
+        viva_marks,
+        behaviour,
+        attendance_marks,
         total_marks,
         obtained_marks,
         exam_type,
         session,
-        test_date,
-        behaviour
+        test_date
       )
       VALUES
       (
@@ -139,47 +136,39 @@ exports.addMarks = async (req, res) => {
         $8,
         $9,
         $10,
-        $11,
-        $12
+        $11
       )
     `;
-
 
     await db.query(sql, [
       studentId,
       subject,
-      theoryMarks,
-      vivaMarks,
-      attendanceMarks,
       task,
+      vivaMarks,
+      behaviour,
+      attendanceMarks,
       totalMarks,
       obtainedMarks,
       examType,
       session,
-      date,
-      behaviour || null
+      date
     ]);
-
 
     res.json({
       success: true,
       message: "Marks added successfully"
     });
 
-
   } catch (err) {
-
     // ===============================
     // Duplicate Record
     // ===============================
     if (err.code === "23505") {
       return res.json({
         success: false,
-        message:
-          "Marks already added for this student, subject and date"
+        message: "Marks already added for this student, subject and date"
       });
     }
-
 
     console.error(err);
 

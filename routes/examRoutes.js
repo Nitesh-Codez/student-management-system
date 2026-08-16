@@ -7,7 +7,8 @@ const {
   getMySubjects,
   getTotalExamSubmissions,
   saveInternalMarks,
-  getSubmittedStudentsForMarks
+  getSubmittedStudentsForMarks,
+  getMyInternalMarks
 } = require("../controllers/examController");
 
 //Middlewares//////
@@ -42,6 +43,6 @@ router.get('/submitted-students',authMiddleware, getSubmittedStudentsForMarks);
 // Save or update internal evaluation marks (Tasks, Behavior, Performance)
 router.post('/save-internal-marks',authMiddleware, saveInternalMarks);
 // Student - Get Internal Marks
-router.get("/student/internal-marks", marksController.getMyInternalMarks);
+router.get("/student/internal-marks", getMyInternalMarks);
 
 module.exports = router;

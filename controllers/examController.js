@@ -293,52 +293,39 @@ const getMyInternalMarks = async (req, res) => {
   try {
     const { student_id, exam_type, session_year } = req.query;
 
-    if (!student_id) {
+    if (!student_id || !exam_type || !session_year) {
       return res.status(400).json({
         success: false,
-        message: "student_id is required.",
+        message: "student_id, exam_type and session_year are required"
       });
     }
 
-    const currentSession = session_year || "2026-2027";
-
-    let query = `
+    const query = `
       SELECT
-        id,
         student_id,
         subject,
         exam_type,
         session_year,
         task_marks,
         viva_marks,
-        attendance_marks,
-        behavior_marks,
-        performance_marks,
-        updated_at
+        attendance_marks
       FROM internal_marks
       WHERE student_id = $1
-        AND session_year = $2
+        AND exam_type = $2
+        AND session_year = $3
+      ORDER BY subject;
     `;
 
-    const params = [student_id, currentSession];
-
-    // exam_type optional rakha hai
-    if (exam_type) {
-      query += ` AND exam_type = $3`;
-      params.push(exam_type);
-    }
-
-    query += ` ORDER BY subject ASC`;
-
-    const { rows } = await pool.query(query, params);
+    const { rows } = await pool.query(query, [
+      student_id,
+      exam_type,
+      session_year
+    ]);
 
     return res.status(200).json({
       success: true,
-      student_id,
-      session_year: currentSession,
-      exam_type: exam_type || "ALL",
-      total_subjects: rows.length,
-      data: rows,
+      total: rows.length,
+      data: rows
     });
 
   } catch (error) {
@@ -346,12 +333,10 @@ const getMyInternalMarks = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Server Error",
+      message: "Server Error"
     });
   }
 };
-
-
 module.exports = {
   getMyExamDetails,
   finalizeExamSubmission,
@@ -359,6 +344,6 @@ module.exports = {
   getTotalExamSubmissions,
   saveInternalMarks,
   getSubmittedStudentsForMarks,
-  getMyInternalMarks,/////////////////
+  getMyInternalMarks,
   
 };

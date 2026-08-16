@@ -291,40 +291,46 @@ const saveInternalMarks = async (req, res) => {
 /////
 const getMyInternalMarks = async (req, res) => {
   try {
-    const { student_id, exam_type, session_year } = req.query;
+    const { student_id, exam_type, session } = req.query;
 
-    if (!student_id || !exam_type || !session_year) {
+    if (!student_id || !exam_type || !session) {
       return res.status(400).json({
         success: false,
-        message: "student_id, exam_type and session_year are required"
+        message: "student_id, exam_type and session are required"
       });
     }
 
     const query = `
       SELECT
+        id,
         student_id,
         subject,
-        exam_type,
-        session_year,
-        task_marks,
+        theory_marks,
         viva_marks,
-        attendance_marks
-      FROM internal_marks
+        attendance_marks,
+        total_marks,
+        obtained_marks,
+        test_date,
+        status,
+        exam_type,
+        session,
+        task
+      FROM marks_new
       WHERE student_id = $1
         AND exam_type = $2
-        AND session_year = $3
-      ORDER BY subject;
+        AND session = $3
+      ORDER BY subject ASC;
     `;
 
     const { rows } = await pool.query(query, [
       student_id,
       exam_type,
-      session_year
+      session
     ]);
 
     return res.status(200).json({
       success: true,
-      total: rows.length,
+      total_subjects: rows.length,
       data: rows
     });
 
@@ -333,7 +339,8 @@ const getMyInternalMarks = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Server Error"
+      message: "Server Error",
+      error: error.message
     });
   }
 };

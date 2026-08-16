@@ -35,6 +35,8 @@ marksController.updateMarks
 // ================= GET ALL MARKS (ADMIN) =================
 router.get("/admin/marks",authMiddleware,adminMiddleware, marksController.getAllMarks);
 
+// Student - Get Internal Marks
+router.get("/student/internal-marks", marksController.getMyInternalMarks);
 
 module.exports = router;
 

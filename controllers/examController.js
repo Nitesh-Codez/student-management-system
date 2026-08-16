@@ -289,6 +289,67 @@ const saveInternalMarks = async (req, res) => {
 };
 
 /////
+const getMyInternalMarks = async (req, res) => {
+  try {
+    const { student_id, exam_type, session_year } = req.query;
+
+    if (!student_id) {
+      return res.status(400).json({
+        success: false,
+        message: "student_id is required.",
+      });
+    }
+
+    const currentSession = session_year || "2026-2027";
+
+    let query = `
+      SELECT
+        id,
+        student_id,
+        subject,
+        exam_type,
+        session_year,
+        task_marks,
+        viva_marks,
+        attendance_marks,
+        behavior_marks,
+        performance_marks,
+        updated_at
+      FROM internal_marks
+      WHERE student_id = $1
+        AND session_year = $2
+    `;
+
+    const params = [student_id, currentSession];
+
+    // exam_type optional rakha hai
+    if (exam_type) {
+      query += ` AND exam_type = $3`;
+      params.push(exam_type);
+    }
+
+    query += ` ORDER BY subject ASC`;
+
+    const { rows } = await pool.query(query, params);
+
+    return res.status(200).json({
+      success: true,
+      student_id,
+      session_year: currentSession,
+      exam_type: exam_type || "ALL",
+      total_subjects: rows.length,
+      data: rows,
+    });
+
+  } catch (error) {
+    console.error("Get Internal Marks Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+    });
+  }
+};
 
 
 module.exports = {
@@ -298,5 +359,6 @@ module.exports = {
   getTotalExamSubmissions,
   saveInternalMarks,
   getSubmittedStudentsForMarks,
+  getMyInternalMarks,/////////////////
   
 };

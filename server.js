@@ -57,7 +57,7 @@ app.use("/api/quiz", quizRoutes);
 app.use("/api/drop", dropRoutes);
 app.use("/api/student-stars", studentStarsRoutes);
 app.use("/api/exam", examRoutes);
-app.use("/api/details",academicRoutes);
+app.use("/api/exams-details",academicRoutes);
 
 // ==================== STATIC FILES ====================
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));

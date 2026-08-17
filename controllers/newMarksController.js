@@ -784,3 +784,125 @@ exports.getCurrentSessionMarks = async (req, res) => {
     });
   }
 };
+
+
+//=======================
+//STUDENT INTERNAL MARKS
+//============================================
+exports.getStudentCurrentSessionMarks = async (req, res) => {
+  try {
+
+    const { studentId } = req.params;
+
+    // ===============================
+    // Validate Student ID
+    // ===============================
+    if (!studentId) {
+      return res.status(400).json({
+        success: false,
+        message: "Student ID is required"
+      });
+    }
+
+
+    // ===============================
+    // Current Academic Session
+    // April → March
+    // ===============================
+    const today = new Date();
+
+    const startYear =
+      today.getMonth() + 1 >= 4
+        ? today.getFullYear()
+        : today.getFullYear() - 1;
+
+    const currentSession =
+      `${startYear}-${String(startYear + 1).slice(-2)}`;
+
+
+    // ===============================
+    // Fetch Student Current Session Marks
+    // ===============================
+    const sql = `
+      SELECT
+        m.id,
+        m.student_id,
+
+        s.name AS student_name,
+        s."class" AS class_name,
+
+        m.subject,
+
+        m.viva_marks,
+        m.attendance_marks,
+        m.task,
+        m.behaviour,
+
+        m.total_marks,
+        m.obtained_marks,
+        m.status,
+
+        m.exam_type,
+        m.session
+
+      FROM marks_new m
+
+      LEFT JOIN students s
+        ON s.id = m.student_id
+
+      WHERE m.student_id = $1
+      AND m.session = $2
+
+      ORDER BY
+        m.exam_type ASC,
+        m.subject ASC
+    `;
+
+
+    const { rows } = await db.query(
+      sql,
+      [
+        studentId,
+        currentSession
+      ]
+    );
+
+
+    // ===============================
+    // No Marks
+    // ===============================
+    if (rows.length === 0) {
+      return res.json({
+        success: true,
+        session: currentSession,
+        total: 0,
+        data: [],
+        message: "No marks found for current session"
+      });
+    }
+
+
+    // ===============================
+    // Response
+    // ===============================
+    return res.json({
+      success: true,
+      session: currentSession,
+      total: rows.length,
+      data: rows
+    });
+
+
+  } catch (error) {
+
+    console.error(
+      "Get student current session marks error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Error fetching student marks"
+    });
+  }
+};

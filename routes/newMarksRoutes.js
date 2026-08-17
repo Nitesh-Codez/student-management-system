@@ -18,6 +18,10 @@ router.get(
   "/current-session-marks",
   newMarksController.getCurrentSessionMarks
 );
+router.get(
+  "/current-session-internal-marks/:studentId",
+  newMarksController.getCurrentSessionMarks
+);
 
 module.exports = router;
 //

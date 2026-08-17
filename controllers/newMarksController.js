@@ -693,7 +693,10 @@ exports.updateMarks = async (req, res) => {
 // ==================================================
 // Get Current Session All Subjects
 // ==================================================
-exports.getCurrentSessionSubjects = async (req, res) => {
+// ==================================================
+// Get ALL Marks - Current Session
+// ==================================================
+exports.getCurrentSessionMarks = async (req, res) => {
   try {
 
     const today = new Date();
@@ -712,24 +715,44 @@ exports.getCurrentSessionSubjects = async (req, res) => {
 
 
     // ===============================
-    // Fetch Subjects + Date + Exam Type
+    // Fetch Full Current Session Data
     // ===============================
     const sql = `
       SELECT
-        subject,
-        test_date,
-        exam_type,
-        session
-      FROM marks_new
-      WHERE session = $1
-      GROUP BY
-        subject,
-        test_date,
-        exam_type,
-        session
+        m.id,
+        m.student_id,
+
+        s.name AS student_name,
+        s."class" AS class_name,
+
+        m.subject,
+
+        m.theory_marks,
+        m.viva_marks,
+        m.attendance_marks,
+        m.task,
+        m.behaviour,
+
+        m.total_marks,
+        m.obtained_marks,
+        m.status,
+
+        m.test_date,
+        m.exam_type,
+        m.session
+
+      FROM marks_new m
+
+      LEFT JOIN students s
+        ON s.id = m.student_id
+
+      WHERE m.session = $1
+
       ORDER BY
-        test_date DESC,
-        subject ASC
+        m.test_date DESC,
+        s."class" ASC,
+        s.name ASC,
+        m.subject ASC
     `;
 
 
@@ -739,6 +762,9 @@ exports.getCurrentSessionSubjects = async (req, res) => {
     );
 
 
+    // ===============================
+    // Response
+    // ===============================
     return res.json({
       success: true,
       session: currentSession,
@@ -750,13 +776,13 @@ exports.getCurrentSessionSubjects = async (req, res) => {
   } catch (error) {
 
     console.error(
-      "Get current session subjects error:",
+      "Get current session marks error:",
       error
     );
 
     return res.status(500).json({
       success: false,
-      message: "Error fetching current session subjects"
+      message: "Error fetching current session marks"
     });
   }
 };

@@ -57,6 +57,9 @@ exports.getStudentsByClass = async (req, res) => {
 // ===============================
 // Add marks (NO DUPLICATE)
 // ===============================
+// ===============================
+// Add / Replace Marks
+// ===============================
 exports.addMarks = async (req, res) => {
   try {
 
@@ -91,7 +94,7 @@ exports.addMarks = async (req, res) => {
       !date ||
       behaviour == null
     ) {
-      return res.json({
+      return res.status(400).json({
         success: false,
         message: "All fields are required"
       });
@@ -110,7 +113,7 @@ exports.addMarks = async (req, res) => {
 
 
     // ===============================
-    // Insert Marks
+    // INSERT OR UPDATE
     // ===============================
     const sql = `
       INSERT INTO marks_new
@@ -143,10 +146,29 @@ exports.addMarks = async (req, res) => {
         $11,
         $12
       )
+
+      ON CONFLICT (
+        student_id,
+        subject,
+        test_date,
+        exam_type,
+        session
+      )
+
+      DO UPDATE SET
+        theory_marks = EXCLUDED.theory_marks,
+        viva_marks = EXCLUDED.viva_marks,
+        attendance_marks = EXCLUDED.attendance_marks,
+        task = EXCLUDED.task,
+        total_marks = EXCLUDED.total_marks,
+        obtained_marks = EXCLUDED.obtained_marks,
+        behaviour = EXCLUDED.behaviour
+
+      RETURNING *;
     `;
 
 
-    await db.query(sql, [
+    const { rows } = await db.query(sql, [
       studentId,
       subject,
       theoryMarks,
@@ -162,31 +184,20 @@ exports.addMarks = async (req, res) => {
     ]);
 
 
-    res.json({
+    return res.json({
       success: true,
-      message: "Marks added successfully"
+      message: "Marks added/updated successfully",
+      data: rows[0]
     });
 
 
-  } catch (err) {
+  } catch (error) {
 
-    // ===============================
-    // Duplicate Record
-    // ===============================
-    if (err.code === "23505") {
-      return res.json({
-        success: false,
-        message:
-          "Marks already added for this student, subject and date"
-      });
-    }
+    console.error("Add/Update marks error:", error);
 
-
-    console.error(err);
-
-    res.json({
+    return res.status(500).json({
       success: false,
-      message: "Server error while adding marks"
+      message: "Server error while adding/updating marks"
     });
   }
 };

@@ -16,7 +16,7 @@ router.get("/by-date",authMiddleware,adminMiddleware, newMarksController.getMark
 router.put("/update/:id",authMiddleware,adminMiddleware, newMarksController.updateMarks);
 router.get(
   "/current-session-subjects",
-  newMarksController.getCurrentSessionSubjects
+  newMarksController.getCurrentSessionMarks
 );
 
 module.exports = router;

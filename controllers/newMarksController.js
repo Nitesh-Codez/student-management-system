@@ -694,8 +694,6 @@ exports.updateMarks = async (req, res) => {
 // Get Current Session All Subjects
 // ==================================================
 // ==================================================
-// Get ALL Marks - Current Session
-// ==================================================
 exports.getCurrentSessionMarks = async (req, res) => {
   try {
 

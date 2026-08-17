@@ -14,6 +14,10 @@ router.get("/attendance/current-marks",authMiddleware,adminMiddleware, newMarksC
 
 router.get("/by-date",authMiddleware,adminMiddleware, newMarksController.getMarksByDate);
 router.put("/update/:id",authMiddleware,adminMiddleware, newMarksController.updateMarks);
+router.get(
+  "/current-session-subjects",
+  newMarksController.getCurrentSessionSubjects
+);
 
 module.exports = router;
 //

@@ -687,3 +687,76 @@ exports.updateMarks = async (req, res) => {
     });
   }
 };
+
+//current session marks for already alloted marks
+//================ADMIN==============================
+// ==================================================
+// Get Current Session All Subjects
+// ==================================================
+exports.getCurrentSessionSubjects = async (req, res) => {
+  try {
+
+    const today = new Date();
+
+    // ===============================
+    // Current Academic Session
+    // April → March
+    // ===============================
+    const startYear =
+      today.getMonth() + 1 >= 4
+        ? today.getFullYear()
+        : today.getFullYear() - 1;
+
+    const currentSession =
+      `${startYear}-${String(startYear + 1).slice(-2)}`;
+
+
+    // ===============================
+    // Fetch Subjects + Date + Exam Type
+    // ===============================
+    const sql = `
+      SELECT
+        subject,
+        test_date,
+        exam_type,
+        session
+      FROM marks_new
+      WHERE session = $1
+      GROUP BY
+        subject,
+        test_date,
+        exam_type,
+        session
+      ORDER BY
+        test_date DESC,
+        subject ASC
+    `;
+
+
+    const { rows } = await db.query(
+      sql,
+      [currentSession]
+    );
+
+
+    return res.json({
+      success: true,
+      session: currentSession,
+      total: rows.length,
+      data: rows
+    });
+
+
+  } catch (error) {
+
+    console.error(
+      "Get current session subjects error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Error fetching current session subjects"
+    });
+  }
+};

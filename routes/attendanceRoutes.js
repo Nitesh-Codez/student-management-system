@@ -30,7 +30,7 @@ router.get("/:id",authMiddleware, attendanceController.getStudentAttendance);
 
 
 //--------------------------------------------------------
-router.get("/admin/student-requests", controller.getAllStudentRequests);
-router.get("/student/:id/requests", controller.getMyStudentRequests);
+router.get("/admin/student-requests", attendanceController.getAllStudentRequests);
+router.get("/student/:id/requests", attendanceController.getMyStudentRequests);
 
 module.exports = router;

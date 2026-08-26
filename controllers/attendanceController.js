@@ -190,3 +190,140 @@ exports.getAttendanceMarks = async (req, res) => {
     res.status(500).json({ success: false });
   }
 };   
+
+
+//===================================================================
+//Requests
+//===================================================================
+// --------------------------------------------------
+// ADMIN: GET ALL STUDENTS DROP + PROFILE EDIT DATA
+// --------------------------------------------------
+exports.getAllStudentRequests = async (req, res) => {
+  try {
+    const sql = `
+      SELECT
+        s.id AS "studentId",
+        s.name AS "studentName",
+        s.email,
+
+        sd.id AS "dropId",
+        sd.start_date AS "dropStartDate",
+        sd.end_date AS "dropEndDate",
+        sd.drop_type AS "dropType",
+
+        per.id AS "requestId",
+        per.field_name AS "fieldName",
+        per.old_value AS "oldValue",
+        per.requested_value AS "requestedValue",
+        per.reason,
+        per.status AS "requestStatus",
+        per.requested_at AS "requestedAt",
+        per.action_by AS "actionBy",
+        per.action_at AS "actionAt",
+        per.request_type AS "requestType"
+
+      FROM students s
+
+      LEFT JOIN student_drop sd
+        ON s.id = sd.student_id
+
+      LEFT JOIN profile_edit_requests per
+        ON s.id = per.student_id
+
+      WHERE s.role = 'student'
+
+      ORDER BY s.id DESC, per.requested_at DESC
+    `;
+
+    const { rows } = await db.query(sql);
+
+    return res.json({
+      success: true,
+      students: rows
+    });
+
+  } catch (error) {
+    console.error("Error fetching student requests:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server error while fetching student requests"
+    });
+  }
+};
+
+
+////
+// --------------------------------------------------
+// STUDENT: GET OWN DROP + PROFILE EDIT REQUEST DATA
+// --------------------------------------------------
+exports.getMyStudentRequests = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Student ID required"
+      });
+    }
+
+    const sql = `
+      SELECT
+        s.id AS "studentId",
+        s.name AS "studentName",
+        s.email,
+
+        sd.id AS "dropId",
+        sd.start_date AS "dropStartDate",
+        sd.end_date AS "dropEndDate",
+        sd.drop_type AS "dropType",
+
+        per.id AS "requestId",
+        per.field_name AS "fieldName",
+        per.old_value AS "oldValue",
+        per.requested_value AS "requestedValue",
+        per.reason,
+        per.status AS "requestStatus",
+        per.requested_at AS "requestedAt",
+        per.action_by AS "actionBy",
+        per.action_at AS "actionAt",
+        per.request_type AS "requestType"
+
+      FROM students s
+
+      LEFT JOIN student_drop sd
+        ON s.id = sd.student_id
+
+      LEFT JOIN profile_edit_requests per
+        ON s.id = per.student_id
+
+      WHERE s.id = $1
+        AND s.role = 'student'
+
+      ORDER BY per.requested_at DESC
+    `;
+
+    const { rows } = await db.query(sql, [id]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Student not found"
+      });
+    }
+
+    return res.json({
+      success: true,
+      student: rows
+    });
+
+  } catch (error) {
+    console.error("Error fetching student data:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server error while fetching student data"
+    });
+  }
+};

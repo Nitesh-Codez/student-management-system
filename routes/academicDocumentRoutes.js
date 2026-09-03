@@ -32,9 +32,7 @@ router.post(
 // ================= GET DOCUMENTS =================
 
 router.get(
-  "/documents",
-  authMiddleware,
-  getExamDocuments
+  "/documents"
 );
 
 

@@ -32,7 +32,8 @@ router.post(
 // ================= GET DOCUMENTS =================
 
 router.get(
-  "/documents"
+  "/documents",
+  getExamDocuments
 );
 
 

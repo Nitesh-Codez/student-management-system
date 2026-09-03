@@ -121,7 +121,7 @@ const uploadExamDocument = async (req, res) => {
 };
 
 
-// ================= GET EXAM DOCUMENTS =================
+/// ================= GET EXAM DOCUMENTS =================
 const getExamDocuments = async (req, res) => {
   try {
     const {
@@ -130,24 +130,27 @@ const getExamDocuments = async (req, res) => {
       document_type
     } = req.query;
 
+    // Class is required
+    if (!class_name) {
+      return res.status(400).json({
+        success: false,
+        message: "class_name is required"
+      });
+    }
+
     let query = `
       SELECT *
       FROM academic_documents
       WHERE session = '2026-27'
+      AND class_name = $1
     `;
 
-    const values = [];
-    let index = 1;
+    const values = [class_name];
+    let index = 2;
 
     if (exam_type) {
       query += ` AND exam_type = $${index}`;
       values.push(exam_type);
-      index++;
-    }
-
-    if (class_name) {
-      query += ` AND class_name = $${index}`;
-      values.push(class_name);
       index++;
     }
 
@@ -176,7 +179,6 @@ const getExamDocuments = async (req, res) => {
     });
   }
 };
-
 
 // ================= DELETE EXAM DOCUMENT =================
 const deleteExamDocument = async (req, res) => {

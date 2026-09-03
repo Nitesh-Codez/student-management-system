@@ -33,6 +33,7 @@ router.post(
 
 router.get(
   "/documents",
+  authMiddleware,
   getExamDocuments
 );
 

@@ -11,7 +11,12 @@ const PHONEPE_BASE_URL = "https://api-preprod.phonepe.com/apis/pg-sandbox";
 /* ================= UTILITY: GET CURRENT SESSION START DATE ================= */
 
 
-/* ================= GET STUDENT FEES (With Registration Check) ================= */
+/* =========================================================
+   GET STUDENT FEES
+   fee_month = "August 2026"
+   payment_date = actual payment date
+========================================================= */
+
 const getStudentFees = async (req, res) => {
   try {
     const { id } = req.params;
@@ -24,7 +29,10 @@ const getStudentFees = async (req, res) => {
     const joiningDate = studentRes.rows[0]?.joining_date;
 
     const feeRes = await db.query(
-      "SELECT * FROM fees WHERE student_id = $1",
+      `SELECT *
+       FROM fees
+       WHERE student_id = $1
+       ORDER BY payment_date DESC, id DESC`,
       [id]
     );
 
@@ -33,7 +41,7 @@ const getStudentFees = async (req, res) => {
     const today = new Date();
 
     /* =========================
-       🔥 FIX: SAFE DATE PARSE
+       SAFE DATE PARSE
     ========================= */
 
     let isNewStudent = false;
@@ -41,38 +49,58 @@ const getStudentFees = async (req, res) => {
     if (joiningDate) {
       let join;
 
-      // 👉 handle DD/MM/YYYY format
-      if (joiningDate.includes("/")) {
+      if (
+        typeof joiningDate === "string" &&
+        joiningDate.includes("/")
+      ) {
         const [day, month, year] = joiningDate.split("/");
-        join = new Date(`${year}-${month}-${day}`);
+
+        join = new Date(
+          Number(year),
+          Number(month) - 1,
+          Number(day)
+        );
       } else {
         join = new Date(joiningDate);
       }
 
-      const diffDays = Math.floor(
-        (today - join) / (1000 * 60 * 60 * 24)
-      );
+      if (!isNaN(join.getTime())) {
+        const diffDays = Math.floor(
+          (today - join) / (1000 * 60 * 60 * 24)
+        );
 
-      if (diffDays < 30) {
-        isNewStudent = true;
+        if (diffDays < 30) {
+          isNewStudent = true;
+        }
       }
     }
 
     /* =========================
-       ✅ CHECK PAID THIS MONTH
+       CHECK PAID CURRENT MONTH
+       
+       IMPORTANT:
+       Ab payment_date nahi,
+       fee_month check hoga.
     ========================= */
 
-    const isPaidThisMonth = fees.some(f => {
-      const fDate = new Date(f.payment_date);
+    const currentMonth = today.toLocaleString("en-US", {
+      month: "long",
+    });
+
+    const currentYear = today.getFullYear();
+
+    const currentFeeMonth =
+      `${currentMonth} ${currentYear}`;
+
+    const isPaidThisMonth = fees.some((f) => {
       return (
-        fDate.getMonth() === today.getMonth() &&
-        fDate.getFullYear() === today.getFullYear() &&
+        f.fee_month === currentFeeMonth &&
         f.payment_status === "SUCCESS"
       );
     });
 
     /* =========================
-       🚨 FINAL POPUP LOGIC
+       POPUP LOGIC
     ========================= */
 
     let showPopup = false;
@@ -81,109 +109,385 @@ const getStudentFees = async (req, res) => {
       showPopup = true;
     }
 
+    /* =========================
+       MONTH-WISE FEES
+    ========================= */
+
+    const monthlyFees = {};
+
+    fees.forEach((fee) => {
+
+      // Old records ke liye fallback
+      const month = fee.fee_month || "Old Record";
+
+      if (!monthlyFees[month]) {
+        monthlyFees[month] = {
+          fee_month: month,
+          total_amount: 0,
+          payments: [],
+        };
+      }
+
+      monthlyFees[month].total_amount +=
+        Number(fee.amount);
+
+      monthlyFees[month].payments.push(fee);
+    });
+
     res.json({
       success: true,
       fees,
+      monthlyFees: Object.values(monthlyFees),
       showPopup,
     });
 
   } catch (err) {
+    console.error("GET STUDENT FEES ERROR:", err);
+
     res.status(500).json({
       success: false,
       message: err.message,
     });
   }
 };
-/* ================= GET ALL FEES (Admin History) ================= */
+
+
+/* =========================================================
+   GET ALL FEES - ADMIN HISTORY
+========================================================= */
+
 async function getAllFees(req, res) {
   try {
 
-    const { session, month } = req.query;
+    const {
+      session,
+      month,
+      year
+    } = req.query;
 
-    let query = `SELECT * FROM fees WHERE payment_status='SUCCESS'`;
+    let query = `
+      SELECT *
+      FROM fees
+      WHERE payment_status = 'SUCCESS'
+    `;
+
     let params = [];
+
+    /* ================= SESSION ================= */
 
     if (session) {
       params.push(session);
-      query += ` AND session = $${params.length}`;
+
+      query += `
+        AND session = $${params.length}
+      `;
     }
 
-    if (month) {
-      params.push(month);
-      query += ` AND EXTRACT(MONTH FROM payment_date) = $${params.length}`;
+    /* ================= FEE MONTH ================= */
+
+    /*
+      Admin agar August 2026 select kare:
+
+      month = August
+      year = 2026
+
+      Database:
+      fee_month = "August 2026"
+
+      payment_date chahe September ho,
+      phir bhi August mein dikhega.
+    */
+
+    if (month && year) {
+
+      const feeMonth = `${month} ${year}`;
+
+      params.push(feeMonth);
+
+      query += `
+        AND fee_month = $${params.length}
+      `;
     }
 
-    query += ` ORDER BY payment_date DESC`;
+    query += `
+      ORDER BY payment_date DESC, id DESC
+    `;
 
-    const { rows } = await db.query(query, params);
+    const { rows } = await db.query(
+      query,
+      params
+    );
 
     res.json({
       success: true,
-      fees: rows
+      fees: rows,
     });
 
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ success:false });
+
+    console.error(
+      "GET ALL FEES ERROR:",
+      err
+    );
+
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
   }
 }
-/* ================= ADD FEE (CASH) ================= */
+
+
+/* =========================================================
+   ADD FEE - CASH
+========================================================= */
+
 async function addFee(req, res) {
   try {
-    const { student_id, student_name, class_name, amount, payment_date, payment_time, status, payment_mode } = req.body;
 
-    // ✅ Student ke session & stream fetch karo
+    const {
+      student_id,
+      student_name,
+      class_name,
+      amount,
+
+      // NEW
+      fee_month,
+
+      payment_date,
+      payment_time,
+      status,
+      payment_mode,
+    } = req.body;
+
+    /* ================= VALIDATION ================= */
+
+    if (
+      !student_id ||
+      !amount ||
+      !fee_month ||
+      !payment_date
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "student_id, amount, fee_month and payment_date are required",
+      });
+    }
+
+    /* ================= STUDENT ================= */
+
     const studentRes = await db.query(
-      "SELECT session, stream FROM students WHERE id = $1",
+      `SELECT session, stream
+       FROM students
+       WHERE id = $1`,
       [student_id]
     );
-    if (studentRes.rows.length === 0)
-      return res.status(404).json({ success: false, message: "Student not found" });
 
-    const { session, stream } = studentRes.rows[0];
+    if (studentRes.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Student not found",
+      });
+    }
 
-    // ✅ Fees table me insert karo
-    await db.query(
-      `INSERT INTO fees 
-      (student_id, student_name, class_name, amount, payment_date, payment_time, status, payment_mode, payment_status, stream, session) 
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'SUCCESS',$9,$10)`,
-      [student_id, student_name, class_name, amount, payment_date, payment_time, status || "On Time", payment_mode || "CASH", stream, session]
+    const {
+      session,
+      stream
+    } = studentRes.rows[0];
+
+    /* ================= INSERT ================= */
+
+    const result = await db.query(
+      `INSERT INTO fees
+      (
+        student_id,
+        student_name,
+        class_name,
+        amount,
+        fee_month,
+        payment_date,
+        payment_time,
+        status,
+        payment_mode,
+        payment_status,
+        stream,
+        session
+      )
+      VALUES
+      (
+        $1,
+        $2,
+        $3,
+        $4,
+        $5,
+        $6,
+        $7,
+        $8,
+        $9,
+        'SUCCESS',
+        $10,
+        $11
+      )
+      RETURNING *`,
+      [
+        student_id,
+        student_name,
+        class_name,
+        amount,
+        fee_month,
+        payment_date,
+        payment_time || null,
+        status || "On Time",
+        payment_mode || "CASH",
+        stream,
+        session,
+      ]
     );
 
-    res.json({ success: true });
+    res.json({
+      success: true,
+      message: "Fee added successfully",
+      fee: result.rows[0],
+    });
+
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false });
+
+    console.error(
+      "ADD FEE ERROR:",
+      err
+    );
+
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
   }
 }
-/* ================= PHONEPE & OTHER CRUD ================= */
+
+
+/* =========================================================
+   UPDATE FEE
+========================================================= */
+
 async function updateFee(req, res) {
   try {
-    const { amount, class_name, payment_date, status } = req.body;
 
-    await db.query(
-      `UPDATE fees 
-       SET amount=$1,
-           class_name=$2,
-           payment_date=$3,
-           status=$4
-       WHERE id=$5`,
-      [amount, class_name, payment_date, status, req.params.id]
+    const {
+      amount,
+      class_name,
+      fee_month,
+      payment_date,
+      payment_time,
+      status,
+      payment_mode,
+    } = req.body;
+
+    if (
+      !amount ||
+      !fee_month ||
+      !payment_date
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "amount, fee_month and payment_date are required",
+      });
+    }
+
+    const result = await db.query(
+      `UPDATE fees
+       SET
+         amount = $1,
+         class_name = $2,
+         fee_month = $3,
+         payment_date = $4,
+         payment_time = $5,
+         status = $6,
+         payment_mode = $7
+       WHERE id = $8
+       RETURNING *`,
+      [
+        amount,
+        class_name,
+        fee_month,
+        payment_date,
+        payment_time || null,
+        status || "On Time",
+        payment_mode || "CASH",
+        req.params.id,
+      ]
     );
 
-    res.json({ success: true });
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Fee record not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Fee updated successfully",
+      fee: result.rows[0],
+    });
+
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false });
+
+    console.error(
+      "UPDATE FEE ERROR:",
+      err
+    );
+
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
   }
 }
 
+
+/* =========================================================
+   DELETE FEE
+========================================================= */
+
 async function deleteFee(req, res) {
-    try {
-        await db.query("DELETE FROM fees WHERE id=$1", [req.params.id]);
-        res.json({ success: true });
-    } catch (err) { res.status(500).json({ success: false }); }
+  try {
+
+    const result = await db.query(
+      `DELETE FROM fees
+       WHERE id = $1
+       RETURNING *`,
+      [req.params.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Fee record not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Fee deleted successfully",
+    });
+
+  } catch (err) {
+
+    console.error(
+      "DELETE FEE ERROR:",
+      err
+    );
+
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
 }
+
+
 
 /* ================= CREATE PHONEPE PAYMENT ================= */
 async function createPhonePePayment(req, res) {
@@ -391,7 +695,7 @@ module.exports = {
     getAllFees,
     updateFee,
     deleteFee,
-     createPhonePePayment,
+    createPhonePePayment,
     phonePeCallback,
     getFeeByClass,
     getSessionFeesByMonth

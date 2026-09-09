@@ -20,7 +20,7 @@ router.get("/", getAllFees);
 router.get("/:id", getFeeById);
 
 // ADD fee
-router.post("/", addFee);
+router.post("/add", addFee);
 
 // UPDATE fee
 router.put("/:id", updateFee);

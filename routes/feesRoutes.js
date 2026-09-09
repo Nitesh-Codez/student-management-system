@@ -8,7 +8,7 @@ const {
   getFeeById,
   updateFee,
   deleteFee,
-} = require("../controllers/feeController");
+} = require("../controllers/feesController");
 
 //=======================================
 // ADMIN SIDE 

@@ -2,552 +2,292 @@ const db = require("../db");
 const crypto = require("crypto");
 const axios = require("axios");
 
-/* ================= CONFIG ================= */
-const MERCHANT_ID = process.env.PHONEPE_MID;
-const SALT_KEY = process.env.PHONEPE_SALT;
-const SALT_INDEX = "1";
-const PHONEPE_BASE_URL = "https://api-preprod.phonepe.com/apis/pg-sandbox";
 
-//=========================================================================
-const getStudentFees = async (req, res) => {
+//=====================================================
+// ADMIN SIDE 
+//=====================================================
+
+
+// =========================
+// ADD FEE
+// =========================
+const addFee = async (req, res) => {
+  try {
+    const {
+      student_id,
+      student_name,
+      class_name,
+      amount,
+      payment_date,
+      payment_time,
+      status,
+      payment_mode,
+      merchant_txn_id,
+      payment_status,
+      stream,
+      session,
+      fee_month,
+    } = req.body;
+
+    if (
+      !student_id ||
+      !student_name ||
+      !class_name ||
+      !amount ||
+      !payment_date ||
+      !payment_time ||
+      !fee_month
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Required fee details are missing",
+      });
+    }
+
+    const query = `
+      INSERT INTO fees (
+        student_id,
+        student_name,
+        class_name,
+        amount,
+        payment_date,
+        payment_time,
+        status,
+        payment_mode,
+        merchant_txn_id,
+        payment_status,
+        stream,
+        session,
+        fee_month
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+      RETURNING *
+    `;
+
+    const values = [
+      student_id,
+      student_name,
+      class_name,
+      amount,
+      payment_date,
+      payment_time,
+      status || "On Time",
+      payment_mode || "CASH",
+      merchant_txn_id || null,
+      payment_status || "SUCCESS",
+      stream || null,
+      session || null,
+      fee_month,
+    ];
+
+    const result = await pool.query(query, values);
+
+    res.status(201).json({
+      success: true,
+      message: "Fee added successfully",
+      fee: result.rows[0],
+    });
+  } catch (error) {
+    console.error("Add Fee Error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to add fee",
+      error: error.message,
+    });
+  }
+};
+
+
+// =========================
+// GET ALL FEES
+// =========================
+const getAllFees = async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT *
+      FROM fees
+      ORDER BY payment_date DESC, payment_time DESC
+    `);
+
+    res.status(200).json({
+      success: true,
+      fees: result.rows,
+    });
+  } catch (error) {
+    console.error("Get Fees Error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch fees",
+      error: error.message,
+    });
+  }
+};
+
+
+// =========================
+// GET FEE BY ID
+// =========================
+const getFeeById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Fetch fee records for the specific student
-    const feeRes = await db.query(
-      `SELECT *
-       FROM fees
-       WHERE student_id = $1
-       ORDER BY payment_date DESC, id DESC`,
+    const result = await pool.query(
+      `SELECT * FROM fees WHERE id = $1`,
       [id]
     );
 
-    const fees = feeRes.rows;
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Fee record not found",
+      });
+    }
 
-    // Group fees month-wise based on fee_month column
-    const monthlyFees = {};
-
-    fees.forEach((fee) => {
-      const month = fee.fee_month || "Unassigned";
-
-      if (!monthlyFees[month]) {
-        monthlyFees[month] = {
-          fee_month: month,
-          total_amount: 0,
-          payments: [],
-        };
-      }
-
-      monthlyFees[month].total_amount += Number(fee.amount);
-      monthlyFees[month].payments.push(fee);
-    });
-
-    res.json({
+    res.status(200).json({
       success: true,
-      fees,
-      monthlyFees: Object.values(monthlyFees),
+      fee: result.rows[0],
     });
-
-  } catch (err) {
-    console.error("GET STUDENT FEES ERROR:", err);
+  } catch (error) {
+    console.error("Get Fee Error:", error);
 
     res.status(500).json({
       success: false,
-      message: err.message,
+      message: "Failed to fetch fee",
+      error: error.message,
     });
   }
 };
-/* =========================================================
-   GET ALL FEES - ADMIN HISTORY
-========================================================= */
 
-async function getAllFees(req, res) {
+
+// =========================
+// UPDATE FEE
+// =========================
+const updateFee = async (req, res) => {
   try {
+    const { id } = req.params;
 
     const {
+      student_id,
+      student_name,
+      class_name,
+      amount,
+      payment_date,
+      payment_time,
+      status,
+      payment_mode,
+      merchant_txn_id,
+      payment_status,
+      stream,
       session,
-      month,
-      year
-    } = req.query;
+      fee_month,
+    } = req.body;
 
-    let query = `
-      SELECT *
-      FROM fees
-      WHERE payment_status = 'SUCCESS'
+    const query = `
+      UPDATE fees
+      SET
+        student_id = $1,
+        student_name = $2,
+        class_name = $3,
+        amount = $4,
+        payment_date = $5,
+        payment_time = $6,
+        status = $7,
+        payment_mode = $8,
+        merchant_txn_id = $9,
+        payment_status = $10,
+        stream = $11,
+        session = $12,
+        fee_month = $13
+      WHERE id = $14
+      RETURNING *
     `;
 
-    let params = [];
+    const values = [
+      student_id,
+      student_name,
+      class_name,
+      amount,
+      payment_date,
+      payment_time,
+      status || "On Time",
+      payment_mode || "CASH",
+      merchant_txn_id || null,
+      payment_status || "SUCCESS",
+      stream || null,
+      session || null,
+      fee_month,
+      id,
+    ];
 
-    /* ================= SESSION ================= */
+    const result = await pool.query(query, values);
 
-    if (session) {
-      params.push(session);
-
-      query += `
-        AND session = $${params.length}
-      `;
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Fee record not found",
+      });
     }
 
-    /* ================= FEE MONTH ================= */
-
-    /*
-      Admin agar August 2026 select kare:
-
-      month = August
-      year = 2026
-
-      Database:
-      fee_month = "August 2026"
-
-      payment_date chahe September ho,
-      phir bhi August mein dikhega.
-    */
-
-    if (month && year) {
-
-      const feeMonth = `${month} ${year}`;
-
-      params.push(feeMonth);
-
-      query += `
-        AND fee_month = $${params.length}
-      `;
-    }
-
-    query += `
-      ORDER BY payment_date DESC, id DESC
-    `;
-
-    const { rows } = await db.query(
-      query,
-      params
-    );
-
-    res.json({
+    res.status(200).json({
       success: true,
-      fees: rows,
+      message: "Fee updated successfully",
+      fee: result.rows[0],
     });
-
-  } catch (err) {
-
-    console.error(
-      "GET ALL FEES ERROR:",
-      err
-    );
+  } catch (error) {
+    console.error("Update Fee Error:", error);
 
     res.status(500).json({
       success: false,
-      message: err.message,
+      message: "Failed to update fee",
+      error: error.message,
     });
-  }
-}
-
-
-
-/* ========================================================= 
-   ADD FEE (With fee_month and explicit session support)
-========================================================= */ 
-async function addFee(req, res) { 
-  try { 
-    const { 
-      student_id, 
-      student_name, 
-      class_name, 
-      amount, 
-      fee_month, 
-      payment_date, 
-      payment_time, 
-      status, 
-      payment_mode, 
-      session: reqSession, // Request body se optional session
-    } = req.body; 
-
-    /* ================= VALIDATION ================= */ 
-    if (!student_id || !amount || !fee_month || !payment_date) { 
-      return res.status(400).json({ 
-        success: false, 
-        message: "student_id, amount, fee_month and payment_date are required", 
-      }); 
-    } 
-
-    /* ================= STUDENT ================= */ 
-    const studentRes = await db.query( 
-      `SELECT session, stream FROM students WHERE id = $1`, 
-      [student_id] 
-    ); 
-
-    if (studentRes.rows.length === 0) { 
-      return res.status(404).json({ 
-        success: false, 
-        message: "Student not found", 
-      }); 
-    } 
-
-    const studentData = studentRes.rows[0]; 
-    // Agar request body mein session bheji hai toh wo use hogi, nahi toh students table wali session fallback banegi
-    const finalSession = reqSession || studentData.session; 
-    const stream = studentData.stream; 
-
-    /* ================= INSERT ================= */ 
-    const result = await db.query( 
-      `INSERT INTO fees 
-      ( 
-        student_id, 
-        student_name, 
-        class_name, 
-        amount, 
-        fee_month, 
-        payment_date, 
-        payment_time, 
-        status, 
-        payment_mode, 
-        payment_status, 
-        stream, 
-        session 
-      ) 
-      VALUES 
-      ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'SUCCESS', $10, $11) 
-      RETURNING *`, 
-      [ 
-        student_id, 
-        student_name, 
-        class_name, 
-        amount, 
-        fee_month, 
-        payment_date, 
-        payment_time || null, 
-        status || "On Time", 
-        payment_mode || "CASH", 
-        stream, 
-        finalSession, 
-      ] 
-    ); 
-
-    res.json({ 
-      success: true, 
-      message: "Fee added successfully", 
-      fee: result.rows[0], 
-    }); 
-
-  } catch (err) { 
-    console.error("ADD FEE ERROR:", err); 
-    res.status(500).json({ 
-      success: false, 
-      message: err.message, 
-    }); 
-  } 
-} 
-
-/* ========================================================= 
-   UPDATE FEE (With session and fee_month support)
-========================================================= */ 
-async function updateFee(req, res) { 
-  try { 
-    const { 
-      amount, 
-      class_name, 
-      fee_month, 
-      payment_date, 
-      payment_time, 
-      status, 
-      payment_mode, 
-      session, 
-    } = req.body; 
-
-    if (!amount || !fee_month || !payment_date) { 
-      return res.status(400).json({ 
-        success: false, 
-        message: "amount, fee_month and payment_date are required", 
-      }); 
-    } 
-
-    const result = await db.query( 
-      `UPDATE fees 
-       SET 
-         amount = $1, 
-         class_name = $2, 
-         fee_month = $3, 
-         payment_date = $4, 
-         payment_time = $5, 
-         status = $6, 
-         payment_mode = $7,
-         session = COALESCE($8, session)
-       WHERE id = $9 
-       RETURNING *`, 
-      [ 
-        amount, 
-        class_name, 
-        fee_month, 
-        payment_date, 
-        payment_time || null, 
-        status || "On Time", 
-        payment_mode || "CASH", 
-        session || null, 
-        req.params.id, 
-      ] 
-    ); 
-
-    if (result.rows.length === 0) { 
-      return res.status(404).json({ 
-        success: false, 
-        message: "Fee record not found", 
-      }); 
-    } 
-
-    res.json({ 
-      success: true, 
-      message: "Fee updated successfully", 
-      fee: result.rows[0], 
-    }); 
-
-  } catch (err) { 
-    console.error("UPDATE FEE ERROR:", err); 
-    res.status(500).json({ 
-      success: false, 
-      message: err.message, 
-    }); 
-  } 
-} 
-
-/* ========================================================= 
-   DELETE FEE 
-========================================================= */ 
-async function deleteFee(req, res) { 
-  try { 
-    const result = await db.query( 
-      `DELETE FROM fees WHERE id = $1 RETURNING *`, 
-      [req.params.id] 
-    ); 
-
-    if (result.rows.length === 0) { 
-      return res.status(404).json({ 
-        success: false, 
-        message: "Fee record not found", 
-      }); 
-    } 
-
-    res.json({ 
-      success: true, 
-      message: "Fee deleted successfully", 
-    }); 
-
-  } catch (err) { 
-    console.error("DELETE FEE ERROR:", err); 
-    res.status(500).json({ 
-      success: false, 
-      message: err.message, 
-    }); 
-  } 
-}
-
-/* ================= CREATE PHONEPE PAYMENT ================= */
-async function createPhonePePayment(req, res) {
-  try {
-    const { student_id, student_name, class_name, amount, session, stream } = req.body;
-
-    const merchantTransactionId = "TXN_" + Date.now();
-
-    const payload = {
-      merchantId: MERCHANT_ID,
-      merchantTransactionId,
-      amount: amount * 100,
-      redirectUrl: `${process.env.BACKEND_URL}/api/fees/phonepe/callback`,
-      redirectMode: "POST",
-      paymentInstrument: { type: "PAY_PAGE" }
-    };
-
-    const payloadBase64 = Buffer.from(JSON.stringify(payload)).toString("base64");
-
-    const checksum =
-      crypto
-        .createHash("sha256")
-        .update(payloadBase64 + "/pg/v1/pay" + SALT_KEY)
-        .digest("hex") +
-      "###" +
-      SALT_INDEX;
-
-    const response = await axios.post(
-      `${PHONEPE_BASE_URL}/pg/v1/pay`,
-      { request: payloadBase64 },
-      { headers: { "X-VERIFY": checksum } }
-    );
-
-    // Save with Session & Stream in Pending state
-    await db.query(
-      `INSERT INTO fees 
-      (student_id, student_name, class_name, amount, payment_mode, merchant_txn_id, payment_status, session, stream) 
-      VALUES ($1,$2,$3,$4,'PHONEPE',$5,'PENDING',$6,$7)`,
-      [student_id, student_name, class_name, amount, merchantTransactionId, session, stream]
-    );
-
-    res.json({
-      success: true,
-      redirectUrl: response.data.data.instrumentResponse.redirectInfo.url
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false });
-  }
-}
-
-/* ================= PHONEPE CALLBACK ================= */
-async function phonePeCallback(req, res) {
-  try {
-    const merchantTransactionId = req.body?.data?.merchantTransactionId;
-
-    if (!merchantTransactionId)
-      return res.redirect(`${process.env.FRONTEND_URL}/payment-failed`);
-
-    const statusPath = `/pg/v1/status/${MERCHANT_ID}/${merchantTransactionId}`;
-
-    const checksum =
-      crypto
-        .createHash("sha256")
-        .update(statusPath + SALT_KEY)
-        .digest("hex") +
-      "###" +
-      SALT_INDEX;
-
-    const statusRes = await axios.get(`${PHONEPE_BASE_URL}${statusPath}`, {
-      headers: {
-        "X-VERIFY": checksum,
-        "X-MERCHANT-ID": MERCHANT_ID
-      }
-    });
-
-    const paymentState = statusRes.data.data.state;
-
-    if (paymentState === "COMPLETED") {
-      await db.query(
-        `UPDATE fees SET payment_status='SUCCESS', payment_date=CURRENT_DATE, payment_time=CURRENT_TIME, status='On Time' WHERE merchant_txn_id=$1`,
-        [merchantTransactionId]
-      );
-      return res.redirect(`${process.env.FRONTEND_URL}/payment-success`);
-    } else {
-      await db.query(
-        `UPDATE fees SET payment_status='FAILED' WHERE merchant_txn_id=$1`,
-        [merchantTransactionId]
-      );
-      return res.redirect(`${process.env.FRONTEND_URL}/payment-failed`);
-    }
-  } catch (err) {
-    console.error("Callback error:", err);
-    res.redirect(`${process.env.FRONTEND_URL}/payment-failed`);
-  }
-}
-
-
-const getFeeByClass = async (req, res) => {
-  const { className } = req.params;
-  try {
-    const { data, error } = await supabase
-      .from('fee_structure')
-      .select('monthly_fee')
-      .eq('class_name', className)
-      .single();
-
-    if (error) throw error;
-    res.json({ success: true, monthly_fee: data.monthly_fee });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
   }
 };
 
 
-//Admin
-/* ================= GET SESSION FEES MONTH-WISE (ADMIN) ================= */
-const getSessionFeesByMonth = async (req, res) => {
+// =========================
+// DELETE FEE
+// =========================
+const deleteFee = async (req, res) => {
   try {
-    const { session } = req.query;
+    const { id } = req.params;
 
-    if (!session) {
-      return res.status(400).json({
+    const result = await pool.query(
+      `DELETE FROM fees WHERE id = $1 RETURNING *`,
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
         success: false,
-        message: "Session is required",
+        message: "Fee record not found",
       });
     }
 
-    // Session ke saare successful fee records
-    const { rows } = await db.query(
-      `SELECT *
-       FROM fees
-       WHERE session = $1
-         AND payment_status = 'SUCCESS'
-       ORDER BY payment_date ASC, payment_time ASC`,
-      [session]
-    );
-
-    // Academic session ke months
-    const months = [
-      "April",
-      "May",
-      "June",
-      "July",
-      "August",
-      "September",
-      "October",
-      "November",
-      "December",
-      "January",
-      "February",
-      "March",
-    ];
-
-    // Month-wise grouping
-    const monthlyFees = {};
-
-    months.forEach((month) => {
-      monthlyFees[month] = [];
-    });
-
-    rows.forEach((fee) => {
-      if (!fee.payment_date) return;
-
-      const date = new Date(fee.payment_date);
-      const monthName = date.toLocaleString("en-US", {
-        month: "long",
-      });
-
-      if (monthlyFees[monthName]) {
-        monthlyFees[monthName].push(fee);
-      }
-    });
-
-    // Har month ka total
-    const result = months.map((month) => ({
-      month,
-      total_records: monthlyFees[month].length,
-      total_amount: monthlyFees[month].reduce(
-        (sum, fee) => sum + Number(fee.amount || 0),
-        0
-      ),
-      fees: monthlyFees[month],
-    }));
-
-    res.json({
+    res.status(200).json({
       success: true,
-      session,
-      months: result,
+      message: "Fee deleted successfully",
+      fee: result.rows[0],
     });
-  } catch (err) {
-    console.error("Session month-wise fee error:", err);
+  } catch (error) {
+    console.error("Delete Fee Error:", error);
 
     res.status(500).json({
       success: false,
-      message: "Failed to fetch session fees",
+      message: "Failed to delete fee",
+      error: error.message,
     });
   }
 };
 
 
 module.exports = {
-    addFee,
-    getStudentFees,
-    getAllFees,
-    updateFee,
-    deleteFee,
-    createPhonePePayment,
-    phonePeCallback,
-    getFeeByClass,
-    getSessionFeesByMonth
+  addFee,
+  getAllFees,
+  getFeeById,
+  updateFee,
+  deleteFee,
 };
+

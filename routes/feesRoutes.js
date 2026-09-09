@@ -1,40 +1,31 @@
 const express = require("express");
+
 const router = express.Router();
 
 const {
   addFee,
-  getStudentFees,
   getAllFees,
+  getFeeById,
   updateFee,
   deleteFee,
-  createPhonePePayment,
-  phonePeCallback,
-  getFeeByClass,
-  getSessionFeesByMonth
-} = require("../controllers/feesController");
+} = require("../controllers/feeController");
 
-//Middlewares
-const authMiddleware = require("../middlewares/authMiddleware");
-const adminMiddleware = require("../middlewares/adminMiddleware");
+//=======================================
+// ADMIN SIDE 
 
-// Admin Routes
-router.get("/",authMiddleware,adminMiddleware, getAllFees); // Sab fees session wise dekhne ke liye
-router.get("/admin/session-monthly", getSessionFeesByMonth);
+// GET all fees
+router.get("/", getAllFees);
 
+// GET single fee
+router.get("/:id", getFeeById);
 
+// ADD fee
+router.post("/", addFee);
 
-// Student Routes
-router.get("/student/:id",authMiddleware, getStudentFees); // Particular student ke liye + Late Tag logic
+// UPDATE fee
+router.put("/:id", updateFee);
 
-// CRUD
-router.post("/",authMiddleware,authMiddleware, addFee);
-router.put("/:id",authMiddleware,authMiddleware, updateFee);
-router.delete("/:id",authMiddleware,authMiddleware, deleteFee);
-
-/* ===== PHONEPE PAYMENT ROUTES ===== */
-router.post("/phonepe/pay",authMiddleware, createPhonePePayment);
-router.post("/phonepe/callback",authMiddleware, phonePeCallback);
-router.get("/get-fee/:className",authMiddleware, getFeeByClass);
-
+// DELETE fee
+router.delete("/:id", deleteFee);
 
 module.exports = router;

@@ -323,6 +323,30 @@ const getEditRequests = async (req, res) => {
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
+// GET STUDENTS PROFILE BASIC INFORMATION
+
+const getStudentsBasic = async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT id, name, class
+      FROM students
+      ORDER BY id ASC
+    `);
+
+    res.status(200).json({
+      success: true,
+      students: result.rows
+    });
+
+  } catch (error) {
+    console.error("Error fetching students:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch students"
+    });
+  }
+};
 
 module.exports = {
   getStudentProfile,
@@ -332,4 +356,5 @@ module.exports = {
   handleEditRequest,
   getPendingEditRequests,
   getEditRequests,
+  getStudentsBasic,
 };

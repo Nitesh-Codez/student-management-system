@@ -9,6 +9,7 @@ const {
   handleEditRequest,
   getPendingEditRequests,
   getEditRequests,
+  getStudentsBasic,
 } = require("../controllers/studentsProfileController");
 
 
@@ -40,5 +41,8 @@ router.get("/pending-edit-requests",authMiddleware,adminMiddleware, getPendingEd
 // Student/Admin side: Get all history of edit requests for a specific student
 // /api/students/edit-requests?id=27
 router.get("/edit-requests",authMiddleware, getEditRequests);
+
+//GET BASIC INFORMATION OF STUDENTS 
+router.get("/students-basic-info",getStudentsBasic);
 
 module.exports = router;

@@ -43,6 +43,6 @@ router.get("/pending-edit-requests",authMiddleware,adminMiddleware, getPendingEd
 router.get("/edit-requests",authMiddleware, getEditRequests);
 
 //GET BASIC INFORMATION OF STUDENTS 
-router.get("/students-basic-info",getStudentsBasic);
+router.get("/students-basic-info",authMiddleware,adminMiddleware,getStudentsBasic);
 
 module.exports = router;

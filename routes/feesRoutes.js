@@ -14,7 +14,7 @@ const {
 // ADMIN SIDE 
 
 // GET all fees
-router.get("/", getAllFees);
+router.get("/all-fee", getAllFees);
 
 // GET single fee
 router.get("/:id", getFeeById);
@@ -23,9 +23,9 @@ router.get("/:id", getFeeById);
 router.post("/add", addFee);
 
 // UPDATE fee
-router.put("/:id", updateFee);
+router.put("update/:id", updateFee);
 
 // DELETE fee
-router.delete("/:id", deleteFee);
+router.delete("delete/:id", deleteFee);
 
 module.exports = router;

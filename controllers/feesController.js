@@ -147,7 +147,9 @@ const getFeeById = async (req, res) => {
     const { id } = req.params;
 
     const result = await pool.query(
-      `SELECT * FROM fees WHERE student_id = $1`,
+      `SELECT * FROM fees 
+       WHERE student_id = $1
+       ORDER BY payment_date DESC`,
       [id]
     );
 
@@ -160,10 +162,12 @@ const getFeeById = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      fee: result.rows[0],
+      fees: result.rows,
     });
+
   } catch (error) {
     console.error("Get Fee Error:", error);
+
     res.status(500).json({
       success: false,
       message: "Failed to fetch fee",

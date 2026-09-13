@@ -1,12 +1,11 @@
 const db = require("../db");
+const pool = db.pool || db;
 const crypto = require("crypto");
 const axios = require("axios");
-
 
 //=====================================================
 // ADMIN SIDE 
 //=====================================================
-
 
 // =========================
 // ADD FEE
@@ -89,7 +88,6 @@ const addFee = async (req, res) => {
     });
   } catch (error) {
     console.error("Add Fee Error:", error);
-
     res.status(500).json({
       success: false,
       message: "Failed to add fee",
@@ -98,17 +96,34 @@ const addFee = async (req, res) => {
   }
 };
 
-
 // =========================
-// GET ALL FEES
+// GET ALL FEES (Filtered by Session & Month)
 // =========================
 const getAllFees = async (req, res) => {
   try {
-    const result = await pool.query(`
-      SELECT *
-      FROM fees
-      ORDER BY payment_date DESC, payment_time DESC
-    `);
+    const { session, month } = req.query;
+    
+    let query = `SELECT * FROM fees`;
+    let values = [];
+    let conditions = [];
+
+    if (session) {
+      values.push(session);
+      conditions.push(`session = $${values.length}`);
+    }
+
+    if (month) {
+      values.push(month);
+      conditions.push(`fee_month = $${values.length}`);
+    }
+
+    if (conditions.length > 0) {
+      query += ` WHERE ` + conditions.join(" AND ");
+    }
+
+    query += ` ORDER BY payment_date DESC, payment_time DESC`;
+
+    const result = await pool.query(query, values);
 
     res.status(200).json({
       success: true,
@@ -116,7 +131,6 @@ const getAllFees = async (req, res) => {
     });
   } catch (error) {
     console.error("Get Fees Error:", error);
-
     res.status(500).json({
       success: false,
       message: "Failed to fetch fees",
@@ -124,7 +138,6 @@ const getAllFees = async (req, res) => {
     });
   }
 };
-
 
 // =========================
 // GET FEE BY ID
@@ -151,7 +164,6 @@ const getFeeById = async (req, res) => {
     });
   } catch (error) {
     console.error("Get Fee Error:", error);
-
     res.status(500).json({
       success: false,
       message: "Failed to fetch fee",
@@ -159,7 +171,6 @@ const getFeeById = async (req, res) => {
     });
   }
 };
-
 
 // =========================
 // UPDATE FEE
@@ -237,7 +248,6 @@ const updateFee = async (req, res) => {
     });
   } catch (error) {
     console.error("Update Fee Error:", error);
-
     res.status(500).json({
       success: false,
       message: "Failed to update fee",
@@ -245,7 +255,6 @@ const updateFee = async (req, res) => {
     });
   }
 };
-
 
 // =========================
 // DELETE FEE
@@ -273,7 +282,6 @@ const deleteFee = async (req, res) => {
     });
   } catch (error) {
     console.error("Delete Fee Error:", error);
-
     res.status(500).json({
       success: false,
       message: "Failed to delete fee",
@@ -282,7 +290,6 @@ const deleteFee = async (req, res) => {
   }
 };
 
-
 module.exports = {
   addFee,
   getAllFees,
@@ -290,4 +297,3 @@ module.exports = {
   updateFee,
   deleteFee,
 };
-

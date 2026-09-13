@@ -142,15 +142,19 @@ const getAllFees = async (req, res) => {
 // =========================
 // GET FEE BY ID
 // =========================
+
+
 const getFeeById = async (req, res) => {
   try {
     const { id } = req.params;
+    const { session } = req.query;
 
     const result = await pool.query(
-      `SELECT * FROM fees 
+      `SELECT * FROM fees
        WHERE student_id = $1
+       AND session = $2
        ORDER BY payment_date DESC`,
-      [id]
+      [id, session]
     );
 
     if (result.rows.length === 0) {
@@ -175,7 +179,6 @@ const getFeeById = async (req, res) => {
     });
   }
 };
-
 // =========================
 // UPDATE FEE
 // =========================

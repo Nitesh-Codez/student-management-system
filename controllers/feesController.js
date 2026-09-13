@@ -147,7 +147,7 @@ const getFeeById = async (req, res) => {
     const { id } = req.params;
 
     const result = await pool.query(
-      `SELECT * FROM fees WHERE id = $1`,
+      `SELECT * FROM fees WHERE student_id = $1`,
       [id]
     );
 

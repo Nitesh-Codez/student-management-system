@@ -23,9 +23,9 @@ router.get("/:id", getFeeById);
 router.post("/add", addFee);
 
 // UPDATE fee
-router.put("update/:id", updateFee);
+router.put("/update/:id", updateFee);
 
 // DELETE fee
-router.delete("delete/:id", deleteFee);
+router.delete("/delete/:id", deleteFee);
 
 module.exports = router;

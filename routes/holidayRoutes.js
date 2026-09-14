@@ -8,5 +8,6 @@ const {
 
 router.post("/add-holiday", addHoliday);
 router.get("/get-holiday", getHolidays);
+// 2 only
 
 module.exports = router;

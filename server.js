@@ -23,6 +23,8 @@ const dropRoutes =require ("./routes/dropRoutes.js");
 const examRoutes = require("./routes/examRoutes.js")
 const studentStarsRoutes = require("./routes/studentStarsRoutes");
 const academicRoutes = require("./routes/academicDocumentRoutes.js")
+const holidayRoutes = require("./routes/holidayRoutes");
+
 // ==================== DB INIT ====================
 const db = require("./db"); 
 
@@ -58,6 +60,7 @@ app.use("/api/drop", dropRoutes);
 app.use("/api/student-stars", studentStarsRoutes);
 app.use("/api/exam", examRoutes);
 app.use("/api/exams-details",academicRoutes);
+app.use("/api/holidays", holidayRoutes);
 
 // ==================== STATIC FILES ====================
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));

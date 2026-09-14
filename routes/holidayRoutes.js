@@ -6,8 +6,8 @@ const {
   getHolidays,
 } = require("../controllers/holidaysController");
 
-router.post("/add-holiday", addHoliday);
-router.get("/get-holiday", getHolidays);
+router.post("/add", addHoliday);
+router.get("/get", getHolidays);
 // 2 only
 
 module.exports = router;

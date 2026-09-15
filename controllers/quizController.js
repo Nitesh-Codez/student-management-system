@@ -198,26 +198,25 @@ if (sortAns(sAns) === sortAns(cAns)) {
   }
 };
 
-// 6. ADMIN REPORT
+// 6. ADMIN REPORT//
 exports.getAdminResults = async (req, res) => {
   try {
     const { class_name } = req.params;
     const { session, stream } = req.query;
 
     let sql = `
-      SELECT
-        qr.id AS result_id,
-        s.name AS student_name,
-        q.title AS quiz_title,
+      SELECT 
+        qr.id as result_id,
+        s.name as student_name,
+        q.title as quiz_title,
         q.subject,
-        qr.session,
-        qr.stream,
+        q.session,
+        q.stream,
         qr.score,
         q.total_marks,
         qr.percentage,
         qr.grade,
-        qr.attempted_at AT TIME ZONE 'UTC'
-          AT TIME ZONE 'Asia/Kolkata' AS formatted_date
+        qr.attempted_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata' as formatted_date
       FROM quiz_results qr
       JOIN students s ON qr.student_id = s.id
       JOIN quizzes q ON qr.quiz_id = q.id
@@ -228,27 +227,21 @@ exports.getAdminResults = async (req, res) => {
 
     if (session) {
       params.push(session);
-      sql += ` AND qr.session = $${params.length}`;
+      sql += ` AND q.session = $${params.length}`;
     }
 
-    if (stream && parseInt(class_name) === 12) {
+    if (stream && parseInt(class_name) >= 11) {
       params.push(stream);
-      sql += ` AND qr.stream = $${params.length}`;
+      sql += ` AND q.stream = $${params.length}`;
     }
 
     sql += ` ORDER BY qr.attempted_at DESC`;
 
     const result = await db.query(sql, params);
-
     res.json(result.rows);
-
   } catch (err) {
     console.error("Admin Report Error:", err);
-
-    res.status(500).json({
-      success: false,
-      message: "Database Error"
-    });
+    res.status(500).json({ success: false, message: "Database Error" });
   }
 };
 

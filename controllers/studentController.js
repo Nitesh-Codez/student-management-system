@@ -194,6 +194,49 @@ exports.deleteStudent = async (req, res) => {
   }
 };
 
+
+// =========================
+// GET ONE STUDENT HISTORY
+// =========================
+exports.getStudentHistoryById = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const result = await db.query(
+      `SELECT
+        id,
+        student_id,
+        class,
+        year,
+        created_at,
+        student_data
+       FROM student_class_history
+       WHERE student_id = $1
+       ORDER BY created_at DESC`,
+      [id]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Student history not found"
+      });
+    }
+
+    res.json({
+      success: true,
+      students: result.rows
+    });
+
+  } catch (err) {
+    console.log("GET STUDENT HISTORY BY ID ERROR:", err);
+
+    res.status(500).json({
+      success: false,
+      message: err.message
+    });
+  }
+};
 // --------------------- PROFILE PHOTO ---------------------
 
 exports.uploadProfilePhoto = async (req, res) => {

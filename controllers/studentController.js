@@ -38,22 +38,63 @@ exports.getStudents = async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 };
-
 // Add student
 exports.addStudent = async (req, res) => {
-  const { name, class: studentClass, password, mobile = null, address = null, joining_date = null } = req.body;
+  const {
+    name,
+    class: studentClass,
+    password,
+    mobile = null,
+    address = null,
+    joining_date = null,
+    monthly_fee = 0,
+    board = null,
+    father_name = null,
+    mother_name = null,
+    dob = null
+  } = req.body;
 
   if (!name || !studentClass || !password) {
-    return res.json({ success: false, message: "Name, class and password are required" });
+    return res.json({
+      success: false,
+      message: "Name, class and password are required"
+    });
   }
 
   try {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const result = await db.query(
-      `INSERT INTO students (name, "class", password, mobile, joining_date, address, role) 
-       VALUES ($1,$2,$3,$4,$5,$6,'student') RETURNING id`,
-      [name, studentClass, hashedPassword, mobile, joining_date, address]
+      `INSERT INTO students
+      (
+        name,
+        "class",
+        password,
+        mobile,
+        joining_date,
+        address,
+        role,
+        monthly_fee,
+        board,
+        father_name,
+        mother_name,
+        dob
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,'student',$7,$8,$9,$10,$11)
+      RETURNING id`,
+      [
+        name,
+        studentClass,
+        hashedPassword,
+        mobile,
+        joining_date,
+        address,
+        monthly_fee,
+        board,
+        father_name,
+        mother_name,
+        dob
+      ]
     );
 
     res.json({
@@ -64,9 +105,15 @@ exports.addStudent = async (req, res) => {
 
   } catch (err) {
     console.log("DB ERROR:", err);
-    res.status(500).json({ success: false, message: err.message });
+
+    res.status(500).json({
+      success: false,
+      message: err.message
+    });
   }
 };
+
+
 // Delete student
 exports.deleteStudent = async (req, res) => {
   const { id } = req.params;

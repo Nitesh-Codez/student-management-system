@@ -113,7 +113,10 @@ exports.addStudent = async (req, res) => {
   }
 };
 
-// Delete student
+
+/// =========================
+// DELETE STUDENT
+// =========================
 exports.deleteStudent = async (req, res) => {
   const { id } = req.params;
 
@@ -122,19 +125,15 @@ exports.deleteStudent = async (req, res) => {
   try {
     await client.query("BEGIN");
 
-    // Delete related feedback records first
-    await client.query(
-      "DELETE FROM feedback WHERE student_id = $1",
+    // 1. Students table se POORA student record nikalo
+    const studentResult = await client.query(
+      `SELECT *
+       FROM students
+       WHERE id = $1`,
       [id]
     );
 
-    // Delete student
-    const result = await client.query(
-      "DELETE FROM students WHERE id = $1 RETURNING id, name",
-      [id]
-    );
-
-    if (result.rowCount === 0) {
+    if (studentResult.rowCount === 0) {
       await client.query("ROLLBACK");
 
       return res.status(404).json({
@@ -143,27 +142,58 @@ exports.deleteStudent = async (req, res) => {
       });
     }
 
+    const student = studentResult.rows[0];
+
+    // 2. POORI student details history me save karo
+    await client.query(
+      `INSERT INTO student_class_history
+       (student_id, class, year, student_data)
+       VALUES ($1, $2, $3, $4)`,
+      [
+        student.id,
+        student.class,
+        new Date().getFullYear(),
+        JSON.stringify(student)
+      ]
+    );
+
+    // 3. Feedback ke related records delete karo
+    await client.query(
+      `DELETE FROM feedback
+       WHERE student_id = $1`,
+      [id]
+    );
+
+    // 4. Student delete karo
+    await client.query(
+      `DELETE FROM students
+       WHERE id = $1`,
+      [id]
+    );
+
+    // 5. Sab successful
     await client.query("COMMIT");
 
     res.json({
       success: true,
-      message: "Student deleted successfully",
-      student: result.rows[0]
+      message: "Student deleted and complete details saved in class history"
     });
 
   } catch (err) {
     await client.query("ROLLBACK");
 
-    console.log("DB ERROR:", err);
+    console.log("DELETE STUDENT DB ERROR:", err);
 
     res.status(500).json({
       success: false,
       message: err.message
     });
+
   } finally {
     client.release();
   }
 };
+
 // --------------------- PROFILE PHOTO ---------------------
 
 exports.uploadProfilePhoto = async (req, res) => {

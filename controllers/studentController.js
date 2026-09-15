@@ -194,13 +194,10 @@ exports.deleteStudent = async (req, res) => {
   }
 };
 
-
 // =========================
-// GET ONE STUDENT HISTORY
+// GET DELETED STUDENT HISTORY
 // =========================
-exports.getStudentHistoryById = async (req, res) => {
-  const { id } = req.params;
-
+exports.getStudentHistory = async (req, res) => {
   try {
     const result = await db.query(
       `SELECT
@@ -211,17 +208,8 @@ exports.getStudentHistoryById = async (req, res) => {
         created_at,
         student_data
        FROM student_class_history
-       WHERE student_id = $1
-       ORDER BY created_at DESC`,
-      [id]
+       ORDER BY created_at DESC`
     );
-
-    if (result.rowCount === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Student history not found"
-      });
-    }
 
     res.json({
       success: true,
@@ -229,7 +217,7 @@ exports.getStudentHistoryById = async (req, res) => {
     });
 
   } catch (err) {
-    console.log("GET STUDENT HISTORY BY ID ERROR:", err);
+    console.log("GET STUDENT HISTORY ERROR:", err);
 
     res.status(500).json({
       success: false,

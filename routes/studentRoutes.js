@@ -39,6 +39,6 @@ router.post("/finalize-exam",authMiddleware, examController.finalizeExamSubmissi
 router.get("/class-history",authMiddleware, studentController.getStudentClassHistory);
 
 router.get("/history", studentController.getStudentHistory);
-router.get("/history/:id", studentController.getStudentHistoryById);
+
 
 module.exports = router;

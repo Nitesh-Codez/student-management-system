@@ -113,21 +113,57 @@ exports.addStudent = async (req, res) => {
   }
 };
 
-
 // Delete student
 exports.deleteStudent = async (req, res) => {
   const { id } = req.params;
 
+  const client = await db.connect();
+
   try {
-    await db.query("DELETE FROM students WHERE id = $1", [id]);
-    res.json({ success: true, message: "Student deleted successfully" });
+    await client.query("BEGIN");
+
+    // Delete related feedback records first
+    await client.query(
+      "DELETE FROM feedback WHERE student_id = $1",
+      [id]
+    );
+
+    // Delete student
+    const result = await client.query(
+      "DELETE FROM students WHERE id = $1 RETURNING id, name",
+      [id]
+    );
+
+    if (result.rowCount === 0) {
+      await client.query("ROLLBACK");
+
+      return res.status(404).json({
+        success: false,
+        message: "Student not found"
+      });
+    }
+
+    await client.query("COMMIT");
+
+    res.json({
+      success: true,
+      message: "Student deleted successfully",
+      student: result.rows[0]
+    });
 
   } catch (err) {
+    await client.query("ROLLBACK");
+
     console.log("DB ERROR:", err);
-    res.status(500).json({ success: false, message: err.message });
+
+    res.status(500).json({
+      success: false,
+      message: err.message
+    });
+  } finally {
+    client.release();
   }
 };
-
 // --------------------- PROFILE PHOTO ---------------------
 
 exports.uploadProfilePhoto = async (req, res) => {

@@ -297,10 +297,62 @@ const deleteFee = async (req, res) => {
   }
 };
 
+
+const getMonthlyFeeByClass = async (req, res) => {
+  try {
+    const { class_name } = req.params;
+
+    const feeMap = {
+      "Nursery": 400,
+      "L.K.G": 400,
+      "U.K.G": 400,
+      "1st": 500,
+      "2nd": 500,
+      "3rd": 500,
+      "4th": 500,
+      "5th": 500,
+      "6th": 500,
+      "7th": 500,
+      "8th": 500,
+      "9th": 500,
+      "10th": 1000,
+      "11th": 1000,
+      "12th": 1000
+    };
+
+    const monthly_fee = feeMap[class_name];
+
+    if (monthly_fee === undefined) {
+      return res.status(404).json({
+        success: false,
+        message: "Fee not found for this class"
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      class_name,
+      monthly_fee
+    });
+
+  } catch (error) {
+    console.error("Get Monthly Fee Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
+  }
+};
+
+
+
+
 module.exports = {
   addFee,
   getAllFees,
   getFeeById,
   updateFee,
   deleteFee,
+  getMonthlyFeeByClass,
 };

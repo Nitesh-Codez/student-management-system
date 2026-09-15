@@ -8,6 +8,7 @@ const {
   getFeeById,
   updateFee,
   deleteFee,
+  getMonthlyFeeByClass,
 } = require("../controllers/feesController");
 const authMiddleware = require("../middlewares/authMiddleware");
 const adminMiddleware = require("../middlewares/adminMiddleware");
@@ -23,6 +24,9 @@ router.get("/:id",authMiddleware,getFeeById);
 
 // ADD fee
 router.post("/add",authMiddleware,adminMiddleware, addFee);
+
+
+router.get("/monthly-fee/:class_name", getMonthlyFeeByClass);
 
 // UPDATE fee
 router.put("/update/:id",authMiddleware,adminMiddleware, updateFee);

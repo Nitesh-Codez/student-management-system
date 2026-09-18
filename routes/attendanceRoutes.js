@@ -10,7 +10,7 @@ const attendanceController = require("../controllers/attendanceController");
 
 // ------------------------------------
 // GET students list for a specific date (Admin)
-router.get("/list",authMiddleware,adminMiddleware, attendanceController.getStudentsList);
+router.get("/list", attendanceController.getStudentsList);
 
 // ------------------------------------
 // POST mark or update attendance (Admin)

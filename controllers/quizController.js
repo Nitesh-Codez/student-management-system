@@ -198,7 +198,7 @@ if (sortAns(sAns) === sortAns(cAns)) {
   }
 };
 
-// 6. ADMIN REPORT//
+// 6. ADMIN REPORT
 exports.getAdminResults = async (req, res) => {
   try {
     const { class_name } = req.params;

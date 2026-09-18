@@ -13,27 +13,34 @@ exports.getStudentsList = async (req, res) => {
     }
 
     const sql = `
-      SELECT 
-        s.id AS "studentId",
-        s.name AS "studentName",
+      SELECT  
+        s.id AS "studentId", 
+        s.name AS "studentName", 
         s."class" AS "class",
-        COALESCE(a.status, 'Absent') AS status
-      FROM students s
-      LEFT JOIN attendance a
-        ON s.id = a.student_id AND a.date::date = $1
-      WHERE s.role = 'student'
-      ORDER BY s.id
+        s.batch AS "batch",
+        COALESCE(a.status, 'Absent') AS status 
+      FROM students s 
+      LEFT JOIN attendance a 
+        ON s.id = a.student_id AND a.date::date = $1 
+      WHERE s.role = 'student' 
+      ORDER BY s.id 
     `;
 
     const { rows } = await db.query(sql, [date]);
 
-    return res.json({ success: true, date, students: rows });
+    return res.json({
+      success: true,
+      date,
+      students: rows
+    });
   } catch (error) {
     console.error("Error fetching students:", error);
-    return res.status(500).json({ success: false, message: "Server error while fetching students" });
+    return res.status(500).json({
+      success: false,
+      message: "Server error while fetching students"
+    });
   }
 };
-
 // -------------------------------------------
 // 2) MARK or UPDATE attendance
 // -------------------------------------------

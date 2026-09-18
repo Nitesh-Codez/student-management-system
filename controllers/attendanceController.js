@@ -9,21 +9,52 @@ exports.getStudentsList = async (req, res) => {
 
     if (!date) {
       const today = new Date();
-      date = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+
+      date = `${today.getFullYear()}-${String(
+        today.getMonth() + 1
+      ).padStart(2, "0")}-${String(
+        today.getDate()
+      ).padStart(2, "0")}`;
     }
 
     const sql = `
-      SELECT  
-        s.id AS "studentId", 
-        s.name AS "studentName", 
+      SELECT
+        s.id AS "studentId",
+        s.name AS "studentName",
         s."class" AS "class",
         s.batch AS "batch",
-        COALESCE(a.status, 'Absent') AS status 
-      FROM students s 
-      LEFT JOIN attendance a 
-        ON s.id = a.student_id AND a.date::date = $1 
-      WHERE s.role = 'student' 
-      ORDER BY s.id 
+
+        CASE
+          WHEN s.batch = 'batch1'
+            THEN '3:00 PM - 4:30 PM'
+
+          WHEN s.batch = 'batch2'
+            THEN '4:30 PM - 6:00 PM'
+
+          WHEN s.batch = 'batch3'
+            THEN '6:00 PM - 7:30 PM'
+
+          ELSE 'Not Assigned'
+        END AS "batchTime",
+
+        COALESCE(a.status, 'Absent') AS status
+
+      FROM students s
+
+      LEFT JOIN attendance a
+        ON s.id = a.student_id
+        AND a.date::date = $1
+
+      WHERE s.role = 'student'
+
+      ORDER BY
+        CASE
+          WHEN s.batch = 'batch1' THEN 1
+          WHEN s.batch = 'batch2' THEN 2
+          WHEN s.batch = 'batch3' THEN 3
+          ELSE 4
+        END,
+        s.id
     `;
 
     const { rows } = await db.query(sql, [date]);
@@ -33,11 +64,17 @@ exports.getStudentsList = async (req, res) => {
       date,
       students: rows
     });
+
   } catch (error) {
-    console.error("Error fetching students:", error);
+    console.error(
+      "Error fetching students:",
+      error
+    );
+
     return res.status(500).json({
       success: false,
-      message: "Server error while fetching students"
+      message:
+        "Server error while fetching students"
     });
   }
 };

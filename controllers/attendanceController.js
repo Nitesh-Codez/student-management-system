@@ -25,13 +25,13 @@ exports.getStudentsList = async (req, res) => {
         s.batch AS "batch",
 
         CASE
-          WHEN s.batch = 'batch1'
+          WHEN LOWER(REPLACE(s.batch, ' ', '')) = 'batch1'
             THEN '3:00 PM - 4:30 PM'
 
-          WHEN s.batch = 'batch2'
+          WHEN LOWER(REPLACE(s.batch, ' ', '')) = 'batch2'
             THEN '4:30 PM - 6:00 PM'
 
-          WHEN s.batch = 'batch3'
+          WHEN LOWER(REPLACE(s.batch, ' ', '')) = 'batch3'
             THEN '6:00 PM - 7:30 PM'
 
           ELSE 'Not Assigned'
@@ -49,9 +49,9 @@ exports.getStudentsList = async (req, res) => {
 
       ORDER BY
         CASE
-          WHEN s.batch = 'batch1' THEN 1
-          WHEN s.batch = 'batch2' THEN 2
-          WHEN s.batch = 'batch3' THEN 3
+          WHEN LOWER(REPLACE(s.batch, ' ', '')) = 'batch1' THEN 1
+          WHEN LOWER(REPLACE(s.batch, ' ', '')) = 'batch2' THEN 2
+          WHEN LOWER(REPLACE(s.batch, ' ', '')) = 'batch3' THEN 3
           ELSE 4
         END,
         s.id

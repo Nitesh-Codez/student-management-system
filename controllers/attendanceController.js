@@ -114,6 +114,92 @@ exports.markAttendance = async (req, res) => {
 };
 
 // --------------------------------------------------
+// ADMIN: SHIFT STUDENT FROM ONE BATCH TO ANOTHER
+// --------------------------------------------------
+exports.shiftStudentBatch = async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const { batch } = req.body;
+
+    // Validation
+    if (!studentId || !batch) {
+      return res.status(400).json({
+        success: false,
+        message: "Student ID and target batch are required",
+      });
+    }
+
+    // Only valid batches allowed
+    const validBatches = ["batch1", "batch2", "batch3"];
+
+    if (!validBatches.includes(batch.toLowerCase())) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid batch. Use batch1, batch2 or batch3",
+      });
+    }
+
+    // Check student exists
+    const studentResult = await db.query(
+      `
+      SELECT id, name, batch
+      FROM students
+      WHERE id = $1
+        AND role = 'student'
+      `,
+      [studentId]
+    );
+
+    if (studentResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Student not found",
+      });
+    }
+
+    const student = studentResult.rows[0];
+
+    // Already in same batch
+    if (
+      student.batch &&
+      student.batch.toLowerCase().replace(/\s/g, "") ===
+        batch.toLowerCase().replace(/\s/g, "")
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: `${student.name} is already in ${batch}`,
+      });
+    }
+
+    // Update batch
+    const updateResult = await db.query(
+      `
+      UPDATE students
+      SET batch = $1
+      WHERE id = $2
+        AND role = 'student'
+      RETURNING id, name, class, batch
+      `,
+      [batch.toLowerCase(), studentId]
+    );
+
+    return res.json({
+      success: true,
+      message: `${student.name} shifted successfully to ${batch}`,
+      student: updateResult.rows[0],
+    });
+
+  } catch (error) {
+    console.error("Error shifting student batch:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server error while shifting student batch",
+    });
+  }
+};
+
+// --------------------------------------------------
 // 3) GET INDIVIDUAL STUDENT FULL ATTENDANCE HISTORY
 // --------------------------------------------------
 exports.getStudentAttendance = async (req, res) => {

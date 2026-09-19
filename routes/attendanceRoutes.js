@@ -16,6 +16,8 @@ router.get("/list", attendanceController.getStudentsList);
 // POST mark or update attendance (Admin)
 router.post("/mark",authMiddleware,adminMiddleware,attendanceController.markAttendance);
 
+router.put("/student/:studentId/batch",attendanceController.shiftStudentBatch);
+
 // ------------------------------------
 // GET today attendance percentage (Admin)
 router.get("/today-percent",authMiddleware, attendanceController.getTodayAttendancePercent);

@@ -233,8 +233,232 @@ const deleteExamDocument = async (req, res) => {
 };
 
 
+
+
+
+
+
+// ============================================================
+// GET COMPLETE STUDENT MONTHLY REPORT
+// Attendance + Marks + Assignments + Submissions
+// ============================================================
+const getStudentMonthlyReport = async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const { month } = req.query; // YYYY-MM
+
+    if (!studentId || !month) {
+      return res.status(400).json({
+        success: false,
+        message: "studentId and month are required (YYYY-MM)",
+      });
+    }
+
+    if (!/^\d{4}-\d{2}$/.test(month)) {
+      return res.status(400).json({
+        success: false,
+        message: "Month must be in YYYY-MM format",
+      });
+    }
+
+    // ========================================================
+    // 1. STUDENT DETAILS
+    // ========================================================
+    const studentResult = await db.query(
+      `
+      SELECT id, name, class, batch, session, email
+      FROM students
+      WHERE id = $1 AND role = 'student'
+      `,
+      [studentId]
+    );
+
+    if (!studentResult.rows.length) {
+      return res.status(404).json({
+        success: false,
+        message: "Student not found",
+      });
+    }
+
+    const student = studentResult.rows[0];
+
+    const startDate = `${month}-01`;
+    const endDate = `(DATE '${startDate}' + INTERVAL '1 month')::date`;
+
+    // ========================================================
+    // 2. ATTENDANCE REPORT
+    // ========================================================
+    const attendanceResult = await db.query(
+      `
+      SELECT
+        date::date AS date,
+        status
+      FROM attendance
+      WHERE student_id = $1
+        AND date::date >= $2
+        AND date::date < ${endDate}
+      ORDER BY date::date ASC
+      `,
+      [studentId, startDate]
+    );
+
+    const attendance = attendanceResult.rows;
+
+    const attendanceSummary = {
+      present: attendance.filter(a => a.status === "Present").length,
+      absent: attendance.filter(a => a.status === "Absent").length,
+      holiday: attendance.filter(a => a.status === "Holiday").length,
+    };
+
+    attendanceSummary.total =
+      attendanceSummary.present +
+      attendanceSummary.absent +
+      attendanceSummary.holiday;
+
+    const workingDays =
+      attendanceSummary.present + attendanceSummary.absent;
+
+    attendanceSummary.percentage =
+      workingDays > 0
+        ? Number(
+            ((attendanceSummary.present / workingDays) * 100).toFixed(2)
+          )
+        : 0;
+
+    // ========================================================
+    // 3. MARKS FOR SELECTED MONTH
+    // ========================================================
+    const marksResult = await db.query(
+      `
+      SELECT
+        id,
+        subject,
+        total_marks,
+        obtained_marks,
+        test_date,
+        CASE
+          WHEN obtained_marks >= total_marks * 0.33
+          THEN 'Pass'
+          ELSE 'Fail'
+        END AS status
+      FROM marks
+      WHERE student_id = $1
+        AND test_date >= $2
+        AND test_date < ${endDate}
+      ORDER BY test_date ASC
+      `,
+      [studentId, startDate]
+    );
+
+    const marks = marksResult.rows;
+
+    // ========================================================
+    // 4. ASSIGNMENTS + SUBMISSIONS
+    // ========================================================
+    const assignmentResult = await db.query(
+      `
+      SELECT
+        a.id AS assignment_id,
+        a.task_title,
+        a.subject,
+        a.class,
+        a.deadline,
+        a.uploaded_at AS assigned_at,
+
+        s.id AS submission_id,
+        s.uploaded_at AS submitted_at,
+        s.rating,
+
+        CASE
+          WHEN s.id IS NOT NULL THEN 'SUBMITTED'
+          ELSE 'PENDING'
+        END AS status
+
+      FROM assignment_uploads a
+
+      LEFT JOIN assignment_uploads s
+        ON s.task_title = a.task_title
+       AND s.class = a.class
+       AND s.uploader_role = 'student'
+       AND s.student_id = $1
+
+      WHERE a.uploader_role = 'admin'
+        AND a.class = $2
+        AND a.session = $3
+        AND a.uploaded_at >= $4
+        AND a.uploaded_at < ${endDate}
+
+      ORDER BY a.uploaded_at ASC
+      `,
+      [
+        studentId,
+        student.class,
+        student.session,
+        startDate,
+      ]
+    );
+
+    const assignments = assignmentResult.rows;
+
+    const assignmentSummary = {
+      assigned: assignments.length,
+      submitted: assignments.filter(
+        a => a.status === "SUBMITTED"
+      ).length,
+      pending: assignments.filter(
+        a => a.status === "PENDING"
+      ).length,
+    };
+
+    // ========================================================
+    // 5. FINAL RESPONSE
+    // ========================================================
+    return res.json({
+      success: true,
+
+      month,
+
+      student: {
+        id: student.id,
+        name: student.name,
+        class: student.class,
+        batch: student.batch,
+        session: student.session,
+        email: student.email,
+      },
+
+      attendance: {
+        summary: attendanceSummary,
+        records: attendance,
+      },
+
+      marks: {
+        totalTests: marks.length,
+        records: marks,
+      },
+
+      assignments: {
+        summary: assignmentSummary,
+        records: assignments,
+      },
+    });
+
+  } catch (error) {
+    console.error(
+      "Student Monthly Report Error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Server error while generating student monthly report",
+    });
+  }
+};
+
 module.exports = {
   uploadExamDocument,
   getExamDocuments,
-  deleteExamDocument
+  deleteExamDocument,
+  getStudentMonthlyReport
 };

@@ -8,7 +8,8 @@ const adminMiddleware = require("../middlewares/adminMiddleware");
 const {
   uploadExamDocument,
   getExamDocuments,
-  deleteExamDocument
+  deleteExamDocument,
+getStudentMonthlyReport,
 } = require("../controllers/academicDocumentController");
 
 const upload = multer({
@@ -48,4 +49,10 @@ router.delete(
 );
 
 
+
+
+
+router.get(
+  "/student/:studentId/monthly-report",getStudentMonthlyReport
+);
 module.exports = router;

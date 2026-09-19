@@ -235,31 +235,45 @@ const deleteExamDocument = async (req, res) => {
 
 
 
-
-
-
 // ============================================================
 // GET COMPLETE STUDENT MONTHLY REPORT
+// Single / Multiple Months
 // Attendance + Marks + Assignments + Submissions
 // ============================================================
 const getStudentMonthlyReport = async (req, res) => {
   try {
     const { studentId } = req.params;
-    const { month } = req.query; // YYYY-MM
+    const { month } = req.query;
 
     if (!studentId || !month) {
       return res.status(400).json({
         success: false,
-        message: "studentId and month are required (YYYY-MM)",
+        message:
+          "studentId and month are required. Example: ?month=2026-08 or ?month=2026-08,2026-09",
       });
     }
 
-    if (!/^\d{4}-\d{2}$/.test(month)) {
+    // ========================================================
+    // MONTHS
+    // Supports:
+    // ?month=2026-08
+    // ?month=2026-08,2026-09
+    // ========================================================
+    const months = month
+      .split(",")
+      .map(m => m.trim())
+      .filter(Boolean);
+
+    if (!months.length || months.some(m => !/^\d{4}-\d{2}$/.test(m))) {
       return res.status(400).json({
         success: false,
-        message: "Month must be in YYYY-MM format",
+        message:
+          "Month must be in YYYY-MM format. Multiple months: 2026-08,2026-09",
       });
     }
+
+    // Remove duplicate months
+    const selectedMonths = [...new Set(months)].sort();
 
     // ========================================================
     // 1. STUDENT DETAILS
@@ -282,11 +296,29 @@ const getStudentMonthlyReport = async (req, res) => {
 
     const student = studentResult.rows[0];
 
-    const startDate = `${month}-01`;
-    const endDate = `(DATE '${startDate}' + INTERVAL '1 month')::date`;
+    // ========================================================
+    // DATE RANGE
+    // First selected month -> first date
+    // Last selected month -> next month first date
+    // ========================================================
+    const startDate = `${selectedMonths[0]}-01`;
+
+    const lastMonth = selectedMonths[selectedMonths.length - 1];
+
+    const [lastYear, lastMonthNumber] = lastMonth
+      .split("-")
+      .map(Number);
+
+    const endYear =
+      lastMonthNumber === 12 ? lastYear + 1 : lastYear;
+
+    const endMonth =
+      lastMonthNumber === 12 ? 1 : lastMonthNumber + 1;
+
+    const endDate = `${endYear}-${String(endMonth).padStart(2, "0")}-01`;
 
     // ========================================================
-    // 2. ATTENDANCE REPORT
+    // 2. ATTENDANCE
     // ========================================================
     const attendanceResult = await db.query(
       `
@@ -296,37 +328,80 @@ const getStudentMonthlyReport = async (req, res) => {
       FROM attendance
       WHERE student_id = $1
         AND date::date >= $2
-        AND date::date < ${endDate}
+        AND date::date < $3
       ORDER BY date::date ASC
       `,
-      [studentId, startDate]
+      [studentId, startDate, endDate]
     );
 
     const attendance = attendanceResult.rows;
 
-    const attendanceSummary = {
-      present: attendance.filter(a => a.status === "Present").length,
-      absent: attendance.filter(a => a.status === "Absent").length,
-      holiday: attendance.filter(a => a.status === "Holiday").length,
+    // ========================================================
+    // ATTENDANCE SUMMARY FUNCTION
+    // ========================================================
+    const getAttendanceSummary = records => {
+      const present = records.filter(
+        a => a.status === "Present"
+      ).length;
+
+      const absent = records.filter(
+        a => a.status === "Absent"
+      ).length;
+
+      const holiday = records.filter(
+        a => a.status === "Holiday"
+      ).length;
+
+      const total = present + absent + holiday;
+
+      const workingDays = present + absent;
+
+      const percentage =
+        workingDays > 0
+          ? Number(((present / workingDays) * 100).toFixed(2))
+          : 0;
+
+      return {
+        P: present,
+        A: absent,
+        H: holiday,
+
+        // Also keeping readable names
+        present,
+        absent,
+        holiday,
+
+        total,
+        workingDays,
+        percentage,
+      };
     };
 
-    attendanceSummary.total =
-      attendanceSummary.present +
-      attendanceSummary.absent +
-      attendanceSummary.holiday;
+    // ========================================================
+    // MONTH-WISE ATTENDANCE
+    // ========================================================
+    const monthlyAttendance = selectedMonths.map(m => {
+      const records = attendance.filter(a => {
+        const d = new Date(a.date);
+        const recordMonth = `${d.getFullYear()}-${String(
+          d.getMonth() + 1
+        ).padStart(2, "0")}`;
 
-    const workingDays =
-      attendanceSummary.present + attendanceSummary.absent;
+        return recordMonth === m;
+      });
 
-    attendanceSummary.percentage =
-      workingDays > 0
-        ? Number(
-            ((attendanceSummary.present / workingDays) * 100).toFixed(2)
-          )
-        : 0;
+      return {
+        month: m,
+        summary: getAttendanceSummary(records),
+        records,
+      };
+    });
+
+    // Overall attendance for all selected months
+    const attendanceSummary = getAttendanceSummary(attendance);
 
     // ========================================================
-    // 3. MARKS FOR SELECTED MONTH
+    // 3. MARKS
     // ========================================================
     const marksResult = await db.query(
       `
@@ -344,13 +419,39 @@ const getStudentMonthlyReport = async (req, res) => {
       FROM marks
       WHERE student_id = $1
         AND test_date >= $2
-        AND test_date < ${endDate}
+        AND test_date < $3
       ORDER BY test_date ASC
       `,
-      [studentId, startDate]
+      [studentId, startDate, endDate]
     );
 
     const marks = marksResult.rows;
+
+    // ========================================================
+    // MONTH-WISE MARKS
+    // ========================================================
+    const monthlyMarks = selectedMonths.map(m => ({
+      month: m,
+      totalTests: marks.filter(mark => {
+        const d = new Date(mark.test_date);
+
+        const recordMonth = `${d.getFullYear()}-${String(
+          d.getMonth() + 1
+        ).padStart(2, "0")}`;
+
+        return recordMonth === m;
+      }).length,
+
+      records: marks.filter(mark => {
+        const d = new Date(mark.test_date);
+
+        const recordMonth = `${d.getFullYear()}-${String(
+          d.getMonth() + 1
+        ).padStart(2, "0")}`;
+
+        return recordMonth === m;
+      }),
+    }));
 
     // ========================================================
     // 4. ASSIGNMENTS + SUBMISSIONS
@@ -370,7 +471,8 @@ const getStudentMonthlyReport = async (req, res) => {
         s.rating,
 
         CASE
-          WHEN s.id IS NOT NULL THEN 'SUBMITTED'
+          WHEN s.id IS NOT NULL
+          THEN 'SUBMITTED'
           ELSE 'PENDING'
         END AS status
 
@@ -386,7 +488,7 @@ const getStudentMonthlyReport = async (req, res) => {
         AND a.class = $2
         AND a.session = $3
         AND a.uploaded_at >= $4
-        AND a.uploaded_at < ${endDate}
+        AND a.uploaded_at < $5
 
       ORDER BY a.uploaded_at ASC
       `,
@@ -395,20 +497,50 @@ const getStudentMonthlyReport = async (req, res) => {
         student.class,
         student.session,
         startDate,
+        endDate,
       ]
     );
 
     const assignments = assignmentResult.rows;
 
-    const assignmentSummary = {
-      assigned: assignments.length,
-      submitted: assignments.filter(
+    // ========================================================
+    // ASSIGNMENT SUMMARY
+    // ========================================================
+    const getAssignmentSummary = records => ({
+      assigned: records.length,
+
+      submitted: records.filter(
         a => a.status === "SUBMITTED"
       ).length,
-      pending: assignments.filter(
+
+      pending: records.filter(
         a => a.status === "PENDING"
       ).length,
-    };
+    });
+
+    const assignmentSummary =
+      getAssignmentSummary(assignments);
+
+    // ========================================================
+    // MONTH-WISE ASSIGNMENTS
+    // ========================================================
+    const monthlyAssignments = selectedMonths.map(m => {
+      const records = assignments.filter(a => {
+        const d = new Date(a.assigned_at);
+
+        const recordMonth = `${d.getFullYear()}-${String(
+          d.getMonth() + 1
+        ).padStart(2, "0")}`;
+
+        return recordMonth === m;
+      });
+
+      return {
+        month: m,
+        summary: getAssignmentSummary(records),
+        records,
+      };
+    });
 
     // ========================================================
     // 5. FINAL RESPONSE
@@ -416,7 +548,13 @@ const getStudentMonthlyReport = async (req, res) => {
     return res.json({
       success: true,
 
-      month,
+      // Selected months
+      months: selectedMonths,
+
+      period: {
+        from: startDate,
+        to: endDate,
+      },
 
       student: {
         id: student.id,
@@ -427,22 +565,53 @@ const getStudentMonthlyReport = async (req, res) => {
         email: student.email,
       },
 
-      attendance: {
-        summary: attendanceSummary,
-        records: attendance,
+      // ======================================================
+      // OVERALL SELECTED MONTHS
+      // ======================================================
+      overall: {
+        attendance: {
+          summary: attendanceSummary,
+          records: attendance,
+        },
+
+        marks: {
+          totalTests: marks.length,
+          records: marks,
+        },
+
+        assignments: {
+          summary: assignmentSummary,
+          records: assignments,
+        },
       },
 
-      marks: {
-        totalTests: marks.length,
-        records: marks,
-      },
+      // ======================================================
+      // MONTH-WISE COMPLETE REPORT
+      // ======================================================
+      monthly: selectedMonths.map(m => {
+        const attendanceData = monthlyAttendance.find(
+          x => x.month === m
+        );
 
-      assignments: {
-        summary: assignmentSummary,
-        records: assignments,
-      },
+        const marksData = monthlyMarks.find(
+          x => x.month === m
+        );
+
+        const assignmentData = monthlyAssignments.find(
+          x => x.month === m
+        );
+
+        return {
+          month: m,
+
+          attendance: attendanceData,
+
+          marks: marksData,
+
+          assignments: assignmentData,
+        };
+      }),
     });
-
   } catch (error) {
     console.error(
       "Student Monthly Report Error:",
@@ -451,7 +620,8 @@ const getStudentMonthlyReport = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Server error while generating student monthly report",
+      message:
+        "Server error while generating student monthly report",
     });
   }
 };

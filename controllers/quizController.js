@@ -102,36 +102,55 @@ exports.checkAttemptStatus = async (req, res) => {
 // 5. SUBMIT QUIZ
 exports.submitQuiz = async (req, res) => {
   try {
-    const { student_id, quiz_id, answers } = req.body;
+    const {
+      student_id,
+      quiz_id,
+      answers,
+      stream,
+      session,
+    } = req.body;
 
     const sId = parseInt(student_id);
     const qId = parseInt(quiz_id);
 
     if (isNaN(sId) || isNaN(qId)) {
-      return res.status(400).json({ success: false, message: "Invalid Student or Quiz ID" });
+      return res.status(400).json({
+        success: false,
+        message: "Invalid Student or Quiz ID",
+      });
     }
 
     // 🔒 Prevent multiple attempts
     const check = await db.query(
-      `SELECT id FROM quiz_results WHERE student_id=$1 AND quiz_id=$2`,
+      `SELECT id FROM quiz_results 
+       WHERE student_id = $1 AND quiz_id = $2`,
       [sId, qId]
     );
 
     if (check.rowCount > 0) {
-      return res.status(403).json({ success: false, message: "Already submitted!" });
+      return res.status(403).json({
+        success: false,
+        message: "Already submitted!",
+      });
     }
 
     // 📥 Get quiz
     const quizRes = await db.query(
-      `SELECT questions, total_marks FROM quizzes WHERE id=$1`,
+      `SELECT questions, total_marks 
+       FROM quizzes 
+       WHERE id = $1`,
       [qId]
     );
 
     if (quizRes.rowCount === 0) {
-      return res.status(404).json({ success: false, message: "Quiz not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Quiz not found",
+      });
     }
 
     let questions = quizRes.rows[0].questions;
+
     if (typeof questions === "string") {
       questions = JSON.parse(questions);
     }
@@ -139,62 +158,101 @@ exports.submitQuiz = async (req, res) => {
     // 🧠 SAFE NORMALIZE FUNCTION
     const normalize = (val) => {
       if (val === null || val === undefined) return "";
+
       return String(val)
         .toLowerCase()
-        .replace(/\s+/g, "")      // remove spaces
-        .replace(/,/g, ",")       // normalize commas
+        .replace(/\s+/g, "")
+        .replace(/,/g, ",")
         .trim();
     };
 
-    // ✅ SCORE CALCULATION (FIXED 🔥)
+    // ✅ SCORE CALCULATION
     let score = 0;
 
     questions.forEach((q, index) => {
       const studentAns = answers[index];
       const correctAns = q.correctAnswer || q.answer;
 
-     if (studentAns === undefined || correctAns === undefined) return;
+      if (
+        studentAns === undefined ||
+        correctAns === undefined
+      ) {
+        return;
+      }
 
       const sAns = normalize(studentAns);
       const cAns = normalize(correctAns);
 
       const sortAns = (val) =>
-  val.split(",").map(v => v.trim()).sort().join(",");
+        val
+          .split(",")
+          .map((v) => v.trim())
+          .sort()
+          .join(",");
 
-if (sortAns(sAns) === sortAns(cAns)) {
-  score++;
-} 
-      
+      if (sortAns(sAns) === sortAns(cAns)) {
+        score++;
+      }
     });
 
-    // 🎯 USE DB total_marks (NOT questions.length blindly)
-    const totalMarks = quizRes.rows[0].total_marks || questions.length;
+    // 🎯 USE DB total_marks
+    const totalMarks =
+      quizRes.rows[0].total_marks || questions.length;
 
     const percentage = parseFloat(
-      totalMarks > 0 ? ((score / totalMarks) * 100).toFixed(2) : 0
+      totalMarks > 0
+        ? ((score / totalMarks) * 100).toFixed(2)
+        : 0
     );
 
     // 🎓 Grade Logic
     let grade = "F";
+
     if (percentage >= 90) grade = "A+";
     else if (percentage >= 80) grade = "A";
     else if (percentage >= 70) grade = "B";
     else if (percentage >= 60) grade = "C";
     else if (percentage >= 33) grade = "D";
 
-    // 💾 Save result
+    // 💾 Save result with session + stream
     const insertRes = await db.query(
-      `INSERT INTO quiz_results 
-      (student_id, quiz_id, score, percentage, grade, answers) 
-      VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [sId, qId, score, percentage, grade, JSON.stringify(answers)]
+      `INSERT INTO quiz_results
+      (
+        student_id,
+        quiz_id,
+        score,
+        percentage,
+        grade,
+        answers,
+        stream,
+        session
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      RETURNING *`,
+      [
+        sId,
+        qId,
+        score,
+        percentage,
+        grade,
+        JSON.stringify(answers),
+        stream || null,
+        session || null,
+      ]
     );
 
-    res.json({ success: true, data: insertRes.rows[0] });
+    res.json({
+      success: true,
+      data: insertRes.rows[0],
+    });
 
   } catch (err) {
     console.error("Submit Quiz Error:", err);
-    res.status(500).json({ success: false, message: "Server Error: " + err.message });
+
+    res.status(500).json({
+      success: false,
+      message: "Server Error: " + err.message,
+    });
   }
 };
 

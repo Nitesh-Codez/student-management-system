@@ -324,11 +324,20 @@ const getEditRequests = async (req, res) => {
   }
 };
 // GET STUDENTS PROFILE BASIC INFORMATION
-
 const getStudentsBasic = async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT id, name, class
+      SELECT 
+        id,
+        name,
+        class,
+        mobile,
+        batch,
+        batch_time,
+        session,
+        profile_photo,
+        stream,
+        joining_date
       FROM students
       ORDER BY id ASC
     `);

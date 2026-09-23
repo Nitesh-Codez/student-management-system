@@ -29,4 +29,8 @@ router.post("/suspend-day",authMiddleware,adminMiddleware, teacherAssignmentCont
 
 router.get("/teacher/:teacher_id",authMiddleware,adminMiddleware, teacherAssignmentController.getTeacherLectures);
 
+
+router.post("add/holiday",  teacherAssignmentController.addHoliday); 
+router.get("/holidays",  teacherAssignmentController.getHolidays); 
+router.delete("/holiday/:id",  teacherAssignmentController.deleteHoliday);
 module.exports = router;

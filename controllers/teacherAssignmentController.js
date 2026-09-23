@@ -232,3 +232,103 @@ exports.suspendDay = async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 };
+
+
+
+
+
+// Add holiday — all classes / selected classes / date range
+exports.addHoliday = async (req, res) => {
+  try {
+    const {
+      title,
+      description,
+      class_names,
+      start_date,
+      end_date
+    } = req.body;
+
+    if (!title || !start_date || !end_date) {
+      return res.status(400).json({
+        message: "title, start_date and end_date are required"
+      });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO public.holidays
+       (title, description, class_names, start_date, end_date)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING *`,
+      [
+        title,
+        description || null,
+        class_names?.length ? class_names : null,
+        start_date,
+        end_date
+      ]
+    );
+
+    res.status(201).json({
+      message: "Holiday added successfully",
+      holiday: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error("Add holiday error:", error);
+    res.status(500).json({
+      message: "Failed to add holiday"
+    });
+  }
+};
+
+
+// Get holidays
+exports.getHolidays = async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT *
+       FROM public.holidays
+       ORDER BY start_date DESC`
+    );
+
+    res.json(result.rows);
+
+  } catch (error) {
+    console.error("Get holidays error:", error);
+    res.status(500).json({
+      message: "Failed to fetch holidays"
+    });
+  }
+};
+
+
+// Delete holiday
+exports.deleteHoliday = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await pool.query(
+      `DELETE FROM public.holidays
+       WHERE id = $1
+       RETURNING *`,
+      [id]
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({
+        message: "Holiday not found"
+      });
+    }
+
+    res.json({
+      message: "Holiday deleted successfully"
+    });
+
+  } catch (error) {
+    console.error("Delete holiday error:", error);
+    res.status(500).json({
+      message: "Failed to delete holiday"
+    });
+  }
+};
+

@@ -332,3 +332,74 @@ exports.deleteHoliday = async (req, res) => {
   }
 };
 
+
+
+//All classes 8th to 12th
+// ================= STUDENT LECTURES BY MULTIPLE CLASSES + DATE =================
+exports.getStudentLecturesMultipleClasses = async (req, res) => {
+  try {
+    const { classes, date } = req.params;
+
+    // "8th,9th,10th,11th,12th" → ["8th","9th","10th","11th","12th"]
+    const classList = classes
+      .split(",")
+      .map(c => c.trim())
+      .filter(Boolean);
+
+    if (!classList.length) {
+      return res.status(400).json({
+        success: false,
+        message: "At least one class is required"
+      });
+    }
+
+    const days = [
+      "Sunday",
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday"
+    ];
+
+    const day = days[new Date(date).getDay()];
+
+    const sql = `
+      SELECT 
+        ta.*,
+        t.name AS teacher_name,
+        t.profile_photo
+      FROM teacher_assignments ta
+      LEFT JOIN teachers t 
+        ON ta.teacher_id = t.id
+      WHERE ta.class_name = ANY($1)
+        AND ta.day_of_week = $2
+        AND $3 >= ta.class_date
+        AND ($3 <= ta.repeat_until OR ta.repeat_until IS NULL)
+      ORDER BY ta.class_name, ta.start_time
+    `;
+
+    const result = await db.query(sql, [
+      classList,
+      day,
+      date
+    ]);
+
+    res.json({
+      success: true,
+      date,
+      day,
+      classes: classList,
+      assignments: result.rows
+    });
+
+  } catch (err) {
+    console.error("Multiple class lectures error:", err);
+
+    res.status(500).json({
+      success: false,
+      message: err.message
+    });
+  }
+};

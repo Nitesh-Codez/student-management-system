@@ -29,6 +29,8 @@ router.post("/suspend-day",authMiddleware,adminMiddleware, teacherAssignmentCont
 
 router.get("/teacher/:teacher_id",authMiddleware,adminMiddleware, teacherAssignmentController.getTeacherLectures);
 
+//
+router.get("/student-lectures/:classes/:date",teacherAssignmentController.getStudentLecturesMultipleClasses);
 
 router.post("add/holiday",  teacherAssignmentController.addHoliday); 
 router.get("/holidays",  teacherAssignmentController.getHolidays); 

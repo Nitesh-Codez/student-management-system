@@ -24,6 +24,8 @@ const examRoutes = require("./routes/examRoutes.js")
 const studentStarsRoutes = require("./routes/studentStarsRoutes");
 const academicRoutes = require("./routes/academicDocumentRoutes.js")
 const holidayRoutes = require("./routes/holidayRoutes");
+const subjectAttendanceRoutes = require("./routes/subjectAttendanceRoutes");
+
 
 // ==================== DB INIT ====================
 const db = require("./db"); 
@@ -61,6 +63,7 @@ app.use("/api/student-stars", studentStarsRoutes);
 app.use("/api/exam", examRoutes);
 app.use("/api/exams-details",academicRoutes);
 app.use("/api/holidays", holidayRoutes);
+app.use("/api/subject-attendance",subjectAttendanceRoutes);
 
 // ==================== STATIC FILES ====================
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));

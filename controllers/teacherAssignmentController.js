@@ -333,25 +333,15 @@ exports.deleteHoliday = async (req, res) => {
 };
 
 
-
-//All classes 8th to 12th
 // ================= STUDENT LECTURES BY MULTIPLE CLASSES + DATE =================
 exports.getStudentLecturesMultipleClasses = async (req, res) => {
   try {
     const { classes, date } = req.params;
 
-    // "8th,9th,10th,11th,12th" → ["8th","9th","10th","11th","12th"]
     const classList = classes
       .split(",")
       .map(c => c.trim())
       .filter(Boolean);
-
-    if (!classList.length) {
-      return res.status(400).json({
-        success: false,
-        message: "At least one class is required"
-      });
-    }
 
     const days = [
       "Sunday",
@@ -366,13 +356,16 @@ exports.getStudentLecturesMultipleClasses = async (req, res) => {
     const day = days[new Date(date).getDay()];
 
     const sql = `
-      SELECT 
-        ta.*,
-        t.name AS teacher_name,
-        t.profile_photo
+      SELECT
+        ta.id,
+        ta.teacher_id,
+        ta.class_name,
+        ta.subject_name,
+        ta.day_of_week,
+        ta.start_time,
+        ta.end_time,
+        ta.class_date
       FROM teacher_assignments ta
-      LEFT JOIN teachers t 
-        ON ta.teacher_id = t.id
       WHERE ta.class_name = ANY($1)
         AND ta.day_of_week = $2
         AND $3 >= ta.class_date
@@ -388,14 +381,11 @@ exports.getStudentLecturesMultipleClasses = async (req, res) => {
 
     res.json({
       success: true,
-      date,
-      day,
-      classes: classList,
       assignments: result.rows
     });
 
   } catch (err) {
-    console.error("Multiple class lectures error:", err);
+    console.error(err);
 
     res.status(500).json({
       success: false,

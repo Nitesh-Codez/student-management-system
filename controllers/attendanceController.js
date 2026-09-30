@@ -1,23 +1,61 @@
- const db = require("../db");
+const db = require("../db");
 
-// -------------------------------------------
-// 1) GET all students + attendance for a date
-// -------------------------------------------
+// ============================================================
+// HELPER: DEFAULT DATE
+// ============================================================
+const getTodayDate = () => {
+  const today = new Date();
+
+  return `${today.getFullYear()}-${String(
+    today.getMonth() + 1
+  ).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+};
+
+// ============================================================
+// HELPER: NORMALIZE BATCH
+// ============================================================
+const normalizeBatch = (batch) => {
+  return String(batch || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "");
+};
+
+// ============================================================
+// 1) GET ALL STUDENTS + ATTENDANCE
+//
+// Supports:
+//
+// GET /api/attendance/list?date=2026-09-30
+//
+// Subject-wise:
+//
+// GET /api/attendance/list
+//   ?date=2026-09-30
+//   &subject_code=Science
+//   &start_time=18:00:00
+//   &end_time=18:40:00
+// ============================================================
 exports.getStudentsList = async (req, res) => {
   try {
-    let { date } = req.query;
+    let {
+      date,
+      subject_code,
+      start_time,
+      end_time,
+    } = req.query;
 
+    // --------------------------------------------------------
+    // DEFAULT DATE
+    // --------------------------------------------------------
     if (!date) {
-      const today = new Date();
-
-      date = `${today.getFullYear()}-${String(
-        today.getMonth() + 1
-      ).padStart(2, "0")}-${String(
-        today.getDate()
-      ).padStart(2, "0")}`;
+      date = getTodayDate();
     }
 
-    const sql = `
+    // --------------------------------------------------------
+    // BASE QUERY
+    // --------------------------------------------------------
+    let sql = `
       SELECT
         s.id AS "studentId",
         s.name AS "studentName",
@@ -37,32 +75,70 @@ exports.getStudentsList = async (req, res) => {
           ELSE 'Not Assigned'
         END AS "batchTime",
 
-        COALESCE(a.status, 'Absent') AS status
+        COALESCE(a.status, 'Absent') AS status,
+
+        a.subject_code AS "subjectCode",
+        a.start_time AS "startTime",
+        a.end_time AS "endTime"
 
       FROM students s
 
       LEFT JOIN attendance a
         ON s.id = a.student_id
         AND a.date::date = $1
+    `;
 
+    const params = [date];
+
+    // --------------------------------------------------------
+    // SUBJECT-WISE ATTENDANCE
+    // --------------------------------------------------------
+    if (subject_code && start_time && end_time) {
+      sql += `
+        AND a.subject_code = $2
+        AND a.start_time = $3
+        AND a.end_time = $4
+      `;
+
+      params.push(
+        subject_code,
+        start_time,
+        end_time
+      );
+    }
+
+    // --------------------------------------------------------
+    // ONLY STUDENTS
+    // --------------------------------------------------------
+    sql += `
       WHERE s.role = 'student'
 
       ORDER BY
         CASE
-          WHEN LOWER(REPLACE(s.batch, ' ', '')) = 'batch1' THEN 1
-          WHEN LOWER(REPLACE(s.batch, ' ', '')) = 'batch2' THEN 2
-          WHEN LOWER(REPLACE(s.batch, ' ', '')) = 'batch3' THEN 3
+          WHEN LOWER(REPLACE(s.batch, ' ', '')) = 'batch1'
+            THEN 1
+
+          WHEN LOWER(REPLACE(s.batch, ' ', '')) = 'batch2'
+            THEN 2
+
+          WHEN LOWER(REPLACE(s.batch, ' ', '')) = 'batch3'
+            THEN 3
+
           ELSE 4
         END,
+
         s.id
     `;
 
-    const { rows } = await db.query(sql, [date]);
+    const { rows } = await db.query(sql, params);
 
     return res.json({
       success: true,
       date,
-      students: rows
+      subject_code: subject_code || null,
+      start_time: start_time || null,
+      end_time: end_time || null,
+      students: rows,
     });
 
   } catch (error) {
@@ -74,12 +150,29 @@ exports.getStudentsList = async (req, res) => {
     return res.status(500).json({
       success: false,
       message:
-        "Server error while fetching students"
+        "Server error while fetching students",
     });
   }
-};// -------------------------------------------
-// 2) MARK or UPDATE SUBJECT ATTENDANCE
-// -------------------------------------------
+};
+
+// ============================================================
+// 2) MARK / UPDATE SUBJECT ATTENDANCE
+//
+// Body:
+//
+// {
+//   "date": "2026-09-30",
+//   "subject_code": "Science",
+//   "start_time": "18:00:00",
+//   "end_time": "18:40:00",
+//   "attendance": [
+//      {
+//        "studentId": 1,
+//        "status": "Present"
+//      }
+//   ]
+// }
+// ============================================================
 exports.markAttendance = async (req, res) => {
   try {
     let {
@@ -90,122 +183,179 @@ exports.markAttendance = async (req, res) => {
       attendance,
     } = req.body;
 
-    // -------------------------------------------
-    // Default date = today
-    // -------------------------------------------
+    // --------------------------------------------------------
+    // DEFAULT DATE
+    // --------------------------------------------------------
     if (!date) {
-      const today = new Date();
-
-      date = `${today.getFullYear()}-${String(
-        today.getMonth() + 1
-      ).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+      date = getTodayDate();
     }
 
-    // -------------------------------------------
-    // Required fields
-    // -------------------------------------------
-    if (!subject_code || !start_time || !end_time) {
+    // --------------------------------------------------------
+    // REQUIRED FIELDS
+    // --------------------------------------------------------
+    if (
+      !subject_code ||
+      !start_time ||
+      !end_time
+    ) {
       return res.status(400).json({
         success: false,
-        message: "subject_code, start_time and end_time are required",
+        message:
+          "subject_code, start_time and end_time are required",
       });
     }
 
-    // -------------------------------------------
-    // Validate attendance array
-    // -------------------------------------------
-    if (!attendance || !Array.isArray(attendance)) {
-      attendance = [];
+    // --------------------------------------------------------
+    // VALIDATE ATTENDANCE ARRAY
+    // --------------------------------------------------------
+    if (!Array.isArray(attendance)) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "attendance must be an array",
+      });
     }
 
-    // -------------------------------------------
-    // Save attendance
-    // -------------------------------------------
-    for (const item of attendance) {
-      if (!item.studentId || !item.status) continue;
+    // --------------------------------------------------------
+    // TRANSACTION
+    // --------------------------------------------------------
+    const client = await db.connect();
 
-      if (!["Present", "Absent"].includes(item.status)) continue;
+    try {
+      await client.query("BEGIN");
 
-      await db.query(
-        `
-        INSERT INTO attendance
-        (
-          student_id,
-          date,
-          subject_code,
-          start_time,
-          end_time,
-          status
-        )
-        VALUES ($1, $2, $3, $4, $5, $6)
+      for (const item of attendance) {
+        if (
+          !item.studentId ||
+          !item.status
+        ) {
+          continue;
+        }
 
-        ON CONFLICT
-        (
-          student_id,
-          date,
-          subject_code,
-          start_time,
-          end_time
-        )
+        if (
+          !["Present", "Absent"].includes(
+            item.status
+          )
+        ) {
+          continue;
+        }
 
-        DO UPDATE SET
-          status = EXCLUDED.status
-        `,
-        [
-          item.studentId,
-          date,
-          subject_code,
-          start_time,
-          end_time,
-          item.status,
-        ]
-      );
+        await client.query(
+          `
+          INSERT INTO attendance
+          (
+            student_id,
+            date,
+            subject_code,
+            start_time,
+            end_time,
+            status
+          )
+          VALUES
+          ($1, $2, $3, $4, $5, $6)
+
+          ON CONFLICT
+          (
+            student_id,
+            date,
+            subject_code,
+            start_time,
+            end_time
+          )
+
+          DO UPDATE SET
+            status = EXCLUDED.status
+          `,
+          [
+            item.studentId,
+            date,
+            subject_code,
+            start_time,
+            end_time,
+            item.status,
+          ]
+        );
+      }
+
+      await client.query("COMMIT");
+
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+
+    } finally {
+      client.release();
     }
 
     return res.json({
       success: true,
-      message: "Subject attendance saved successfully!",
+      message:
+        "Subject attendance saved successfully!",
+      date,
+      subject_code,
+      start_time,
+      end_time,
+      total_students: attendance.length,
     });
+
   } catch (error) {
-    console.error("Error saving subject attendance:", error);
+    console.error(
+      "Error saving subject attendance:",
+      error
+    );
 
     return res.status(500).json({
       success: false,
-      message: "Server error while saving attendance",
+      message:
+        "Server error while saving attendance",
     });
   }
 };
 
-// --------------------------------------------------
-// ADMIN: SHIFT STUDENT FROM ONE BATCH TO ANOTHER
-// --------------------------------------------------
+// ============================================================
+// 3) ADMIN: SHIFT STUDENT FROM ONE BATCH TO ANOTHER
+// ============================================================
 exports.shiftStudentBatch = async (req, res) => {
   try {
     const { studentId } = req.params;
     const { batch } = req.body;
 
-    // Validation
+    // --------------------------------------------------------
+    // VALIDATION
+    // --------------------------------------------------------
     if (!studentId || !batch) {
       return res.status(400).json({
         success: false,
-        message: "Student ID and target batch are required",
+        message:
+          "Student ID and target batch are required",
       });
     }
 
-    // Only valid batches allowed
-    const validBatches = ["batch1", "batch2", "batch3"];
+    const normalizedBatch = normalizeBatch(batch);
 
-    if (!validBatches.includes(batch.toLowerCase())) {
+    const validBatches = [
+      "batch1",
+      "batch2",
+      "batch3",
+    ];
+
+    if (!validBatches.includes(normalizedBatch)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid batch. Use batch1, batch2 or batch3",
+        message:
+          "Invalid batch. Use batch1, batch2 or batch3",
       });
     }
 
-    // Check student exists
+    // --------------------------------------------------------
+    // CHECK STUDENT
+    // --------------------------------------------------------
     const studentResult = await db.query(
       `
-      SELECT id, name, batch
+      SELECT
+        id,
+        name,
+        batch
       FROM students
       WHERE id = $1
         AND role = 'student'
@@ -220,199 +370,437 @@ exports.shiftStudentBatch = async (req, res) => {
       });
     }
 
-    const student = studentResult.rows[0];
+    const student =
+      studentResult.rows[0];
 
-    // Already in same batch
+    // --------------------------------------------------------
+    // SAME BATCH
+    // --------------------------------------------------------
     if (
-      student.batch &&
-      student.batch.toLowerCase().replace(/\s/g, "") ===
-        batch.toLowerCase().replace(/\s/g, "")
+      normalizeBatch(student.batch) ===
+      normalizedBatch
     ) {
       return res.status(400).json({
         success: false,
-        message: `${student.name} is already in ${batch}`,
+        message:
+          `${student.name} is already in ${normalizedBatch}`,
       });
     }
 
-    // Update batch
+    // --------------------------------------------------------
+    // UPDATE
+    // --------------------------------------------------------
     const updateResult = await db.query(
       `
       UPDATE students
       SET batch = $1
       WHERE id = $2
         AND role = 'student'
-      RETURNING id, name, class, batch
+
+      RETURNING
+        id,
+        name,
+        class,
+        batch
       `,
-      [batch.toLowerCase(), studentId]
+      [
+        normalizedBatch,
+        studentId,
+      ]
     );
 
     return res.json({
       success: true,
-      message: `${student.name} shifted successfully to ${batch}`,
-      student: updateResult.rows[0],
+      message:
+        `${student.name} shifted successfully to ${normalizedBatch}`,
+      student:
+        updateResult.rows[0],
     });
 
   } catch (error) {
-    console.error("Error shifting student batch:", error);
+    console.error(
+      "Error shifting student batch:",
+      error
+    );
 
     return res.status(500).json({
       success: false,
-      message: "Server error while shifting student batch",
+      message:
+        "Server error while shifting student batch",
     });
   }
 };
 
-// --------------------------------------------------
-// 3) GET INDIVIDUAL STUDENT FULL ATTENDANCE HISTORY
-// --------------------------------------------------
+// ============================================================
+// 4) GET INDIVIDUAL STUDENT FULL ATTENDANCE HISTORY
+//
+// Returns subject + time also.
+// ============================================================
 exports.getStudentAttendance = async (req, res) => {
   try {
     const { id } = req.params;
 
-    if (!id) return res.status(400).json({ success: false, message: "Student ID required" });
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Student ID required",
+      });
+    }
 
     const sql = `
-      SELECT date, status
+      SELECT
+        date,
+        subject_code AS "subjectCode",
+        start_time AS "startTime",
+        end_time AS "endTime",
+        status
+
       FROM attendance
+
       WHERE student_id = $1
-      ORDER BY date DESC
+
+      ORDER BY
+        date DESC,
+        start_time DESC
     `;
 
-    const { rows } = await db.query(sql, [id]);
+    const { rows } = await db.query(
+      sql,
+      [id]
+    );
 
-    return res.json({ success: true, attendance: rows });
+    return res.json({
+      success: true,
+      attendance: rows,
+    });
+
   } catch (error) {
-    console.error("Error fetching student attendance:", error);
-    return res.status(500).json({ success: false, message: "Server error while fetching records" });
+    console.error(
+      "Error fetching student attendance:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Server error while fetching records",
+    });
   }
 };
 
-// --------------------------------------------------
-// 4) GET ALL STUDENTS FULL ATTENDANCE SUMMARY (Admin)
-// --------------------------------------------------
-exports.getTodayAttendancePercent = async (req, res) => {
+// ============================================================
+// 5) GET ALL STUDENTS ATTENDANCE SUMMARY
+//
+// Subject-wise attendance entries are counted individually.
+// ============================================================
+exports.getTodayAttendancePercent = async (
+  req,
+  res
+) => {
   try {
     const sql = `
-      SELECT 
+      SELECT
+
         s.id AS "studentId",
+
         s.name AS name,
+
         s.class AS class,
-        -- Sirf 'Present' status ko count karo
-        COALESCE(SUM(CASE WHEN a.status='Present' THEN 1 ELSE 0 END), 0) AS present,
-        -- Har wo entry jo attendance table mein hai (Present, Absent, Leave) wo total class mani jayegi
-        COALESCE(COUNT(a.id), 0) AS total 
+
+        COALESCE(
+          SUM(
+            CASE
+              WHEN a.status = 'Present'
+              THEN 1
+              ELSE 0
+            END
+          ),
+          0
+        ) AS present,
+
+        COALESCE(
+          SUM(
+            CASE
+              WHEN a.status IN ('Present', 'Absent')
+              THEN 1
+              ELSE 0
+            END
+          ),
+          0
+        ) AS total
+
       FROM students s
-      LEFT JOIN attendance a ON s.id = a.student_id
-      WHERE s.role='student'
-      GROUP BY s.id, s.name, s.class
+
+      LEFT JOIN attendance a
+        ON s.id = a.student_id
+
+      WHERE s.role = 'student'
+
+      GROUP BY
+        s.id,
+        s.name,
+        s.class
+
       ORDER BY s.id
     `;
 
     const { rows } = await db.query(sql);
 
-    const result = rows.map(r => {
-      const present = parseInt(r.present);
-      const total = parseInt(r.total);
-      
-      // Agar total 0 hai toh percentage 0, warna calculation
-      const percentage = total === 0 ? 0 : (present / total) * 100;
-      
-      // Marks logic (75% se upar har 5% par 1 mark)
+    const result = rows.map((r) => {
+      const present =
+        parseInt(r.present, 10) || 0;
+
+      const total =
+        parseInt(r.total, 10) || 0;
+
+      const percentage =
+        total === 0
+          ? 0
+          : (present / total) * 100;
+
+      // ------------------------------------------------------
+      // MARKS
+      // 75% se upar har 5% par 1 mark
+      // Maximum 5 marks
+      // ------------------------------------------------------
       let marks = 0;
+
       if (percentage > 75) {
-        marks = Math.min(5, Math.ceil((percentage - 75) / 5)); // Limit to 5 marks max if needed
+        marks = Math.min(
+          5,
+          Math.ceil(
+            (percentage - 75) / 5
+          )
+        );
       }
 
       return {
         studentId: r.studentId,
         name: r.name,
         class: r.class,
-        present: present,
-        total: total,
-        percentage: percentage.toFixed(2),
-        marks: marks
+        present,
+        total,
+        percentage:
+          percentage.toFixed(2),
+        marks,
       };
     });
 
-    return res.json({ success: true, date: new Date().toLocaleDateString(), students: result });
+    return res.json({
+      success: true,
+      date: getTodayDate(),
+      students: result,
+    });
+
   } catch (error) {
-    console.error("Error:", error);
-    return res.status(500).json({ success: false, message: "Server error" });
+    console.error(
+      "Error getting attendance summary:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
   }
 };
-// --------------------------------------------------
-// 5) GET ATTENDANCE MARKS (MONTHLY)
-// --------------------------------------------------
-exports.getAttendanceMarks = async (req, res) => {
+
+// ============================================================
+// 6) GET ATTENDANCE MARKS - MONTHLY
+//
+// Optional subject filter:
+//
+// ?studentId=10&month=2026-09
+//
+// OR
+//
+// ?studentId=10&month=2026-09&subject_code=Science
+// ============================================================
+exports.getAttendanceMarks = async (
+  req,
+  res
+) => {
   try {
-    const { studentId, month } = req.query;
+    const {
+      studentId,
+      month,
+      subject_code,
+    } = req.query;
 
     if (!studentId || !month) {
-      return res.status(400).json({ success: false, message: "studentId & month required" });
+      return res.status(400).json({
+        success: false,
+        message:
+          "studentId & month required",
+      });
     }
 
     const id = Number(studentId);
-    const monthStr = month.trim(); // "2025-11"
 
-    const sql = `
-      SELECT status
+    const monthStr =
+      String(month).trim();
+
+    // --------------------------------------------------------
+    // BASE QUERY
+    // --------------------------------------------------------
+    let sql = `
+      SELECT
+        status,
+        subject_code,
+        start_time,
+        end_time
+
       FROM attendance
+
       WHERE student_id = $1
+
       AND date::text LIKE $2
     `;
 
-    const { rows } = await db.query(sql, [id, `${monthStr}%`]);
+    const params = [
+      id,
+      `${monthStr}%`,
+    ];
 
-    const validDays = rows.filter(r => r.status === "Present" || r.status === "Absent").length;
-    const presentDays = rows.filter(r => r.status === "Present").length;
+    // --------------------------------------------------------
+    // OPTIONAL SUBJECT FILTER
+    // --------------------------------------------------------
+    if (subject_code) {
+      sql += `
+        AND subject_code = $3
+      `;
 
-    const percentage = validDays === 0 ? 0 : (presentDays / validDays) * 100;
-
-    let marks = 0;
-    if (percentage > 75) {
-      marks = Math.ceil((percentage - 75) / 5);
+      params.push(subject_code);
     }
 
-    res.json({
+    const { rows } = await db.query(
+      sql,
+      params
+    );
+
+    // --------------------------------------------------------
+    // ONLY PRESENT / ABSENT
+    // --------------------------------------------------------
+    const validDays =
+      rows.filter(
+        (r) =>
+          r.status === "Present" ||
+          r.status === "Absent"
+      ).length;
+
+    const presentDays =
+      rows.filter(
+        (r) =>
+          r.status === "Present"
+      ).length;
+
+    const percentage =
+      validDays === 0
+        ? 0
+        : (presentDays / validDays) * 100;
+
+    // --------------------------------------------------------
+    // MARKS
+    // --------------------------------------------------------
+    let marks = 0;
+
+    if (percentage > 75) {
+      marks = Math.ceil(
+        (percentage - 75) / 5
+      );
+
+      marks = Math.min(
+        marks,
+        5
+      );
+    }
+
+    return res.json({
       success: true,
-      percentage: percentage.toFixed(2),
-      attendanceMarks: marks
+
+      studentId: id,
+
+      month: monthStr,
+
+      subject_code:
+        subject_code || null,
+
+      totalClasses: validDays,
+
+      presentClasses:
+        presentDays,
+
+      absentClasses:
+        validDays - presentDays,
+
+      percentage:
+        percentage.toFixed(2),
+
+      attendanceMarks:
+        marks,
     });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false });
+
+  } catch (error) {
+    console.error(
+      "Error getting attendance marks:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Server error while fetching attendance marks",
+    });
   }
-};   
+};
 
+// ===================================================================
+// REQUESTS
+// ===================================================================
 
-//===================================================================
-//Requests
-//===================================================================
-// --------------------------------------------------
-// ADMIN: GET ALL STUDENTS DROP + PROFILE EDIT DATA
-// --------------------------------------------------
-exports.getAllStudentRequests = async (req, res) => {
+// ============================================================
+// 7) ADMIN: GET ALL STUDENT DROP + PROFILE EDIT REQUESTS
+// ============================================================
+exports.getAllStudentRequests = async (
+  req,
+  res
+) => {
   try {
     const sql = `
       SELECT
+
         s.id AS "studentId",
+
         s.name AS "studentName",
+
         s.email,
 
         sd.id AS "dropId",
+
         sd.start_date AS "dropStartDate",
+
         sd.end_date AS "dropEndDate",
+
         sd.drop_type AS "dropType",
 
         per.id AS "requestId",
+
         per.field_name AS "fieldName",
+
         per.old_value AS "oldValue",
+
         per.requested_value AS "requestedValue",
+
         per.reason,
+
         per.status AS "requestStatus",
+
         per.requested_at AS "requestedAt",
+
         per.action_by AS "actionBy",
+
         per.action_at AS "actionAt",
+
         per.request_type AS "requestType"
 
       FROM students s
@@ -425,62 +813,86 @@ exports.getAllStudentRequests = async (req, res) => {
 
       WHERE s.role = 'student'
 
-      ORDER BY s.id DESC, per.requested_at DESC
+      ORDER BY
+        s.id DESC,
+        per.requested_at DESC
     `;
 
-    const { rows } = await db.query(sql);
+    const { rows } =
+      await db.query(sql);
 
     return res.json({
       success: true,
-      students: rows
+      students: rows,
     });
 
   } catch (error) {
-    console.error("Error fetching student requests:", error);
+    console.error(
+      "Error fetching student requests:",
+      error
+    );
 
     return res.status(500).json({
       success: false,
-      message: "Server error while fetching student requests"
+      message:
+        "Server error while fetching student requests",
     });
   }
 };
 
-
-////
-// --------------------------------------------------
-// STUDENT: GET OWN DROP + PROFILE EDIT REQUEST DATA
-// --------------------------------------------------
-exports.getMyStudentRequests = async (req, res) => {
+// ============================================================
+// 8) STUDENT: GET OWN DROP + PROFILE EDIT REQUEST
+// ============================================================
+exports.getMyStudentRequests = async (
+  req,
+  res
+) => {
   try {
     const { id } = req.params;
 
     if (!id) {
       return res.status(400).json({
         success: false,
-        message: "Student ID required"
+        message:
+          "Student ID required",
       });
     }
 
     const sql = `
       SELECT
+
         s.id AS "studentId",
+
         s.name AS "studentName",
+
         s.email,
 
         sd.id AS "dropId",
+
         sd.start_date AS "dropStartDate",
+
         sd.end_date AS "dropEndDate",
+
         sd.drop_type AS "dropType",
 
         per.id AS "requestId",
+
         per.field_name AS "fieldName",
+
         per.old_value AS "oldValue",
+
         per.requested_value AS "requestedValue",
+
         per.reason,
+
         per.status AS "requestStatus",
+
         per.requested_at AS "requestedAt",
+
         per.action_by AS "actionBy",
+
         per.action_at AS "actionAt",
+
         per.request_type AS "requestType"
 
       FROM students s
@@ -492,31 +904,42 @@ exports.getMyStudentRequests = async (req, res) => {
         ON s.id = per.student_id
 
       WHERE s.id = $1
+
         AND s.role = 'student'
 
-      ORDER BY per.requested_at DESC
+      ORDER BY
+        per.requested_at DESC
     `;
 
-    const { rows } = await db.query(sql, [id]);
+    const { rows } =
+      await db.query(
+        sql,
+        [id]
+      );
 
     if (rows.length === 0) {
       return res.status(404).json({
         success: false,
-        message: "Student not found"
+        message:
+          "Student not found",
       });
     }
 
     return res.json({
       success: true,
-      student: rows
+      student: rows,
     });
 
   } catch (error) {
-    console.error("Error fetching student data:", error);
+    console.error(
+      "Error fetching student data:",
+      error
+    );
 
     return res.status(500).json({
       success: false,
-      message: "Server error while fetching student data"
+      message:
+        "Server error while fetching student data",
     });
   }
 };

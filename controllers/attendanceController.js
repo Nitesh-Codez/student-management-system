@@ -173,7 +173,9 @@ exports.getStudentsList = async (req, res) => {
 //   ]
 // }
 //
-exports.markAttendance = async (req, res) => {
+
+
+eexports.markAttendance = async (req, res) => {
   try {
     let {
       date,
@@ -192,8 +194,7 @@ exports.markAttendance = async (req, res) => {
     if (!subject_code || !start_time || !end_time) {
       return res.status(400).json({
         success: false,
-        message:
-          "subject_code, start_time and end_time are required",
+        message: "subject_code, start_time and end_time are required",
       });
     }
 
@@ -233,12 +234,7 @@ exports.markAttendance = async (req, res) => {
           VALUES
           ($1, $2, $3, $4, $5, $6)
 
-          ON CONFLICT
-          (
-            student_id,
-            date,
-            subject_code
-          )
+          ON CONFLICT (student_id, date, subject_code)
 
           DO UPDATE SET
             start_time = EXCLUDED.start_time,
@@ -266,7 +262,7 @@ exports.markAttendance = async (req, res) => {
 
     return res.json({
       success: true,
-      message: "Subject attendance saved successfully!",
+      message: "Attendance saved/updated successfully!",
       date,
       subject_code,
       start_time,
@@ -274,10 +270,7 @@ exports.markAttendance = async (req, res) => {
       total_students: attendance.length,
     });
   } catch (error) {
-    console.error(
-      "Error saving subject attendance:",
-      error
-    );
+    console.error("Error saving subject attendance:", error);
 
     return res.status(500).json({
       success: false,

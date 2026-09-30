@@ -157,22 +157,7 @@ exports.getStudentsList = async (req, res) => {
 
 // ============================================================
 // 2) MARK / UPDATE SUBJECT ATTENDANCE
-//
-// Body:
-//
-// {
-//   "date": "2026-09-30",
-//   "subject_code": "Science",
-//   "start_time": "18:00:00",
-//   "end_time": "18:40:00",
-//   "attendance": [
-//      {
-//        "studentId": 1,
-//        "status": "Present"
-//      }
-//   ]
-// }
-//
+//=====================================================
 
 
 eexports.markAttendance = async (req, res) => {
@@ -234,12 +219,12 @@ eexports.markAttendance = async (req, res) => {
           VALUES
           ($1, $2, $3, $4, $5, $6)
 
-          ON CONFLICT (student_id, date, subject_code)
-
-          DO UPDATE SET
-            start_time = EXCLUDED.start_time,
-            end_time = EXCLUDED.end_time,
-            status = EXCLUDED.status
+         ON CONFLICT (student_id, date)
+DO UPDATE SET
+  subject_code = EXCLUDED.subject_code,
+  start_time = EXCLUDED.start_time,
+  end_time = EXCLUDED.end_time,
+  status = EXCLUDED.status
           `,
           [
             item.studentId,

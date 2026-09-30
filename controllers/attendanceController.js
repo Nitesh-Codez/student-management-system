@@ -158,9 +158,7 @@ exports.getStudentsList = async (req, res) => {
 // ============================================================
 // 2) MARK / UPDATE SUBJECT ATTENDANCE
 //=====================================================
-
-
-eexports.markAttendance = async (req, res) => {
+exports.markAttendance = async (req, res) => {
   try {
     let {
       date,
@@ -201,6 +199,7 @@ eexports.markAttendance = async (req, res) => {
           continue;
         }
 
+        // Only allow Present / Absent
         if (!["Present", "Absent"].includes(item.status)) {
           continue;
         }
@@ -219,12 +218,12 @@ eexports.markAttendance = async (req, res) => {
           VALUES
           ($1, $2, $3, $4, $5, $6)
 
-         ON CONFLICT (student_id, date)
-DO UPDATE SET
-  subject_code = EXCLUDED.subject_code,
-  start_time = EXCLUDED.start_time,
-  end_time = EXCLUDED.end_time,
-  status = EXCLUDED.status
+          ON CONFLICT (student_id, date)
+          DO UPDATE SET
+            subject_code = EXCLUDED.subject_code,
+            start_time = EXCLUDED.start_time,
+            end_time = EXCLUDED.end_time,
+            status = EXCLUDED.status
           `,
           [
             item.studentId,

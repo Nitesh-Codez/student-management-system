@@ -28,7 +28,7 @@ router.get("/attendance-marks",authMiddleware, attendanceController.getAttendanc
 
 // ------------------------------------
 // GET full attendance of a student (Student)
-router.get("/:id",authMiddleware, attendanceController.getStudentAttendance);
+router.get("/:id", attendanceController.getStudentAttendance);
 
 
 //--------------------------------------------------------

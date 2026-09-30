@@ -77,39 +77,102 @@ exports.getStudentsList = async (req, res) => {
         "Server error while fetching students"
     });
   }
-};
-// -------------------------------------------
-// 2) MARK or UPDATE attendance
+};// -------------------------------------------
+// 2) MARK or UPDATE SUBJECT ATTENDANCE
 // -------------------------------------------
 exports.markAttendance = async (req, res) => {
   try {
-    let { date, attendance } = req.body;
+    let {
+      date,
+      subject_code,
+      start_time,
+      end_time,
+      attendance,
+    } = req.body;
 
+    // -------------------------------------------
+    // Default date = today
+    // -------------------------------------------
     if (!date) {
       const today = new Date();
-      date = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+
+      date = `${today.getFullYear()}-${String(
+        today.getMonth() + 1
+      ).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
     }
 
-    if (!attendance || !Array.isArray(attendance)) attendance = [];
+    // -------------------------------------------
+    // Required fields
+    // -------------------------------------------
+    if (!subject_code || !start_time || !end_time) {
+      return res.status(400).json({
+        success: false,
+        message: "subject_code, start_time and end_time are required",
+      });
+    }
 
+    // -------------------------------------------
+    // Validate attendance array
+    // -------------------------------------------
+    if (!attendance || !Array.isArray(attendance)) {
+      attendance = [];
+    }
+
+    // -------------------------------------------
+    // Save attendance
+    // -------------------------------------------
     for (const item of attendance) {
       if (!item.studentId || !item.status) continue;
 
+      if (!["Present", "Absent"].includes(item.status)) continue;
+
       await db.query(
         `
-        INSERT INTO attendance (student_id, date, status)
-        VALUES ($1, $2, $3)
-        ON CONFLICT (student_id, date)
-        DO UPDATE SET status = EXCLUDED.status
+        INSERT INTO attendance
+        (
+          student_id,
+          date,
+          subject_code,
+          start_time,
+          end_time,
+          status
+        )
+        VALUES ($1, $2, $3, $4, $5, $6)
+
+        ON CONFLICT
+        (
+          student_id,
+          date,
+          subject_code,
+          start_time,
+          end_time
+        )
+
+        DO UPDATE SET
+          status = EXCLUDED.status
         `,
-        [item.studentId, date, item.status]
+        [
+          item.studentId,
+          date,
+          subject_code,
+          start_time,
+          end_time,
+          item.status,
+        ]
       );
     }
 
-    return res.json({ success: true, message: "Attendance saved successfully!" });
+    return res.json({
+      success: true,
+      message: "Subject attendance saved successfully!",
+    });
   } catch (error) {
-    console.error("Error saving attendance:", error);
-    return res.status(500).json({ success: false, message: "Server error while saving attendance" });
+    console.error("Error saving subject attendance:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server error while saving attendance",
+    });
   }
 };
 

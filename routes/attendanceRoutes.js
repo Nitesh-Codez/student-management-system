@@ -31,6 +31,13 @@ router.get("/attendance-marks",authMiddleware, attendanceController.getAttendanc
 router.get("/:id", attendanceController.getStudentAttendance);
 
 
+//
+router.get(
+  "/subject-wise/:studentId",
+  attendanceController.getSubjectWiseAttendance
+);
+
+
 //--------------------------------------------------------
 router.get("/admin/student-requests", attendanceController.getAllStudentRequests);
 router.get("/student/:id/requests", attendanceController.getMyStudentRequests);

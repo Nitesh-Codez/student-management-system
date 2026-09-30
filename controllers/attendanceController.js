@@ -263,6 +263,72 @@ exports.markAttendance = async (req, res) => {
   }
 };
 
+
+//TOTAL; ATTENDANCE COUNT PER SUBJECT 
+// =====================================================
+// GET SUBJECT-WISE ATTENDANCE
+// =====================================================
+exports.getSubjectWiseAttendance = async (req, res) => {
+  try {
+    const { studentId } = req.params;
+
+    if (!studentId) {
+      return res.status(400).json({
+        success: false,
+        message: "studentId is required",
+      });
+    }
+
+    const result = await db.query(
+      `
+      SELECT
+        subject_code,
+        COUNT(*) FILTER (WHERE status = 'Present') AS present,
+        COUNT(*) FILTER (WHERE status = 'Absent') AS absent,
+        COUNT(*) FILTER (
+          WHERE status IN ('Present', 'Absent')
+        ) AS total
+      FROM attendance
+      WHERE student_id = $1
+        AND subject_code IS NOT NULL
+      GROUP BY subject_code
+      ORDER BY subject_code
+      `,
+      [studentId]
+    );
+
+    const subjects = result.rows.map((row) => {
+      const present = Number(row.present);
+      const absent = Number(row.absent);
+      const total = Number(row.total);
+
+      return {
+        subjectCode: row.subject_code,
+        present,
+        absent,
+        total,
+        percentage:
+          total === 0
+            ? 0
+            : Number(((present / total) * 100).toFixed(1)),
+      };
+    });
+
+    return res.json({
+      success: true,
+      studentId: Number(studentId),
+      subjects,
+    });
+  } catch (error) {
+    console.error("Error fetching subject-wise attendance:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server error while fetching subject-wise attendance",
+    });
+  }
+};
+
 // ============================================================
 // 3) ADMIN: SHIFT STUDENT FROM ONE BATCH TO ANOTHER
 // ============================================================

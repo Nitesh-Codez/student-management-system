@@ -172,7 +172,7 @@ exports.getStudentsList = async (req, res) => {
 //      }
 //   ]
 // }
-// ============================================================
+//
 exports.markAttendance = async (req, res) => {
   try {
     let {
@@ -183,21 +183,13 @@ exports.markAttendance = async (req, res) => {
       attendance,
     } = req.body;
 
-    // --------------------------------------------------------
-    // DEFAULT DATE
-    // --------------------------------------------------------
+    // Default date
     if (!date) {
       date = getTodayDate();
     }
 
-    // --------------------------------------------------------
-    // REQUIRED FIELDS
-    // --------------------------------------------------------
-    if (
-      !subject_code ||
-      !start_time ||
-      !end_time
-    ) {
+    // Required fields
+    if (!subject_code || !start_time || !end_time) {
       return res.status(400).json({
         success: false,
         message:
@@ -205,38 +197,25 @@ exports.markAttendance = async (req, res) => {
       });
     }
 
-    // --------------------------------------------------------
-    // VALIDATE ATTENDANCE ARRAY
-    // --------------------------------------------------------
+    // Validate attendance
     if (!Array.isArray(attendance)) {
       return res.status(400).json({
         success: false,
-        message:
-          "attendance must be an array",
+        message: "attendance must be an array",
       });
     }
 
-    // --------------------------------------------------------
-    // TRANSACTION
-    // --------------------------------------------------------
     const client = await db.connect();
 
     try {
       await client.query("BEGIN");
 
       for (const item of attendance) {
-        if (
-          !item.studentId ||
-          !item.status
-        ) {
+        if (!item.studentId || !item.status) {
           continue;
         }
 
-        if (
-          !["Present", "Absent"].includes(
-            item.status
-          )
-        ) {
+        if (!["Present", "Absent"].includes(item.status)) {
           continue;
         }
 
@@ -258,12 +237,12 @@ exports.markAttendance = async (req, res) => {
           (
             student_id,
             date,
-            subject_code,
-            start_time,
-            end_time
+            subject_code
           )
 
           DO UPDATE SET
+            start_time = EXCLUDED.start_time,
+            end_time = EXCLUDED.end_time,
             status = EXCLUDED.status
           `,
           [
@@ -278,26 +257,22 @@ exports.markAttendance = async (req, res) => {
       }
 
       await client.query("COMMIT");
-
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
-
     } finally {
       client.release();
     }
 
     return res.json({
       success: true,
-      message:
-        "Subject attendance saved successfully!",
+      message: "Subject attendance saved successfully!",
       date,
       subject_code,
       start_time,
       end_time,
       total_students: attendance.length,
     });
-
   } catch (error) {
     console.error(
       "Error saving subject attendance:",
@@ -306,8 +281,7 @@ exports.markAttendance = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message:
-        "Server error while saving attendance",
+      message: "Server error while saving attendance",
     });
   }
 };

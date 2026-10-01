@@ -364,13 +364,34 @@ exports.getStudentLecturesMultipleClasses = async (req, res) => {
         ta.day_of_week,
         ta.start_time,
         ta.end_time,
-        ta.class_date
+        ta.class_date,
+
+        CASE
+          WHEN ta.class_name IN ('11th', '12th')
+          THEN (
+            SELECT ARRAY_AGG(DISTINCT s.stream)
+            FROM students s
+            WHERE s."class" = ta.class_name
+              AND s.role = 'student'
+              AND s.stream IS NOT NULL
+              AND TRIM(s.stream) <> ''
+          )
+          ELSE NULL
+        END AS streams
+
       FROM teacher_assignments ta
+
       WHERE ta.class_name = ANY($1)
         AND ta.day_of_week = $2
         AND $3 >= ta.class_date
-        AND ($3 <= ta.repeat_until OR ta.repeat_until IS NULL)
-      ORDER BY ta.class_name, ta.start_time
+        AND (
+          $3 <= ta.repeat_until
+          OR ta.repeat_until IS NULL
+        )
+
+      ORDER BY
+        ta.class_name,
+        ta.start_time
     `;
 
     const result = await db.query(sql, [

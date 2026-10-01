@@ -412,31 +412,15 @@ exports.markAttendance = async (req, res) => {
         // ====================================
         // TIME REQUIRED
         // ====================================
-        if (!startTime || !endTime) {
-          skipped++;
+       // ====================================
+// TIME NOT FOUND -> DEFAULT TIME
+// ====================================
+if (!startTime || !endTime) {
+  startTime = "03:00:00";
+  endTime = "04:30:00";
+}
 
-          skippedStudents.push({
-            studentId,
-            name: student.name,
-            class: className,
-            subject: subjectCode,
-            reason:
-              "Lecture start/end time not found",
-          });
-
-          continue;
-        }
-
-        // ====================================
-        // EXACT ATTENDANCE CHECK
-        //
-        // Same:
-        // student
-        // date
-        // subject
-        // start_time
-        // end_time
-        //
+        
         // => UPDATE
         // ====================================
         const existingResult = await client.query(

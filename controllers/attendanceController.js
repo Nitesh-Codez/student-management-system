@@ -210,15 +210,15 @@ exports.markAttendance = async (req, res) => {
         // ======================================================
         const studentResult = await client.query(
           `
-          SELECT
-            id,
-            name,
-            "class",
-            stream,
-            batch
-          FROM students
-          WHERE id = $1
-            AND role = 'student'
+          SELECT 
+            id, 
+            name, 
+            "class", 
+            stream, 
+            batch 
+          FROM students 
+          WHERE id = $1 
+            AND role = 'student' 
           LIMIT 1
           `,
           [studentId]
@@ -236,7 +236,7 @@ exports.markAttendance = async (req, res) => {
         ).trim();
 
         const stream = String(
-          student.stream || ""
+          item.stream || student.stream || ""
         ).trim() || null;
 
         if (!className) {
@@ -245,205 +245,106 @@ exports.markAttendance = async (req, res) => {
         }
 
         // ======================================================
-        // GET LECTURE
+        // GET LECTURE (Fallback friendly)
         // ======================================================
         const lectureResult = await client.query(
           `
-          SELECT
-            id,
-            subject_name,
-            start_time,
-            end_time
-          FROM teacher_assignments
-          WHERE TRIM(LOWER(class_name)) =
-                TRIM(LOWER($1))
-            AND class_date::date = $2::date
+          SELECT 
+            id, 
+            subject_name, 
+            start_time, 
+            end_time 
+          FROM teacher_assignments 
+          WHERE TRIM(LOWER(class_name)) = TRIM(LOWER($1)) 
+            AND class_date::date = $2::date 
           ORDER BY start_time ASC
           `,
           [className, date]
         );
 
-        if (lectureResult.rows.length === 0) {
-          skipped++;
-          continue;
+        // Agar us class ke liye us date par koi lecture assigned nahi hai, toh dummy/default le lo ya skip mat karo
+        let lecture = lectureResult.rows[0] || {
+          subject_name: item.subjectCode || "General",
+          start_time: "03:00",
+          end_time: "04:30"
+        };
+
+        const requestedSubject = item.subjectCode || item.subject_code || null;
+        const requestedStart = item.startTime || item.start_time || null;
+        const requestedEnd = item.endTime || item.end_time || null;
+
+        if (lectureResult.rows.length > 0) {
+          const matchedLecture = lectureResult.rows.find((l) => {
+            const subjectMatch = !requestedSubject || String(l.subject_name).trim().toLowerCase() === String(requestedSubject).trim().toLowerCase();
+            return subjectMatch;
+          });
+          if (matchedLecture) {
+            lecture = matchedLecture;
+          }
         }
 
-        // ======================================================
-        // SELECT REQUESTED LECTURE
-        // ======================================================
-        const requestedSubject =
-          item.subjectCode ||
-          item.subject_code ||
-          null;
-
-        const requestedStart =
-          item.startTime ||
-          item.start_time ||
-          null;
-
-        const requestedEnd =
-          item.endTime ||
-          item.end_time ||
-          null;
-
-        let lecture = lectureResult.rows.find((l) => {
-          const subjectMatch =
-            !requestedSubject ||
-            String(l.subject_name).trim() ===
-              String(requestedSubject).trim();
-
-          const startMatch =
-            !requestedStart ||
-            String(l.start_time) ===
-              String(requestedStart);
-
-          const endMatch =
-            !requestedEnd ||
-            String(l.end_time) ===
-              String(requestedEnd);
-
-          return subjectMatch && startMatch && endMatch;
-        });
-
-        // Agar exact lecture nahi mila to first lecture
-        lecture = lecture || lectureResult.rows[0];
-
-        const subjectCode =
-          requestedSubject ||
-          lecture.subject_name ||
-          null;
-
-        const startTime =
-          requestedStart ||
-          lecture.start_time ||
-          null;
-
-        const endTime =
-          requestedEnd ||
-          lecture.end_time ||
-          null;
+        const subjectCode = requestedSubject || lecture.subject_name || "General";
+        const startTime = requestedStart || lecture.start_time || "03:00";
+        const endTime = requestedEnd || lecture.end_time || "04:30";
 
         // ======================================================
-        // CHECK EXISTING ATTENDANCE
+        // INSERT OR UPDATE ATTENDANCE
         // ======================================================
         const existing = await client.query(
           `
-          SELECT id
-          FROM attendance
-          WHERE student_id = $1
-            AND date::date = $2::date
+          SELECT id 
+          FROM attendance 
+          WHERE student_id = $1 
+            AND date::date = $2::date 
             AND subject_code = $3
-            AND start_time = $4
-            AND end_time = $5
           LIMIT 1
           `,
-          [
-            studentId,
-            date,
-            subjectCode,
-            startTime,
-            endTime,
-          ]
+          [studentId, date, subjectCode]
         );
 
-        // ======================================================
-        // UPDATE
-        // ======================================================
         if (existing.rows.length > 0) {
           await client.query(
             `
-            UPDATE attendance
-            SET
-              status = $1,
-              stream = $2
+            UPDATE attendance 
+            SET status = $1, stream = $2, updated_at = NOW()
             WHERE id = $3
             `,
-            [
-              item.status,
-              stream,
-              existing.rows[0].id,
-            ]
+            [item.status, stream, existing.rows[0].id]
           );
-
           updated++;
-        }
-
-        // ======================================================
-        // INSERT
-        // ======================================================
-        else {
+        } else {
           await client.query(
             `
-            INSERT INTO attendance
-            (
-              student_id,
-              date,
-              status,
-              subject_code,
-              start_time,
-              end_time,
-              stream
-            )
-            VALUES
-            ($1, $2, $3, $4, $5, $6, $7)
+            INSERT INTO attendance (student_id, date, status, subject_code, start_time, end_time, stream, class)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             `,
-            [
-              studentId,
-              date,
-              item.status,
-              subjectCode,
-              startTime,
-              endTime,
-              stream,
-            ]
+            [studentId, date, item.status, subjectCode, startTime, endTime, stream, className]
           );
-
           inserted++;
         }
 
-      } catch (studentError) {
-        console.error(
-          `Attendance error for student ${item.studentId}:`,
-          studentError
-        );
-
+      } catch (innerErr) {
+        console.error("Error processing student attendance:", innerErr);
         skipped++;
       }
     }
 
     await client.query("COMMIT");
 
-    return res.json({
+    return res.status(200).json({
       success: true,
-      message: "Attendance processed successfully",
-      date,
-      total_received: attendance.length,
-      inserted,
-      updated,
-      skipped,
+      message: `Attendance saved successfully! Inserted: ${inserted}, Updated: ${updated}, Skipped: ${skipped}`,
     });
 
-  } catch (error) {
-
-    if (client) {
-      await client.query("ROLLBACK");
-    }
-
-    console.error("Attendance error:", error);
-
+  } catch (err) {
+    if (client) await client.query("ROLLBACK");
+    console.error("Controller Error:", err);
     return res.status(500).json({
       success: false,
-      message: "Server error while saving attendance",
-      error:
-        process.env.NODE_ENV === "development"
-          ? error.message
-          : undefined,
+      message: "Internal server error while marking attendance",
     });
-
   } finally {
-    if (client) {
-      client.release();
-    }
+    if (client) client.release();
   }
 };
 //TOTAL; ATTENDANCE COUNT PER SUBJECT 

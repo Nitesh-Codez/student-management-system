@@ -155,16 +155,13 @@ exports.getStudentsList = async (req, res) => {
   }
 };
 
-// ============================================================
+/// ============================================================
 // 2) MARK / UPDATE SUBJECT ATTENDANCE
-//=====================================================
+// ============================================================
 exports.markAttendance = async (req, res) => {
   try {
     let {
       date,
-      subject_code,
-      start_time,
-      end_time,
       attendance,
     } = req.body;
 
@@ -173,19 +170,18 @@ exports.markAttendance = async (req, res) => {
       date = getTodayDate();
     }
 
-    // Required fields
-    if (!subject_code || !start_time || !end_time) {
-      return res.status(400).json({
-        success: false,
-        message: "subject_code, start_time and end_time are required",
-      });
-    }
-
     // Validate attendance
     if (!Array.isArray(attendance)) {
       return res.status(400).json({
         success: false,
         message: "attendance must be an array",
+      });
+    }
+
+    if (attendance.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No attendance data received",
       });
     }
 
@@ -199,11 +195,71 @@ exports.markAttendance = async (req, res) => {
           continue;
         }
 
-        // Only allow Present / Absent
+        // Only Present / Absent
         if (!["Present", "Absent"].includes(item.status)) {
           continue;
         }
 
+        // ----------------------------------------------------
+        // 1. Student ki class nikalo
+        // ----------------------------------------------------
+        const studentResult = await client.query(
+          `
+          SELECT
+            id,
+            class
+          FROM students
+          WHERE id = $1
+          LIMIT 1
+          `,
+          [item.studentId]
+        );
+
+        if (studentResult.rows.length === 0) {
+          continue;
+        }
+
+        const student = studentResult.rows[0];
+
+        const className = student.class;
+
+        // ----------------------------------------------------
+        // 2. Is date ki us class ki scheduled lecture nikalo
+        // ----------------------------------------------------
+        const lectureResult = await client.query(
+          `
+          SELECT
+            subject_name,
+            start_time,
+            end_time
+          FROM teacher_assignments
+          WHERE
+            class_name = $1
+            AND class_date = $2
+          ORDER BY start_time ASC
+          LIMIT 1
+          `,
+          [className, date]
+        );
+
+        // Agar us class ki lecture nahi mili
+        if (lectureResult.rows.length === 0) {
+          console.log(
+            `No scheduled lecture found for ${className} on ${date}`
+          );
+
+          continue;
+        }
+
+        const lecture = lectureResult.rows[0];
+
+        const subjectCode = lecture.subject_name;
+        const startTime = lecture.start_time;
+        const endTime = lecture.end_time;
+
+        // ----------------------------------------------------
+        // 3. Attendance save/update
+        // ----------------------------------------------------
         await client.query(
           `
           INSERT INTO attendance
@@ -228,18 +284,20 @@ exports.markAttendance = async (req, res) => {
           [
             item.studentId,
             date,
-            subject_code,
-            start_time,
-            end_time,
+            subjectCode,
+            startTime,
+            endTime,
             item.status,
           ]
         );
       }
 
       await client.query("COMMIT");
+
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
+
     } finally {
       client.release();
     }
@@ -248,11 +306,9 @@ exports.markAttendance = async (req, res) => {
       success: true,
       message: "Attendance saved/updated successfully!",
       date,
-      subject_code,
-      start_time,
-      end_time,
       total_students: attendance.length,
     });
+
   } catch (error) {
     console.error("Error saving subject attendance:", error);
 

@@ -159,243 +159,118 @@ const normalizeBatch = (batch) => {
      });
    }
  };
-
 // ============================================================
-// 2) MARK / UPDATE SUBJECT ATTENDANCE
+// MARK / UPDATE SUBJECT ATTENDANCE
 // ============================================================
 exports.markAttendance = async (req, res) => {
   let client;
 
   try {
-    let {
-      date,
-      attendance,
-    } = req.body;
+    let { date, attendance } = req.body;
 
-    // --------------------------------------------------------
-    // DEFAULT DATE
-    // --------------------------------------------------------
-    if (!date) {
-      date = getTodayDate();
-    }
+    date = date || getTodayDate();
 
-    // --------------------------------------------------------
-    // VALIDATE DATE
-    // --------------------------------------------------------
-    if (
-      !/^\d{4}-\d{2}-\d{2}$/.test(
-        String(date)
-      )
-    ) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date))) {
       return res.status(400).json({
         success: false,
-        message:
-          "Invalid date format. Use YYYY-MM-DD",
+        message: "Invalid date format. Use YYYY-MM-DD",
       });
     }
 
-    // --------------------------------------------------------
-    // VALIDATE ATTENDANCE
-    // --------------------------------------------------------
-    if (!Array.isArray(attendance)) {
+    if (!Array.isArray(attendance) || attendance.length === 0) {
       return res.status(400).json({
         success: false,
-        message:
-          "attendance must be an array",
-      });
-    }
-
-    if (attendance.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "No attendance data received",
+        message: "No attendance data received",
       });
     }
 
     client = await db.connect();
-
     await client.query("BEGIN");
 
-    let savedCount = 0;
-    let updatedCount = 0;
-    let skippedCount = 0;
+    let inserted = 0;
+    let updated = 0;
+    let skipped = 0;
 
-    const skippedStudents = [];
-
-    // ========================================================
-    // LOOP STUDENTS
-    // ========================================================
     for (const item of attendance) {
       try {
-        const studentId = Number(
-          item.studentId
+        const studentId = Number(item.studentId);
+
+        if (!studentId) {
+          skipped++;
+          continue;
+        }
+
+        if (!["Present", "Absent"].includes(item.status)) {
+          skipped++;
+          continue;
+        }
+
+        // ======================================================
+        // GET STUDENT
+        // ======================================================
+        const studentResult = await client.query(
+          `
+          SELECT
+            id,
+            name,
+            "class",
+            stream,
+            batch
+          FROM students
+          WHERE id = $1
+            AND role = 'student'
+          LIMIT 1
+          `,
+          [studentId]
         );
 
-        // ----------------------------------------------------
-        // VALIDATE STUDENT ID
-        // ----------------------------------------------------
-        if (!studentId) {
-          skippedCount++;
-
-          skippedStudents.push({
-            studentId:
-              item.studentId || null,
-            reason:
-              "Invalid studentId",
-          });
-
+        if (studentResult.rows.length === 0) {
+          skipped++;
           continue;
         }
 
-        // ----------------------------------------------------
-        // VALIDATE STATUS
-        // ----------------------------------------------------
-        if (
-          ![
-            "Present",
-            "Absent",
-          ].includes(item.status)
-        ) {
-          skippedCount++;
+        const student = studentResult.rows[0];
 
-          skippedStudents.push({
-            studentId,
-            reason:
-              `Invalid status: ${item.status}`,
-          });
+        const className = String(
+          item.class || student.class || ""
+        ).trim();
 
-          continue;
-        }
-
-        // ====================================================
-        // 1. GET STUDENT
-        // ====================================================
-        const studentResult =
-          await client.query(
-            `
-            SELECT
-              id,
-              name,
-              "class",
-              stream,
-              batch,
-              joining_date
-            FROM students
-            WHERE id = $1
-              AND role = 'student'
-            LIMIT 1
-            `,
-            [studentId]
-          );
-
-        if (
-          studentResult.rows.length === 0
-        ) {
-          skippedCount++;
-
-          skippedStudents.push({
-            studentId,
-            reason:
-              "Student not found",
-          });
-
-          continue;
-        }
-
-        const student =
-          studentResult.rows[0];
-
-        // ----------------------------------------------------
-        // STUDENT STREAM
-        // ----------------------------------------------------
-        const studentStream =
-          String(
-            student.stream || ""
-          ).trim();
-
-        // ----------------------------------------------------
-        // CLASS
-        // ----------------------------------------------------
-        const className =
-          String(
-            item.class ||
-              student.class ||
-              ""
-          ).trim();
+        const stream = String(
+          student.stream || ""
+        ).trim() || null;
 
         if (!className) {
-          skippedCount++;
-
-          skippedStudents.push({
-            studentId,
-            name: student.name,
-            reason:
-              "Student class not found",
-          });
-
+          skipped++;
           continue;
         }
 
-        // ====================================================
-        // 2. GET TODAY'S LECTURES
-        // ====================================================
-        const lectureResult =
-          await client.query(
-            `
-            SELECT
-              id,
-              subject_name,
-              start_time,
-              end_time,
-              class_name,
-              class_date
-            FROM teacher_assignments
-            WHERE
-              TRIM(
-                LOWER(class_name)
-              ) =
-              TRIM(
-                LOWER($1)
-              )
-              AND class_date::date =
-                  $2::date
-            ORDER BY start_time ASC
-            `,
-            [
-              className,
-              date,
-            ]
-          );
+        // ======================================================
+        // GET LECTURE
+        // ======================================================
+        const lectureResult = await client.query(
+          `
+          SELECT
+            id,
+            subject_name,
+            start_time,
+            end_time
+          FROM teacher_assignments
+          WHERE TRIM(LOWER(class_name)) =
+                TRIM(LOWER($1))
+            AND class_date::date = $2::date
+          ORDER BY start_time ASC
+          `,
+          [className, date]
+        );
 
-        // ----------------------------------------------------
-        // NO LECTURE
-        // ----------------------------------------------------
-        if (
-          lectureResult.rows.length === 0
-        ) {
-          skippedCount++;
-
-          skippedStudents.push({
-            studentId,
-            name: student.name,
-            class: className,
-            stream:
-              studentStream || null,
-            reason:
-              `No scheduled lecture found for ${className} on ${date}`,
-          });
-
+        if (lectureResult.rows.length === 0) {
+          skipped++;
           continue;
         }
 
-        // ====================================================
-        // 3. SELECT LECTURE
-        // ====================================================
-
-        let lecture =
-          lectureResult.rows[0];
-
+        // ======================================================
+        // SELECT REQUESTED LECTURE
+        // ======================================================
         const requestedSubject =
           item.subjectCode ||
           item.subject_code ||
@@ -411,61 +286,27 @@ exports.markAttendance = async (req, res) => {
           item.end_time ||
           null;
 
-        // ----------------------------------------------------
-        // FRONTEND SELECTED LECTURE
-        // ----------------------------------------------------
-        if (
-          requestedSubject ||
-          requestedStart ||
-          requestedEnd
-        ) {
-          const matchedLecture =
-            lectureResult.rows.find(
-              (l) => {
-                const subjectMatch =
-                  !requestedSubject ||
-                  String(
-                    l.subject_name || ""
-                  ).trim() ===
-                    String(
-                      requestedSubject
-                    ).trim();
+        let lecture = lectureResult.rows.find((l) => {
+          const subjectMatch =
+            !requestedSubject ||
+            String(l.subject_name).trim() ===
+              String(requestedSubject).trim();
 
-                const startMatch =
-                  !requestedStart ||
-                  String(
-                    l.start_time
-                  ) ===
-                    String(
-                      requestedStart
-                    );
+          const startMatch =
+            !requestedStart ||
+            String(l.start_time) ===
+              String(requestedStart);
 
-                const endMatch =
-                  !requestedEnd ||
-                  String(
-                    l.end_time
-                  ) ===
-                    String(
-                      requestedEnd
-                    );
+          const endMatch =
+            !requestedEnd ||
+            String(l.end_time) ===
+              String(requestedEnd);
 
-                return (
-                  subjectMatch &&
-                  startMatch &&
-                  endMatch
-                );
-              }
-            );
+          return subjectMatch && startMatch && endMatch;
+        });
 
-          if (matchedLecture) {
-            lecture =
-              matchedLecture;
-          }
-        }
-
-        // ====================================================
-        // 4. LECTURE DATA
-        // ====================================================
+        // Agar exact lecture nahi mila to first lecture
+        lecture = lecture || lectureResult.rows[0];
 
         const subjectCode =
           requestedSubject ||
@@ -482,133 +323,54 @@ exports.markAttendance = async (req, res) => {
           lecture.end_time ||
           null;
 
-        // ====================================================
-        // 5. STREAM VALIDATION
-        //
-        // 11th / 12th ke liye student stream check
-        // ====================================================
+        // ======================================================
+        // CHECK EXISTING ATTENDANCE
+        // ======================================================
+        const existing = await client.query(
+          `
+          SELECT id
+          FROM attendance
+          WHERE student_id = $1
+            AND date::date = $2::date
+            AND subject_code = $3
+            AND start_time = $4
+            AND end_time = $5
+          LIMIT 1
+          `,
+          [
+            studentId,
+            date,
+            subjectCode,
+            startTime,
+            endTime,
+          ]
+        );
 
-        const normalizedClass =
-          String(className)
-            .trim()
-            .toLowerCase();
-
-        if (
-          normalizedClass ===
-            "11th" ||
-          normalizedClass ===
-            "12th"
-        ) {
-          // Frontend se stream aayi hai to
-          // usko bhi compare karenge
-          const requestedStream =
-            String(
-              item.stream || ""
-            ).trim();
-
-          // Student table ko authoritative maan rahe hain
-          if (
-            requestedStream &&
-            studentStream &&
-            requestedStream
-              .toLowerCase() !==
-              studentStream.toLowerCase()
-          ) {
-            skippedCount++;
-
-            skippedStudents.push({
-              studentId,
-              name: student.name,
-              class: className,
-              stream: studentStream,
-              reason:
-                "Student stream mismatch",
-            });
-
-            continue;
-          }
-        }
-
-        // ====================================================
-        // 6. CHECK EXISTING ATTENDANCE
-        // ====================================================
-        const existingResult =
-          await client.query(
-            `
-            SELECT id
-            FROM attendance
-            WHERE
-              student_id = $1
-              AND date::date =
-                  $2::date
-
-              AND (
-                subject_code = $3
-                OR (
-                  subject_code IS NULL
-                  AND $3 IS NULL
-                )
-              )
-
-              AND (
-                start_time = $4
-                OR (
-                  start_time IS NULL
-                  AND $4 IS NULL
-                )
-              )
-
-              AND (
-                end_time = $5
-                OR (
-                  end_time IS NULL
-                  AND $5 IS NULL
-                )
-              )
-
-            LIMIT 1
-            `,
-            [
-              studentId,
-              date,
-              subjectCode,
-              startTime,
-              endTime,
-            ]
-          );
-
-        // ====================================================
-        // 7. UPDATE EXISTING
-        // ====================================================
-        if (
-          existingResult.rows.length > 0
-        ) {
+        // ======================================================
+        // UPDATE
+        // ======================================================
+        if (existing.rows.length > 0) {
           await client.query(
             `
             UPDATE attendance
             SET
               status = $1,
-              subject_code = $2,
-              start_time = $3,
-              end_time = $4
-            WHERE id = $5
+              stream = $2
+            WHERE id = $3
             `,
             [
               item.status,
-              subjectCode,
-              startTime,
-              endTime,
-              existingResult
-                .rows[0].id,
+              stream,
+              existing.rows[0].id,
             ]
           );
 
-          updatedCount++;
+          updated++;
         }
 
-        // ====================================================
-        // 8. INSERT NEW
-        // ====================================================
+        // ======================================================
+        // INSERT
+        // ======================================================
         else {
           await client.query(
             `
@@ -616,25 +378,27 @@ exports.markAttendance = async (req, res) => {
             (
               student_id,
               date,
+              status,
               subject_code,
               start_time,
               end_time,
-              status
+              stream
             )
             VALUES
-            ($1, $2, $3, $4, $5, $6)
+            ($1, $2, $3, $4, $5, $6, $7)
             `,
             [
               studentId,
               date,
+              item.status,
               subjectCode,
               startTime,
               endTime,
-              item.status,
+              stream,
             ]
           );
 
-          savedCount++;
+          inserted++;
         }
 
       } catch (studentError) {
@@ -643,79 +407,35 @@ exports.markAttendance = async (req, res) => {
           studentError
         );
 
-        skippedCount++;
-
-        skippedStudents.push({
-          studentId:
-            item.studentId,
-          reason:
-            studentError.message,
-        });
+        skipped++;
       }
     }
 
-    // ========================================================
-    // COMMIT
-    // ========================================================
     await client.query("COMMIT");
 
-    // ========================================================
-    // RESPONSE
-    // ========================================================
     return res.json({
       success: true,
-      message:
-        "Attendance processed successfully",
-
+      message: "Attendance processed successfully",
       date,
-
-      total_received:
-        attendance.length,
-
-      inserted:
-        savedCount,
-
-      updated:
-        updatedCount,
-
-      skipped:
-        skippedCount,
-
-      skippedStudents,
+      total_received: attendance.length,
+      inserted,
+      updated,
+      skipped,
     });
 
   } catch (error) {
-    // --------------------------------------------------------
-    // ROLLBACK
-    // --------------------------------------------------------
+
     if (client) {
-      try {
-        await client.query(
-          "ROLLBACK"
-        );
-      } catch (
-        rollbackError
-      ) {
-        console.error(
-          "Rollback error:",
-          rollbackError
-        );
-      }
+      await client.query("ROLLBACK");
     }
 
-    console.error(
-      "Error saving subject attendance:",
-      error
-    );
+    console.error("Attendance error:", error);
 
     return res.status(500).json({
       success: false,
-      message:
-        "Server error while saving attendance",
-
+      message: "Server error while saving attendance",
       error:
-        process.env.NODE_ENV ===
-        "development"
+        process.env.NODE_ENV === "development"
           ? error.message
           : undefined,
     });

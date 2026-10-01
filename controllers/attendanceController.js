@@ -155,15 +155,16 @@ exports.getStudentsList = async (req, res) => {
   }
 };
 
+
+
+
+
 /// ============================================================
 // 2) MARK / UPDATE SUBJECT ATTENDANCE
 // ============================================================
 exports.markAttendance = async (req, res) => {
   try {
-    let {
-      date,
-      attendance,
-    } = req.body;
+    let { date, attendance } = req.body;
 
     // Default date
     if (!date) {
@@ -191,23 +192,23 @@ exports.markAttendance = async (req, res) => {
       await client.query("BEGIN");
 
       for (const item of attendance) {
+        // ----------------------------------------------------
+        // Validate student + status
+        // ----------------------------------------------------
         if (!item.studentId || !item.status) {
           continue;
         }
 
-        // Only Present / Absent
         if (!["Present", "Absent"].includes(item.status)) {
           continue;
         }
 
         // ----------------------------------------------------
-        // 1. Student ki class nikalo
+        // 1. Student ki actual class DB se nikalo
         // ----------------------------------------------------
         const studentResult = await client.query(
           `
-          SELECT
-            id,
-            class
+          SELECT id, class
           FROM students
           WHERE id = $1
           LIMIT 1
@@ -216,15 +217,24 @@ exports.markAttendance = async (req, res) => {
         );
 
         if (studentResult.rows.length === 0) {
+          console.log(
+            `Student not found: ${item.studentId}`
+          );
           continue;
         }
 
         const student = studentResult.rows[0];
+        const className = String(student.class || "").trim();
 
-        const className = student.class;
+        if (!className) {
+          console.log(
+            `Class not found for student: ${item.studentId}`
+          );
+          continue;
+        }
 
         // ----------------------------------------------------
-        // 2. Is date ki us class ki scheduled lecture nikalo
+        // 2. Is class ka selected date ka lecture nikalo
         // ----------------------------------------------------
         const lectureResult = await client.query(
           `
@@ -234,7 +244,7 @@ exports.markAttendance = async (req, res) => {
             end_time
           FROM teacher_assignments
           WHERE
-            class_name = $1
+            TRIM(class_name) = $1
             AND class_date = $2
           ORDER BY start_time ASC
           LIMIT 1
@@ -242,12 +252,10 @@ exports.markAttendance = async (req, res) => {
           [className, date]
         );
 
-        // Agar us class ki lecture nahi mili
         if (lectureResult.rows.length === 0) {
           console.log(
             `No scheduled lecture found for ${className} on ${date}`
           );
-
           continue;
         }
 
@@ -258,7 +266,7 @@ exports.markAttendance = async (req, res) => {
         const endTime = lecture.end_time;
 
         // ----------------------------------------------------
-        // 3. Attendance save/update
+        // 3. Attendance save / update
         // ----------------------------------------------------
         await client.query(
           `
@@ -310,7 +318,10 @@ exports.markAttendance = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Error saving subject attendance:", error);
+    console.error(
+      "Error saving subject attendance:",
+      error
+    );
 
     return res.status(500).json({
       success: false,
@@ -318,7 +329,6 @@ exports.markAttendance = async (req, res) => {
     });
   }
 };
-
 
 //TOTAL; ATTENDANCE COUNT PER SUBJECT 
 // =====================================================

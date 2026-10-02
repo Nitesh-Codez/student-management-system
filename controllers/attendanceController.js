@@ -291,8 +291,8 @@ exports.markAttendance = async (req, res) => {
 
         // ------------------------------------
         // STREAM
-        // Backend ALWAYS takes stream from
-        // students table
+        // Backend ALWAYS takes stream
+        // from students table
         // ------------------------------------
         const stream =
           String(student.stream || "").trim() || null;
@@ -402,8 +402,7 @@ exports.markAttendance = async (req, res) => {
             studentId,
             name: student.name,
             class: className,
-            reason:
-              "Subject not selected/found",
+            reason: "Subject not selected/found",
           });
 
           continue;
@@ -411,91 +410,87 @@ exports.markAttendance = async (req, res) => {
 
         // ====================================
         // TIME REQUIRED
-        // ====================================
-       // ====================================
-// TIME NOT FOUND -> DEFAULT TIME
-// ====================================
-if (!startTime || !endTime) {
-  startTime = "03:00:00";
-  endTime = "04:30:00";
-}
+        // DO NOT CREATE FAKE DEFAULT TIME
+        // ========================================
+        if (!startTime || !endTime) {
+          skipped++;
 
-        
-        // => UPDATE
-        // ====================================
-        const existingResult = await client.query(
+          skippedStudents.push({
+            studentId,
+            name: student.name,
+            class: className,
+            subject: subjectCode,
+            reason:
+              "Lecture start/end time not found",
+          });
+
+          continue;
+        }
+
+        // ========================================
+        // UPSERT ATTENDANCE
+        // ========================================
+        //
+        // UNIQUE KEY:
+        // student_id
+        // date
+        // subject_code
+        // start_time
+        // end_time
+        //
+        // Existing row -> UPDATE
+        // New row      -> INSERT
+        // ========================================
+
+        const result = await client.query(
           `
-          SELECT id
-          FROM attendance
-          WHERE student_id = $1
-            AND date::date = $2::date
-            AND subject_code = $3
-            AND start_time = $4
-            AND end_time = $5
-          LIMIT 1
+          INSERT INTO attendance
+          (
+            student_id,
+            date,
+            status,
+            subject_code,
+            start_time,
+            end_time,
+            stream
+          )
+          VALUES
+          ($1, $2, $3, $4, $5, $6, $7)
+
+          ON CONFLICT
+          (
+            student_id,
+            date,
+            subject_code,
+            start_time,
+            end_time
+          )
+
+          DO UPDATE SET
+            status = EXCLUDED.status,
+            stream = EXCLUDED.stream
+
+          RETURNING
+            (xmax = 0) AS inserted
           `,
           [
             studentId,
             date,
+            item.status,
             subjectCode,
             startTime,
             endTime,
+            stream,
           ]
         );
 
-        // ====================================
-        // EXISTING -> UPDATE
-        // ====================================
-        if (existingResult.rows.length > 0) {
-          await client.query(
-            `
-            UPDATE attendance
-            SET
-              status = $1,
-              stream = $2
-            WHERE id = $3
-            `,
-            [
-              item.status,
-              stream,
-              existingResult.rows[0].id,
-            ]
-          );
-
-          updated++;
-        }
-
-        // ====================================
-        // NEW -> INSERT
-        // ====================================
-        else {
-          await client.query(
-            `
-            INSERT INTO attendance
-            (
-              student_id,
-              date,
-              status,
-              subject_code,
-              start_time,
-              end_time,
-              stream
-            )
-            VALUES
-            ($1, $2, $3, $4, $5, $6, $7)
-            `,
-            [
-              studentId,
-              date,
-              item.status,
-              subjectCode,
-              startTime,
-              endTime,
-              stream,
-            ]
-          );
-
+        // ========================================
+        // COUNT INSERT / UPDATE
+        // ========================================
+        if (result.rows[0].inserted) {
           inserted++;
+        } else {
+          updated++;
         }
 
       } catch (studentError) {

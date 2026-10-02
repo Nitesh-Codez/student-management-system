@@ -21,21 +21,7 @@ const normalizeBatch = (batch) => {
     .replace(/\s+/g, "");
 };
 
-// ============================================================
-// 1) GET ALL STUDENTS + ATTENDANCE
-//
-// Supports:
-//
-// GET /api/attendance/list?date=2026-09-30
-//
-// Subject-wise:
-//
-// GET /api/attendance/list
-//   ?date=2026-09-30
-//   &subject_code=Science
-//   &start_time=18:00:00
-//   &end_time=18:40:00
-// ============================================================
+
  // ============================================================
  // GET STUDENTS LIST
  // ============================================================
@@ -568,8 +554,9 @@ exports.markAttendance = async (req, res) => {
   }
 };
 
-
-
+// =====================================
+// Edit Attendance
+// =====================================
 exports.editAttendance = async (req, res) => {
   let client;
 
@@ -603,10 +590,11 @@ exports.editAttendance = async (req, res) => {
       });
     }
 
-    if (!["Present", "Absent"].includes(status)) {
+    // Added "Holiday" here to support holiday statuses during edits
+    if (!["Present", "Absent", "Holiday"].includes(status)) {
       return res.status(400).json({
         success: false,
-        message: "Status must be Present or Absent",
+        message: "Status must be Present, Absent or Holiday",
       });
     }
 
@@ -726,6 +714,11 @@ exports.editAttendance = async (req, res) => {
     }
   }
 };
+
+
+
+
+
 //TOTAL; ATTENDANCE COUNT PER SUBJECT 
 // =====================================================
 // GET SUBJECT-WISE ATTENDANCE

@@ -339,7 +339,6 @@ exports.editAttendance = async (req, res) => {
   }
 };
 
-//TOTAL; ATTENDANCE COUNT PER SUBJECT 
 // =====================================================
 // GET SUBJECT-WISE ATTENDANCE
 // =====================================================
@@ -523,6 +522,150 @@ exports.shiftStudentBatch = async (req, res) => {
   }
 };
 
+
+// ============================================================
+// ADMIN: GET ALL STUDENTS SUBJECT-WISE ATTENDANCE FOR MONTH
+// ============================================================
+exports.getAllStudentsSubjectWiseAttendance = async (req, res) => {
+  try {
+    const { month } = req.query;
+
+    // --------------------------------------------------------
+    // VALIDATION
+    // month format: YYYY-MM
+    // Example: 2026-09
+    // --------------------------------------------------------
+    if (!month) {
+      return res.status(400).json({
+        success: false,
+        message: "month is required. Use YYYY-MM format",
+      });
+    }
+
+    if (!/^\d{4}-\d{2}$/.test(month)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid month format. Use YYYY-MM",
+      });
+    }
+
+    // --------------------------------------------------------
+    // FETCH ALL STUDENTS + SUBJECT ATTENDANCE
+    // --------------------------------------------------------
+    const result = await db.query(
+      `
+      SELECT
+        s.id AS student_id,
+        s.name,
+        s.class,
+        s.batch,
+        s.stream,
+
+        a.subject_code,
+
+        COUNT(*) FILTER (
+          WHERE a.status = 'Present'
+        ) AS present,
+
+        COUNT(*) FILTER (
+          WHERE a.status = 'Absent'
+        ) AS absent,
+
+        COUNT(*) FILTER (
+          WHERE a.status IN ('Present', 'Absent')
+        ) AS total
+
+      FROM students s
+
+      LEFT JOIN attendance a
+        ON a.student_id = s.id
+        AND a.subject_code IS NOT NULL
+        AND a.date >= ($1 || '-01')::date
+        AND a.date < (
+          TO_DATE($1, 'YYYY-MM') + INTERVAL '1 month'
+        )
+
+      WHERE s.role = 'student'
+
+      GROUP BY
+        s.id,
+        s.name,
+        s.class,
+        s.batch,
+        s.stream,
+        a.subject_code
+
+      ORDER BY
+        s.class,
+        s.name,
+        a.subject_code
+      `,
+      [month]
+    );
+
+    // --------------------------------------------------------
+    // GROUP DATA STUDENT-WISE
+    // --------------------------------------------------------
+    const studentsMap = {};
+
+    result.rows.forEach((row) => {
+      const studentId = row.student_id;
+
+      if (!studentsMap[studentId]) {
+        studentsMap[studentId] = {
+          studentId: Number(studentId),
+          name: row.name,
+          class: row.class,
+          batch: row.batch,
+          stream: row.stream,
+          subjects: [],
+        };
+      }
+
+      // Student may have no attendance in selected month
+      if (row.subject_code) {
+        const present = Number(row.present);
+        const absent = Number(row.absent);
+        const total = Number(row.total);
+
+        studentsMap[studentId].subjects.push({
+          subjectCode: row.subject_code,
+          present,
+          absent,
+          total,
+          percentage:
+            total === 0
+              ? 0
+              : Number(((present / total) * 100).toFixed(1)),
+        });
+      }
+    });
+
+    const students = Object.values(studentsMap);
+
+    // --------------------------------------------------------
+    // RESPONSE
+    // --------------------------------------------------------
+    return res.json({
+      success: true,
+      month,
+      totalStudents: students.length,
+      students,
+    });
+
+  } catch (error) {
+    console.error(
+      "Error fetching all students subject-wise attendance:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Server error while fetching monthly subject-wise attendance",
+    });
+  }
+};
 // ============================================================
 // 4) GET INDIVIDUAL STUDENT FULL ATTENDANCE HISTORY
 //

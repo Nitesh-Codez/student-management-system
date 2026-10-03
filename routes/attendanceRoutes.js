@@ -36,7 +36,7 @@ router.get("/:id", attendanceController.getStudentAttendance);
 
 //Admin
 router.get(
-  "/attendance/admin/subject-wise",
+  "/admin/subject-wise",
   attendanceController.getAllStudentsSubjectWiseAttendance
 );
 

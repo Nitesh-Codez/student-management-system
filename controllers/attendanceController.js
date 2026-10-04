@@ -1235,6 +1235,8 @@ exports.fetchDoneSchedule = async (req, res) => {
 // ============================================================
 // STUDENT: FETCH OWN DONE CLASSES / ATTENDANCE DATE-WISE
 // ============================================================
+// GET STUDENT DONE CLASSES SCHEDULE
+// ============================================================
 exports.fetchStudentDoneClassesSchedule = async (req, res) => {
   try {
     const { studentId } = req.params;
@@ -1248,19 +1250,13 @@ exports.fetchStudentDoneClassesSchedule = async (req, res) => {
 
     const { rows } = await db.query(`
       SELECT
-        a.id AS "attendanceId",
-        a.student_id AS "studentId",
-
-        s.name AS "studentName",
-        s.class,
-        s.stream,
-        s.batch,
-
-        a.date,
-        a.subject_code AS "subjectCode",
+        a.id AS "id",
         a.start_time AS "startTime",
         a.end_time AS "endTime",
-        a.status
+        a.subject_code AS "subject",
+        a.status,
+        s.stream,
+        a.date
 
       FROM attendance a
 

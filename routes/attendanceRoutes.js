@@ -51,4 +51,11 @@ router.get(
 router.get("/admin/student-requests", attendanceController.getAllStudentRequests);
 router.get("/student/:id/requests", attendanceController.getMyStudentRequests);
 
+//for admin to get atte dance list for specfic date wuth subjects
+
+router.get("/done-schedule",attendanceController.fetchDoneSchedule);
+
+//for students to get their schduled class
+router.get("/student/:studentId/done-classes",attendanceController.fetchStudentDoneClassesSchedule);
+
 module.exports = router;

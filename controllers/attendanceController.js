@@ -1189,14 +1189,7 @@ exports.fetchDoneSchedule = async (req, res) => {
     if (!date) {
       return res.status(400).json({
         success: false,
-        message: "Date is required. Use YYYY-MM-DD"
-      });
-    }
-
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid date format. Use YYYY-MM-DD"
+        message: "Date is required"
       });
     }
 
@@ -1204,30 +1197,20 @@ exports.fetchDoneSchedule = async (req, res) => {
       SELECT
         a.id AS "attendanceId",
         a.student_id AS "studentId",
-
         s.name AS "studentName",
         s.class,
         s.stream,
         s.batch,
-
         a.date,
         a.subject_code AS "subjectCode",
         a.start_time AS "startTime",
         a.end_time AS "endTime",
         a.status
-
       FROM attendance a
-
-      INNER JOIN students s
+      JOIN students s
         ON s.id = a.student_id
-
       WHERE a.date::date = $1::date
-        AND s.role = 'student'
-
-      ORDER BY
-        a.start_time ASC NULLS LAST,
-        s.class ASC,
-        s.name ASC
+      ORDER BY a.start_time, s.name
     `, [date]);
 
     return res.json({
@@ -1238,16 +1221,15 @@ exports.fetchDoneSchedule = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("fetchDoneSchedule:", error);
+    console.error("fetchDoneSchedule ERROR:", error);
 
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch completed attendance schedule",
+      message: "Server error while fetching records",
       error: error.message
     });
   }
 };
-
 
 
 // ============================================================

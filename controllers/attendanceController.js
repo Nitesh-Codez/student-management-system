@@ -1182,10 +1182,14 @@ exports.getMyStudentRequests = async (
 // ============================================================
 // ADMIN: FETCH DONE ATTENDANCE / SCHEDULE DATE-WISE
 // ============================================================
+// ============================================================
+// ADMIN: FETCH DONE SCHEDULE DATE-WISE
+// ============================================================
 exports.fetchDoneSchedule = async (req, res) => {
   try {
     const { date } = req.query;
 
+    // Date required
     if (!date) {
       return res.status(400).json({
         success: false,
@@ -1193,7 +1197,7 @@ exports.fetchDoneSchedule = async (req, res) => {
       });
     }
 
-    // YYYY-MM-DD format required
+    // YYYY-MM-DD format validation
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return res.status(400).json({
         success: false,
@@ -1201,6 +1205,7 @@ exports.fetchDoneSchedule = async (req, res) => {
       });
     }
 
+    // Fetch attendance records for selected date
     const { rows } = await db.query(`
       SELECT
         a.id AS "attendanceId",
@@ -1222,7 +1227,9 @@ exports.fetchDoneSchedule = async (req, res) => {
 
       WHERE a.date::date = $1::date
 
-      ORDER BY a.start_time, s.name
+      ORDER BY
+        a.start_time ASC NULLS LAST,
+        s.name ASC
     `, [date]);
 
     return res.json({
@@ -1238,6 +1245,70 @@ exports.fetchDoneSchedule = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Server error while fetching records",
+      error: error.message
+    });
+  }
+};
+
+// ============================================================
+// STUDENT: FETCH OWN DONE CLASSES / ATTENDANCE DATE-WISE
+// ============================================================
+exports.fetchStudentDoneClassesSchedule = async (req, res) => {
+  try {
+    const { studentId } = req.params;
+
+    if (!studentId) {
+      return res.status(400).json({
+        success: false,
+        message: "Student ID is required"
+      });
+    }
+
+    const { rows } = await db.query(`
+      SELECT
+        a.id AS "attendanceId",
+        a.student_id AS "studentId",
+
+        s.name AS "studentName",
+        s.class,
+        s.stream,
+        s.batch,
+
+        a.date,
+        a.subject_code AS "subjectCode",
+        a.start_time AS "startTime",
+        a.end_time AS "endTime",
+        a.status
+
+      FROM attendance a
+
+      INNER JOIN students s
+        ON s.id = a.student_id
+
+      WHERE a.student_id = $1
+        AND s.role = 'student'
+
+      ORDER BY
+        a.date DESC,
+        a.start_time DESC NULLS LAST
+    `, [studentId]);
+
+    return res.json({
+      success: true,
+      studentId: Number(studentId),
+      totalRecords: rows.length,
+      classes: rows
+    });
+
+  } catch (error) {
+    console.error(
+      "fetchStudentDoneClassesSchedule:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch student completed classes",
       error: error.message
     });
   }

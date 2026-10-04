@@ -1202,7 +1202,7 @@ exports.fetchDoneSchedule = async (req, res) => {
     }
 
     const { rows } = await db.query(`
-      SELECT 
+      SELECT
         a.id AS "attendanceId",
         a.student_id AS "studentId",
         s.name AS "studentName",
@@ -1217,7 +1217,7 @@ exports.fetchDoneSchedule = async (req, res) => {
 
       FROM attendance a
 
-      JOIN students s 
+      JOIN students s
         ON s.id = a.student_id
 
       WHERE a.date::date = $1::date

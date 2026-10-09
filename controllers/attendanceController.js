@@ -332,165 +332,180 @@ exports.markAttendance = async (req, res) => {
 // ============================================================
 
 
-
 exports.editAttendance = async (req, res) => {
-  let client;
-  let transactionStarted = false;
+try {
+const {
+id,
+studentId,
+date,
+status,
+subjectCode,
+startTime,
+endTime,
+stream,
+reason,
+} = req.body;
 
-  try {
-    const { date, attendance } = req.body;
 
-    if (!date || !isValidDate(date)) {
-      return res.status(400).json({
-        success: false,
-        message: "Valid date is required (YYYY-MM-DD)",
-      });
-    }
+// Validate required fields
+if (!date || !isValidDate(date) || !status) {
+  return res.status(400).json({
+    success: false,
+    message: "Valid date and status are required",
+  });
+}
 
-    if (!Array.isArray(attendance) || attendance.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Attendance data required",
-      });
-    }
+if (!["Present", "Absent", "Holiday"].includes(status)) {
+  return res.status(400).json({
+    success: false,
+    message: "Invalid attendance status",
+  });
+}
 
-    const toDbTime = (value) => {
-      if (value == null || String(value).trim() === "") return null;
+if (!id && !studentId) {
+  return res.status(400).json({
+    success: false,
+    message: "Attendance id or studentId is required",
+  });
+}
 
-      const match = String(value).trim().toUpperCase().match(
-        /^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?$/
-      );
-
-      if (!match) throw new Error(`Invalid time format: ${value}`);
-
-      let hours = Number(match[1]);
-      const minutes = Number(match[2]);
-      const seconds = Number(match[3] || 0);
-      const period = match[4];
-
-      if (minutes > 59 || seconds > 59) {
-        throw new Error(`Invalid time value: ${value}`);
-      }
-
-      if (period) {
-        if (hours < 1 || hours > 12) {
-          throw new Error(`Invalid time value: ${value}`);
-        }
-        if (period === "AM" && hours === 12) hours = 0;
-        if (period === "PM" && hours !== 12) hours += 12;
-      } else if (hours > 23) {
-        throw new Error(`Invalid time value: ${value}`);
-      }
-
-      return [
-        String(hours).padStart(2, "0"),
-        String(minutes).padStart(2, "0"),
-        String(seconds).padStart(2, "0"),
-      ].join(":");
-    };
-
-    client = await db.connect();
-    await client.query("BEGIN");
-    transactionStarted = true;
-
-    let inserted = 0;
-    let updated = 0;
-    let skipped = 0;
-
-    for (const item of attendance) {
-      const studentId = Number(item.studentId);
-      const status = item.status;
-
-      if (!Number.isInteger(studentId) || studentId <= 0 ||
-          !["Present", "Absent", "Holiday"].includes(status)) {
-        skipped++;
-        continue;
-      }
-
-      const subjectCode = item.subjectCode ?? item.subject_code ?? null;
-      const startTime = toDbTime(item.startTime ?? item.start_time);
-      const endTime = toDbTime(item.endTime ?? item.end_time);
-      const stream = item.stream ?? null;
-      const reason = item.reason ?? null;
-
-      const studentCheck = await client.query(
-        "SELECT id FROM students WHERE id = $1",
-        [studentId]
-      );
-
-      if (!studentCheck.rowCount) {
-        skipped++;
-        continue;
-      }
-
-      const existing = await client.query(
-        `SELECT id
-         FROM attendance
-         WHERE student_id = $1
-           AND date::date = $2::date
-           AND subject_code IS NOT DISTINCT FROM $3::text
-           AND start_time IS NOT DISTINCT FROM $4::time
-           AND end_time IS NOT DISTINCT FROM $5::time
-         ORDER BY id DESC
-         LIMIT 1`,
-        [studentId, date, subjectCode, startTime, endTime]
-      );
-
-      if (existing.rowCount) {
-        await client.query(
-          `UPDATE attendance
-           SET status = $1, stream = $2, reason = $3
-           WHERE id = $4`,
-          [status, stream, reason, existing.rows[0].id]
-        );
-
-        updated++;
-      } else {
-        await client.query(
-          `INSERT INTO attendance
-           (student_id, date, status, subject_code,
-            start_time, end_time, stream, reason)
-           VALUES ($1, $2::date, $3, $4, $5::time, $6::time, $7, $8)`,
-          [studentId, date, status, subjectCode,
-           startTime, endTime, stream, reason]
-        );
-
-        inserted++;
-      }
-    }
-
-    await client.query("COMMIT");
-    transactionStarted = false;
-
-    return res.json({
-      success: true,
-      message: "Attendance updated successfully",
-      date,
-      inserted,
-      updated,
-      skipped,
-    });
-  } catch (error) {
-    if (client && transactionStarted) {
-      try {
-        await client.query("ROLLBACK");
-      } catch (rollbackError) {
-        console.error("Rollback error:", rollbackError.message);
-      }
-    }
-
-    console.error("editAttendance error:", error);
-
-    return res.status(500).json({
-      success: false,
-      message: "Failed to edit attendance",
-      error: error.message,
-      code: error.code || null,
-    });
-  } finally {
-    if (client) client.release();
+// Convert time to PostgreSQL TIME format
+const toDbTime = (value) => {
+  if (value == null || String(value).trim() === "") {
+    return null;
   }
+
+  const time = String(value).trim().toUpperCase();
+
+  const match = time.match(
+    /^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?$/
+  );
+
+  if (!match) {
+    throw new Error(`Invalid time format: ${value}`);
+  }
+
+  let hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  const seconds = Number(match[3] || 0);
+  const period = match[4];
+
+  if (minutes > 59 || seconds > 59) {
+    throw new Error(`Invalid time value: ${value}`);
+  }
+
+  if (period) {
+    if (hours < 1 || hours > 12) {
+      throw new Error(`Invalid time value: ${value}`);
+    }
+
+    if (period === "AM" && hours === 12) hours = 0;
+    if (period === "PM" && hours !== 12) hours += 12;
+  } else if (hours > 23) {
+    throw new Error(`Invalid time value: ${value}`);
+  }
+
+  return [
+    String(hours).padStart(2, "0"),
+    String(minutes).padStart(2, "0"),
+    String(seconds).padStart(2, "0"),
+  ].join(":");
 };
+
+const start = toDbTime(startTime);
+const end = toDbTime(endTime);
+
+let result;
+
+if (id) {
+  // Update the exact attendance record
+  result = await db.query(
+    `UPDATE attendance
+     SET status = $1,
+         subject_code = $2,
+         start_time = $3::time,
+         end_time = $4::time,
+         stream = $5,
+         reason = $6
+     WHERE id = $7
+       AND date::date = $8::date
+     RETURNING *`,
+    [
+      status,
+      subjectCode ?? null,
+      start,
+      end,
+      stream ?? null,
+      reason ?? null,
+      id,
+      date,
+    ]
+  );
+} else {
+  // Find the existing record for this student and lecture
+  result = await db.query(
+    `UPDATE attendance
+     SET status = $1,
+         stream = $2,
+         reason = $3
+     WHERE id = (
+       SELECT id
+       FROM attendance
+       WHERE student_id = $4
+         AND date::date = $5::date
+         AND subject_code IS NOT DISTINCT FROM $6::text
+         AND start_time IS NOT DISTINCT FROM $7::time
+         AND end_time IS NOT DISTINCT FROM $8::time
+       ORDER BY id DESC
+       LIMIT 1
+     )
+     RETURNING *`,
+    [
+      status,
+      stream ?? null,
+      reason ?? null,
+      studentId,
+      date,
+      subjectCode ?? null,
+      start,
+      end,
+    ]
+  );
+}
+
+if (result.rowCount === 0) {
+  return res.status(404).json({
+    success: false,
+    message: "Attendance record not found. No record was inserted.",
+  });
+}
+
+return res.status(200).json({
+  success: true,
+  message: "Attendance updated successfully",
+  attendance: result.rows[0],
+});
+
+} catch (error) {
+console.error("editAttendance error:", {
+message: error.message,
+code: error.code,
+detail: error.detail,
+constraint: error.constraint,
+stack: error.stack,
+});
+
+
+return res.status(500).json({
+  success: false,
+  message: "Failed to edit attendance",
+  error: error.message,
+  code: error.code || null,
+});
+
+}
+};
+
 // ============================================================
 // 4. STUDENT: SUBJECT-WISE ATTENDANCE
 // ============================================================

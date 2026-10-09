@@ -1,8 +1,9 @@
 const db = require("../db");
 
 // ============================================================
-// HELPER: DEFAULT DATE
+// HELPERS
 // ============================================================
+
 const getTodayDate = () => {
   const today = new Date();
 
@@ -11,39 +12,58 @@ const getTodayDate = () => {
   ).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
 };
 
-// ============================================================
-// HELPER: NORMALIZE BATCH
-// ============================================================
-const normalizeBatch = (batch) => {
-  return String(batch || "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "");
-};
+const normalizeBatch = (batch) =>
+  String(batch || "").trim().toLowerCase().replace(/\s+/g, "");
 
-/* =========================================================
-   GET STUDENTS + THAT DATE'S ATTENDANCE
-   1 STUDENT = 1 ROW
-========================================================= */
+const normalizeSubject = (subject) =>
+  String(subject || "").trim().toLowerCase();
+
+const isValidDate = (date) =>
+  /^\d{4}-\d{2}-\d{2}$/.test(date) &&
+  !Number.isNaN(Date.parse(`${date}T00:00:00Z`));
+
+const getAttendancePercentage = (present, total) =>
+  total === 0 ? 0 : Number(((present / total) * 100).toFixed(1));
+
+const getAttendanceMarks = (percentage) =>
+  percentage > 75
+    ? Math.min(5, Math.ceil((percentage - 75) / 5))
+    : 0;
+
+// ============================================================
+// 1. GET STUDENTS + SELECTED DATE ATTENDANCE
+// Keeps one row per student for the admin marking screen.
+// Optional filters: subjectCode, startTime, endTime.
+// ============================================================
+
 exports.getStudentsList = async (req, res) => {
   try {
     const date = req.query.date || getTodayDate();
+    const { subjectCode, startTime, endTime } = req.query;
 
-    const { rows } = await db.query(`
-      SELECT DISTINCT ON (s.id)
+    if (!isValidDate(date)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid date. Use YYYY-MM-DD",
+      });
+    }
+
+    const { rows } = await db.query(
+      `
+      SELECT
         s.id AS "studentId",
         s.name AS "studentName",
-        s."class",
+        s.class,
         s.stream,
         s.batch,
         s.joining_date AS "joiningDate",
 
         CASE
-          WHEN LOWER(REPLACE(s.batch,' ','')) = 'batch1'
+          WHEN LOWER(REPLACE(s.batch, ' ', '')) = 'batch1'
             THEN '3:00 PM - 4:30 PM'
-          WHEN LOWER(REPLACE(s.batch,' ','')) = 'batch2'
+          WHEN LOWER(REPLACE(s.batch, ' ', '')) = 'batch2'
             THEN '4:30 PM - 6:00 PM'
-          WHEN LOWER(REPLACE(s.batch,' ','')) = 'batch3'
+          WHEN LOWER(REPLACE(s.batch, ' ', '')) = 'batch3'
             THEN '6:00 PM - 7:30 PM'
           ELSE 'Not Assigned'
         END AS "batchTime",
@@ -52,62 +72,83 @@ exports.getStudentsList = async (req, res) => {
         a.status,
         a.subject_code AS "subjectCode",
         a.start_time AS "startTime",
-        a.end_time AS "endTime"
+        a.end_time AS "endTime",
+        a.reason
 
       FROM students s
 
-      LEFT JOIN attendance a
-        ON a.student_id = s.id
-       AND a.date::date = $1::date
+      LEFT JOIN LATERAL (
+        SELECT a.*
+        FROM attendance a
+        WHERE a.student_id = s.id
+          AND a.date::date = $1::date
+          AND (
+            $2::text IS NULL
+            OR LOWER(TRIM(a.subject_code)) = LOWER(TRIM($2))
+          )
+          AND (
+            $3::time IS NULL
+            OR a.start_time = $3::time
+          )
+          AND (
+            $4::time IS NULL
+            OR a.end_time = $4::time
+          )
+        ORDER BY a.id DESC
+        LIMIT 1
+      ) a ON TRUE
 
       WHERE s.role = 'student'
 
-      ORDER BY
-        s.id,
-        a.id DESC NULLS LAST
-    `, [date]);
+      ORDER BY s.id
+      `,
+      [
+        date,
+        subjectCode || null,
+        startTime || null,
+        endTime || null,
+      ]
+    );
 
     return res.json({
       success: true,
       date,
-      students: rows
+      students: rows,
     });
-
   } catch (error) {
     console.error("getStudentsList:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
-      message: "Failed to fetch attendance"
+      message: "Failed to fetch attendance",
     });
   }
 };
 
+// ============================================================
+// 2. ADD / UPDATE ATTENDANCE
+// One student + date + subject + lecture time = one record.
+// Supports Holiday reason and exam subject details.
+// ============================================================
 
-/* =========================================================
-   ADD / UPDATE ATTENDANCE
-   1 STUDENT + 1 DATE = 1 RECORD
-========================================================= */
 exports.markAttendance = async (req, res) => {
   let client;
 
   try {
-    const {
-      date = getTodayDate(),
-      attendance
-    } = req.body;
+    const date = req.body.date || getTodayDate();
+    const attendance = req.body.attendance;
 
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    if (!isValidDate(date)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid date. Use YYYY-MM-DD"
+        message: "Invalid date. Use YYYY-MM-DD",
       });
     }
 
-    if (!Array.isArray(attendance) || !attendance.length) {
+    if (!Array.isArray(attendance) || attendance.length === 0) {
       return res.status(400).json({
         success: false,
-        message: "Attendance data required"
+        message: "Attendance data required",
       });
     }
 
@@ -116,74 +157,124 @@ exports.markAttendance = async (req, res) => {
 
     let inserted = 0;
     let updated = 0;
+    let skipped = 0;
 
     for (const item of attendance) {
       const studentId = Number(item.studentId);
 
-      if (!studentId) continue;
+      if (!Number.isInteger(studentId) || studentId <= 0) {
+        skipped++;
+        continue;
+      }
 
       const status = item.status;
 
       if (!["Present", "Absent", "Holiday"].includes(status)) {
+        skipped++;
         continue;
       }
 
       const subjectCode =
-        item.subjectCode ||
-        item.subject_code ||
+        item.subjectCode ??
+        item.subject_code ??
         null;
 
       const startTime =
-        item.startTime ||
-        item.start_time ||
+        item.startTime ??
+        item.start_time ??
         null;
 
       const endTime =
-        item.endTime ||
-        item.end_time ||
+        item.endTime ??
+        item.end_time ??
         null;
 
-      const stream = item.stream || null;
+      const stream = item.stream ?? null;
 
-      /* ONE STUDENT + ONE DATE */
-      const result = await client.query(`
-        INSERT INTO attendance
-        (
-          student_id,
-          date,
-          status,
-          subject_code,
-          start_time,
-          end_time,
-          stream
-        )
-        VALUES ($1,$2,$3,$4,$5,$6,$7)
+      const reason =
+        item.reason ??
+        null;
 
-        ON CONFLICT (student_id, date)
-        DO UPDATE SET
-          status = EXCLUDED.status,
-          subject_code = EXCLUDED.subject_code,
-          start_time = EXCLUDED.start_time,
-          end_time = EXCLUDED.end_time,
-          stream = EXCLUDED.stream
+      // Validate the student.
+      const studentCheck = await client.query(
+        `
+        SELECT id
+        FROM students
+        WHERE id = $1 AND role = 'student'
+        `,
+        [studentId]
+      );
 
-        RETURNING
-          id,
-          (xmax = 0) AS inserted
-      `, [
-        studentId,
-        date,
-        status,
-        subjectCode,
-        startTime,
-        endTime,
-        stream
-      ]);
+      if (studentCheck.rows.length === 0) {
+        skipped++;
+        continue;
+      }
 
-      if (result.rows[0].inserted) {
-        inserted++;
-      } else {
+      // Match the exact lecture, including nullable times.
+      // IS NOT DISTINCT FROM safely matches NULL values too.
+      const existing = await client.query(
+        `
+        SELECT id
+        FROM attendance
+        WHERE student_id = $1
+          AND date::date = $2::date
+          AND subject_code IS NOT DISTINCT FROM $3::text
+          AND start_time IS NOT DISTINCT FROM $4::time
+          AND end_time IS NOT DISTINCT FROM $5::time
+        ORDER BY id DESC
+        LIMIT 1
+        `,
+        [studentId, date, subjectCode, startTime, endTime]
+      );
+
+      if (existing.rows.length > 0) {
+        // Update the existing lecture, not another subject.
+        await client.query(
+          `
+          UPDATE attendance
+          SET
+            status = $1,
+            stream = $2,
+            reason = $3
+          WHERE id = $4
+          `,
+          [
+            status,
+            stream,
+            reason,
+            existing.rows[0].id,
+          ]
+        );
+
         updated++;
+      } else {
+        await client.query(
+          `
+          INSERT INTO attendance (
+            student_id,
+            date,
+            status,
+            subject_code,
+            start_time,
+            end_time,
+            stream,
+            reason
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          `,
+          [
+            studentId,
+            date,
+            status,
+            subjectCode,
+            startTime,
+            endTime,
+            stream,
+            reason,
+          ]
+        );
+
+        inserted++;
       }
     }
 
@@ -194,11 +285,10 @@ exports.markAttendance = async (req, res) => {
       message: "Attendance saved successfully",
       date,
       inserted,
-      updated
+      updated,
+      skipped,
     });
-
   } catch (error) {
-
     if (client) {
       await client.query("ROLLBACK");
     }
@@ -208,19 +298,17 @@ exports.markAttendance = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to save attendance",
-      error: error.message
+      error: error.message,
     });
-
   } finally {
     if (client) client.release();
   }
 };
 
+// ============================================================
+// 3. EDIT EXISTING ATTENDANCE
+// ============================================================
 
-/* =========================================================
-   EDIT EXISTING ATTENDANCE
-   SAME RECORD UPDATE HOGA
-========================================================= */
 exports.editAttendance = async (req, res) => {
   try {
     const {
@@ -231,29 +319,28 @@ exports.editAttendance = async (req, res) => {
       subjectCode,
       startTime,
       endTime,
-      stream
+      stream,
+      reason,
     } = req.body;
 
-    if (!date || !status) {
+    if (!date || !isValidDate(date) || !status) {
       return res.status(400).json({
         success: false,
-        message: "Date and status are required"
+        message: "Valid date and status are required",
       });
     }
 
     if (!["Present", "Absent", "Holiday"].includes(status)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid attendance status"
+        message: "Invalid attendance status",
       });
     }
 
     let query;
     let params;
 
-    /* EDIT BY ATTENDANCE ID */
     if (id) {
-
       query = `
         UPDATE attendance
         SET
@@ -261,30 +348,28 @@ exports.editAttendance = async (req, res) => {
           subject_code = $2,
           start_time = $3,
           end_time = $4,
-          stream = $5
-        WHERE id = $6
-          AND date::date = $7::date
+          stream = $5,
+          reason = $6
+        WHERE id = $7
+          AND date::date = $8::date
         RETURNING *
       `;
 
       params = [
         status,
-        subjectCode || null,
-        startTime || null,
-        endTime || null,
-        stream || null,
+        subjectCode ?? null,
+        startTime ?? null,
+        endTime ?? null,
+        stream ?? null,
+        reason ?? null,
         id,
-        date
+        date,
       ];
-
     } else {
-
-      /* EDIT BY STUDENT + DATE */
-
       if (!studentId) {
         return res.status(400).json({
           success: false,
-          message: "studentId or attendance id required"
+          message: "studentId or attendance id required",
         });
       }
 
@@ -295,53 +380,63 @@ exports.editAttendance = async (req, res) => {
           subject_code = $2,
           start_time = $3,
           end_time = $4,
-          stream = $5
-        WHERE student_id = $6
-          AND date::date = $7::date
+          stream = $5,
+          reason = $6
+        WHERE id = (
+          SELECT id
+          FROM attendance
+          WHERE student_id = $7
+            AND date::date = $8::date
+            AND subject_code IS NOT DISTINCT FROM $2::text
+            AND start_time IS NOT DISTINCT FROM $3::time
+            AND end_time IS NOT DISTINCT FROM $4::time
+          ORDER BY id DESC
+          LIMIT 1
+        )
         RETURNING *
       `;
 
       params = [
         status,
-        subjectCode || null,
-        startTime || null,
-        endTime || null,
-        stream || null,
+        subjectCode ?? null,
+        startTime ?? null,
+        endTime ?? null,
+        stream ?? null,
+        reason ?? null,
         studentId,
-        date
+        date,
       ];
     }
 
     const { rows } = await db.query(query, params);
 
-    if (!rows.length) {
+    if (rows.length === 0) {
       return res.status(404).json({
         success: false,
-        message: "Attendance record not found"
+        message: "Attendance record not found",
       });
     }
 
     return res.json({
       success: true,
       message: "Attendance updated successfully",
-      attendance: rows[0]
+      attendance: rows[0],
     });
-
   } catch (error) {
-
     console.error("editAttendance:", error);
 
     return res.status(500).json({
       success: false,
       message: "Failed to edit attendance",
-      error: error.message
+      error: error.message,
     });
   }
 };
 
-// =====================================================
-// GET SUBJECT-WISE ATTENDANCE
-// =====================================================
+// ============================================================
+// 4. STUDENT: SUBJECT-WISE ATTENDANCE
+// ============================================================
+
 exports.getSubjectWiseAttendance = async (req, res) => {
   try {
     const { studentId } = req.params;
@@ -353,7 +448,7 @@ exports.getSubjectWiseAttendance = async (req, res) => {
       });
     }
 
-    const result = await db.query(
+    const { rows } = await db.query(
       `
       SELECT
         subject_code,
@@ -365,13 +460,15 @@ exports.getSubjectWiseAttendance = async (req, res) => {
       FROM attendance
       WHERE student_id = $1
         AND subject_code IS NOT NULL
+        AND UPPER(subject_code) NOT LIKE '%EXAM%'
+        AND LOWER(TRIM(subject_code)) <> 'holiday'
       GROUP BY subject_code
       ORDER BY subject_code
       `,
       [studentId]
     );
 
-    const subjects = result.rows.map((row) => {
+    const subjects = rows.map((row) => {
       const present = Number(row.present);
       const absent = Number(row.absent);
       const total = Number(row.total);
@@ -381,10 +478,7 @@ exports.getSubjectWiseAttendance = async (req, res) => {
         present,
         absent,
         total,
-        percentage:
-          total === 0
-            ? 0
-            : Number(((present / total) * 100).toFixed(1)),
+        percentage: getAttendancePercentage(present, total),
       };
     });
 
@@ -394,7 +488,7 @@ exports.getSubjectWiseAttendance = async (req, res) => {
       subjects,
     });
   } catch (error) {
-    console.error("Error fetching subject-wise attendance:", error);
+    console.error("getSubjectWiseAttendance:", error);
 
     return res.status(500).json({
       success: false,
@@ -404,155 +498,96 @@ exports.getSubjectWiseAttendance = async (req, res) => {
 };
 
 // ============================================================
-// 3) ADMIN: SHIFT STUDENT FROM ONE BATCH TO ANOTHER
+// 5. ADMIN: SHIFT STUDENT BATCH
 // ============================================================
+
 exports.shiftStudentBatch = async (req, res) => {
   try {
     const { studentId } = req.params;
     const { batch } = req.body;
 
-    // --------------------------------------------------------
-    // VALIDATION
-    // --------------------------------------------------------
     if (!studentId || !batch) {
       return res.status(400).json({
         success: false,
-        message:
-          "Student ID and target batch are required",
+        message: "Student ID and target batch are required",
       });
     }
 
     const normalizedBatch = normalizeBatch(batch);
 
-    const validBatches = [
-      "batch1",
-      "batch2",
-      "batch3",
-    ];
-
-    if (!validBatches.includes(normalizedBatch)) {
+    if (!["batch1", "batch2", "batch3"].includes(normalizedBatch)) {
       return res.status(400).json({
         success: false,
-        message:
-          "Invalid batch. Use batch1, batch2 or batch3",
+        message: "Invalid batch. Use batch1, batch2 or batch3",
       });
     }
 
-    // --------------------------------------------------------
-    // CHECK STUDENT
-    // --------------------------------------------------------
     const studentResult = await db.query(
       `
-      SELECT
-        id,
-        name,
-        batch
+      SELECT id, name, class, batch
       FROM students
-      WHERE id = $1
-        AND role = 'student'
+      WHERE id = $1 AND role = 'student'
       `,
       [studentId]
     );
 
-    if (studentResult.rows.length === 0) {
+    if (!studentResult.rows.length) {
       return res.status(404).json({
         success: false,
         message: "Student not found",
       });
     }
 
-    const student =
-      studentResult.rows[0];
+    const student = studentResult.rows[0];
 
-    // --------------------------------------------------------
-    // SAME BATCH
-    // --------------------------------------------------------
-    if (
-      normalizeBatch(student.batch) ===
-      normalizedBatch
-    ) {
+    if (normalizeBatch(student.batch) === normalizedBatch) {
       return res.status(400).json({
         success: false,
-        message:
-          `${student.name} is already in ${normalizedBatch}`,
+        message: `${student.name} is already in ${normalizedBatch}`,
       });
     }
 
-    // --------------------------------------------------------
-    // UPDATE
-    // --------------------------------------------------------
-    const updateResult = await db.query(
+    const { rows } = await db.query(
       `
       UPDATE students
       SET batch = $1
-      WHERE id = $2
-        AND role = 'student'
-
-      RETURNING
-        id,
-        name,
-        class,
-        batch
+      WHERE id = $2 AND role = 'student'
+      RETURNING id, name, class, batch
       `,
-      [
-        normalizedBatch,
-        studentId,
-      ]
+      [normalizedBatch, studentId]
     );
 
     return res.json({
       success: true,
-      message:
-        `${student.name} shifted successfully to ${normalizedBatch}`,
-      student:
-        updateResult.rows[0],
+      message: `${student.name} shifted successfully to ${normalizedBatch}`,
+      student: rows[0],
     });
-
   } catch (error) {
-    console.error(
-      "Error shifting student batch:",
-      error
-    );
+    console.error("shiftStudentBatch:", error);
 
     return res.status(500).json({
       success: false,
-      message:
-        "Server error while shifting student batch",
+      message: "Server error while shifting student batch",
     });
   }
 };
 
+// ============================================================
+// 6. ADMIN: ALL STUDENTS SUBJECT-WISE ATTENDANCE FOR A MONTH
+// ============================================================
 
-// ============================================================
-// ADMIN: GET ALL STUDENTS SUBJECT-WISE ATTENDANCE FOR MONTH
-// ============================================================
 exports.getAllStudentsSubjectWiseAttendance = async (req, res) => {
   try {
     const { month } = req.query;
 
-    // --------------------------------------------------------
-    // VALIDATION
-    // month format: YYYY-MM
-    // Example: 2026-09
-    // --------------------------------------------------------
-    if (!month) {
+    if (!month || !/^\d{4}-\d{2}$/.test(month)) {
       return res.status(400).json({
         success: false,
-        message: "month is required. Use YYYY-MM format",
+        message: "month is required in YYYY-MM format",
       });
     }
 
-    if (!/^\d{4}-\d{2}$/.test(month)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid month format. Use YYYY-MM",
-      });
-    }
-
-    // --------------------------------------------------------
-    // FETCH ALL STUDENTS + SUBJECT ATTENDANCE
-    // --------------------------------------------------------
-    const result = await db.query(
+    const { rows } = await db.query(
       `
       SELECT
         s.id AS student_id,
@@ -560,7 +595,6 @@ exports.getAllStudentsSubjectWiseAttendance = async (req, res) => {
         s.class,
         s.batch,
         s.stream,
-
         a.subject_code,
 
         COUNT(*) FILTER (
@@ -580,40 +614,30 @@ exports.getAllStudentsSubjectWiseAttendance = async (req, res) => {
       LEFT JOIN attendance a
         ON a.student_id = s.id
         AND a.subject_code IS NOT NULL
-        AND a.date >= ($1 || '-01')::date
-        AND a.date < (
-          TO_DATE($1, 'YYYY-MM') + INTERVAL '1 month'
-        )
+        AND UPPER(a.subject_code) NOT LIKE '%EXAM%'
+        AND LOWER(TRIM(a.subject_code)) <> 'holiday'
+        AND a.date >= TO_DATE($1, 'YYYY-MM')
+        AND a.date < TO_DATE($1, 'YYYY-MM') + INTERVAL '1 month'
 
       WHERE s.role = 'student'
 
       GROUP BY
-        s.id,
-        s.name,
-        s.class,
-        s.batch,
-        s.stream,
+        s.id, s.name, s.class, s.batch, s.stream,
         a.subject_code
 
-      ORDER BY
-        s.class,
-        s.name,
-        a.subject_code
+      ORDER BY s.class, s.name, a.subject_code
       `,
       [month]
     );
 
-    // --------------------------------------------------------
-    // GROUP DATA STUDENT-WISE
-    // --------------------------------------------------------
     const studentsMap = {};
 
-    result.rows.forEach((row) => {
-      const studentId = row.student_id;
+    for (const row of rows) {
+      const id = row.student_id;
 
-      if (!studentsMap[studentId]) {
-        studentsMap[studentId] = {
-          studentId: Number(studentId),
+      if (!studentsMap[id]) {
+        studentsMap[id] = {
+          studentId: Number(id),
           name: row.name,
           class: row.class,
           batch: row.batch,
@@ -622,55 +646,44 @@ exports.getAllStudentsSubjectWiseAttendance = async (req, res) => {
         };
       }
 
-      // Student may have no attendance in selected month
       if (row.subject_code) {
         const present = Number(row.present);
         const absent = Number(row.absent);
         const total = Number(row.total);
 
-        studentsMap[studentId].subjects.push({
+        studentsMap[id].subjects.push({
           subjectCode: row.subject_code,
           present,
           absent,
           total,
-          percentage:
-            total === 0
-              ? 0
-              : Number(((present / total) * 100).toFixed(1)),
+          percentage: getAttendancePercentage(present, total),
         });
       }
-    });
+    }
 
     const students = Object.values(studentsMap);
 
-    // --------------------------------------------------------
-    // RESPONSE
-    // --------------------------------------------------------
     return res.json({
       success: true,
       month,
       totalStudents: students.length,
       students,
     });
-
   } catch (error) {
-    console.error(
-      "Error fetching all students subject-wise attendance:",
-      error
-    );
+    console.error("getAllStudentsSubjectWiseAttendance:", error);
 
     return res.status(500).json({
       success: false,
-      message:
-        "Server error while fetching monthly subject-wise attendance",
+      message: "Server error while fetching monthly attendance",
     });
   }
 };
+
 // ============================================================
-// 4) GET INDIVIDUAL STUDENT FULL ATTENDANCE HISTORY
-//
-// Returns subject + time also.
+// 7. STUDENT: FULL ATTENDANCE HISTORY
+// Includes subject, lecture times, exam records and holiday reason.
 // ============================================================
+
 exports.getStudentAttendance = async (req, res) => {
   try {
     const { id } = req.params;
@@ -682,25 +695,23 @@ exports.getStudentAttendance = async (req, res) => {
       });
     }
 
-    const sql = `
+    const { rows } = await db.query(
+      `
       SELECT
+        id AS "attendanceId",
         date,
         subject_code AS "subjectCode",
         start_time AS "startTime",
         end_time AS "endTime",
-        status
+        status,
+        reason,
+        stream
 
       FROM attendance
-
       WHERE student_id = $1
 
-      ORDER BY
-        date DESC,
-        start_time DESC
-    `;
-
-    const { rows } = await db.query(
-      sql,
+      ORDER BY date DESC, start_time DESC NULLS LAST, id DESC
+      `,
       [id]
     );
 
@@ -708,60 +719,35 @@ exports.getStudentAttendance = async (req, res) => {
       success: true,
       attendance: rows,
     });
-
   } catch (error) {
-    console.error(
-      "Error fetching student attendance:",
-      error
-    );
+    console.error("getStudentAttendance:", error);
 
     return res.status(500).json({
       success: false,
-      message:
-        "Server error while fetching records",
+      message: "Server error while fetching records",
     });
   }
 };
 
 // ============================================================
-// 5) GET ALL STUDENTS ATTENDANCE SUMMARY
-//
-// Subject-wise attendance entries are counted individually.
+// 8. ALL STUDENTS ATTENDANCE SUMMARY
 // ============================================================
-exports.getTodayAttendancePercent = async (
-  req,
-  res
-) => {
+
+exports.getTodayAttendancePercent = async (req, res) => {
   try {
-    const sql = `
+    const { rows } = await db.query(
+      `
       SELECT
-
         s.id AS "studentId",
+        s.name,
+        s.class,
 
-        s.name AS name,
-
-        s.class AS class,
-
-        COALESCE(
-          SUM(
-            CASE
-              WHEN a.status = 'Present'
-              THEN 1
-              ELSE 0
-            END
-          ),
-          0
+        COUNT(*) FILTER (
+          WHERE a.status = 'Present'
         ) AS present,
 
-        COALESCE(
-          SUM(
-            CASE
-              WHEN a.status IN ('Present', 'Absent')
-              THEN 1
-              ELSE 0
-            END
-          ),
-          0
+        COUNT(*) FILTER (
+          WHERE a.status IN ('Present', 'Absent')
         ) AS total
 
       FROM students s
@@ -771,67 +757,34 @@ exports.getTodayAttendancePercent = async (
 
       WHERE s.role = 'student'
 
-      GROUP BY
-        s.id,
-        s.name,
-        s.class
-
+      GROUP BY s.id, s.name, s.class
       ORDER BY s.id
-    `;
+      `
+    );
 
-    const { rows } = await db.query(sql);
-
-    const result = rows.map((r) => {
-      const present =
-        parseInt(r.present, 10) || 0;
-
-      const total =
-        parseInt(r.total, 10) || 0;
-
-      const percentage =
-        total === 0
-          ? 0
-          : (present / total) * 100;
-
-      // ------------------------------------------------------
-      // MARKS
-      // 75% se upar har 5% par 1 mark
-      // Maximum 5 marks
-      // ------------------------------------------------------
-      let marks = 0;
-
-      if (percentage > 75) {
-        marks = Math.min(
-          5,
-          Math.ceil(
-            (percentage - 75) / 5
-          )
-        );
-      }
+    const students = rows.map((row) => {
+      const present = Number(row.present) || 0;
+      const total = Number(row.total) || 0;
+      const percentage = total === 0 ? 0 : (present / total) * 100;
 
       return {
-        studentId: r.studentId,
-        name: r.name,
-        class: r.class,
+        studentId: row.studentId,
+        name: row.name,
+        class: row.class,
         present,
         total,
-        percentage:
-          percentage.toFixed(2),
-        marks,
+        percentage: percentage.toFixed(2),
+        marks: getAttendanceMarks(percentage),
       };
     });
 
     return res.json({
       success: true,
       date: getTodayDate(),
-      students: result,
+      students,
     });
-
   } catch (error) {
-    console.error(
-      "Error getting attendance summary:",
-      error
-    );
+    console.error("getTodayAttendancePercent:", error);
 
     return res.status(500).json({
       success: false,
@@ -841,322 +794,179 @@ exports.getTodayAttendancePercent = async (
 };
 
 // ============================================================
-// 6) GET ATTENDANCE MARKS - MONTHLY
-//
-// Optional subject filter:
-//
-// ?studentId=10&month=2026-09
-//
-// OR
-//
-// ?studentId=10&month=2026-09&subject_code=Science
+// 9. ATTENDANCE MARKS - MONTHLY, OPTIONAL SUBJECT FILTER
 // ============================================================
-exports.getAttendanceMarks = async (
-  req,
-  res
-) => {
-  try {
-    const {
-      studentId,
-      month,
-      subject_code,
-    } = req.query;
 
-    if (!studentId || !month) {
+exports.getAttendanceMarks = async (req, res) => {
+  try {
+    const { studentId, month, subject_code } = req.query;
+
+    if (!studentId || !month || !/^\d{4}-\d{2}$/.test(month)) {
       return res.status(400).json({
         success: false,
-        message:
-          "studentId & month required",
+        message: "Valid studentId and month (YYYY-MM) are required",
       });
     }
 
-    const id = Number(studentId);
-
-    const monthStr =
-      String(month).trim();
-
-    // --------------------------------------------------------
-    // BASE QUERY
-    // --------------------------------------------------------
-    let sql = `
-      SELECT
-        status,
-        subject_code,
-        start_time,
-        end_time
-
-      FROM attendance
-
-      WHERE student_id = $1
-
-      AND date::text LIKE $2
-    `;
-
     const params = [
-      id,
-      `${monthStr}%`,
+      Number(studentId),
+      month,
     ];
 
-    // --------------------------------------------------------
-    // OPTIONAL SUBJECT FILTER
-    // --------------------------------------------------------
-    if (subject_code) {
-      sql += `
-        AND subject_code = $3
-      `;
+    let subjectFilter = "";
 
+    if (subject_code) {
       params.push(subject_code);
+      subjectFilter = `AND subject_code = $3`;
     }
 
     const { rows } = await db.query(
-      sql,
+      `
+      SELECT status
+      FROM attendance
+      WHERE student_id = $1
+        AND date >= TO_DATE($2, 'YYYY-MM')
+        AND date < TO_DATE($2, 'YYYY-MM') + INTERVAL '1 month'
+        ${subjectFilter}
+      `,
       params
     );
 
-    // --------------------------------------------------------
-    // ONLY PRESENT / ABSENT
-    // --------------------------------------------------------
-    const validDays =
-      rows.filter(
-        (r) =>
-          r.status === "Present" ||
-          r.status === "Absent"
-      ).length;
+    const validDays = rows.filter(
+      (row) => ["Present", "Absent"].includes(row.status)
+    ).length;
 
-    const presentDays =
-      rows.filter(
-        (r) =>
-          r.status === "Present"
-      ).length;
+    const presentDays = rows.filter(
+      (row) => row.status === "Present"
+    ).length;
 
+    const absentDays = validDays - presentDays;
     const percentage =
-      validDays === 0
-        ? 0
-        : (presentDays / validDays) * 100;
-
-    // --------------------------------------------------------
-    // MARKS
-    // --------------------------------------------------------
-    let marks = 0;
-
-    if (percentage > 75) {
-      marks = Math.ceil(
-        (percentage - 75) / 5
-      );
-
-      marks = Math.min(
-        marks,
-        5
-      );
-    }
+      validDays === 0 ? 0 : (presentDays / validDays) * 100;
 
     return res.json({
       success: true,
-
-      studentId: id,
-
-      month: monthStr,
-
-      subject_code:
-        subject_code || null,
-
+      studentId: Number(studentId),
+      month,
+      subject_code: subject_code || null,
       totalClasses: validDays,
-
-      presentClasses:
-        presentDays,
-
-      absentClasses:
-        validDays - presentDays,
-
-      percentage:
-        percentage.toFixed(2),
-
-      attendanceMarks:
-        marks,
+      presentClasses: presentDays,
+      absentClasses: absentDays,
+      percentage: percentage.toFixed(2),
+      attendanceMarks: getAttendanceMarks(percentage),
     });
-
   } catch (error) {
-    console.error(
-      "Error getting attendance marks:",
-      error
-    );
+    console.error("getAttendanceMarks:", error);
 
     return res.status(500).json({
       success: false,
-      message:
-        "Server error while fetching attendance marks",
+      message: "Server error while fetching attendance marks",
     });
   }
 };
 
-// ===================================================================
-// REQUESTS
-// ===================================================================
+// ============================================================
+// 10. ADMIN: STUDENT DROP + PROFILE EDIT REQUESTS
+// ============================================================
 
-// ============================================================
-// 7) ADMIN: GET ALL STUDENT DROP + PROFILE EDIT REQUESTS
-// ============================================================
-exports.getAllStudentRequests = async (
-  req,
-  res
-) => {
+exports.getAllStudentRequests = async (req, res) => {
   try {
-    const sql = `
+    const { rows } = await db.query(
+      `
       SELECT
-
         s.id AS "studentId",
-
         s.name AS "studentName",
-
         s.email,
-
         sd.id AS "dropId",
-
         sd.start_date AS "dropStartDate",
-
         sd.end_date AS "dropEndDate",
-
         sd.drop_type AS "dropType",
-
         per.id AS "requestId",
-
         per.field_name AS "fieldName",
-
         per.old_value AS "oldValue",
-
         per.requested_value AS "requestedValue",
-
         per.reason,
-
         per.status AS "requestStatus",
-
         per.requested_at AS "requestedAt",
-
         per.action_by AS "actionBy",
-
         per.action_at AS "actionAt",
-
         per.request_type AS "requestType"
 
       FROM students s
 
-      LEFT JOIN student_drop sd
-        ON s.id = sd.student_id
-
-      LEFT JOIN profile_edit_requests per
-        ON s.id = per.student_id
+      LEFT JOIN student_drop sd ON s.id = sd.student_id
+      LEFT JOIN profile_edit_requests per ON s.id = per.student_id
 
       WHERE s.role = 'student'
-
-      ORDER BY
-        s.id DESC,
-        per.requested_at DESC
-    `;
-
-    const { rows } =
-      await db.query(sql);
+      ORDER BY s.id DESC, per.requested_at DESC
+      `
+    );
 
     return res.json({
       success: true,
       students: rows,
     });
-
   } catch (error) {
-    console.error(
-      "Error fetching student requests:",
-      error
-    );
+    console.error("getAllStudentRequests:", error);
 
     return res.status(500).json({
       success: false,
-      message:
-        "Server error while fetching student requests",
+      message: "Server error while fetching student requests",
     });
   }
 };
 
 // ============================================================
-// 8) STUDENT: GET OWN DROP + PROFILE EDIT REQUEST
+// 11. STUDENT: OWN DROP + PROFILE EDIT REQUESTS
 // ============================================================
-exports.getMyStudentRequests = async (
-  req,
-  res
-) => {
+
+exports.getMyStudentRequests = async (req, res) => {
   try {
     const { id } = req.params;
 
     if (!id) {
       return res.status(400).json({
         success: false,
-        message:
-          "Student ID required",
+        message: "Student ID required",
       });
     }
 
-    const sql = `
+    const { rows } = await db.query(
+      `
       SELECT
-
         s.id AS "studentId",
-
         s.name AS "studentName",
-
         s.email,
-
         sd.id AS "dropId",
-
         sd.start_date AS "dropStartDate",
-
         sd.end_date AS "dropEndDate",
-
         sd.drop_type AS "dropType",
-
         per.id AS "requestId",
-
         per.field_name AS "fieldName",
-
         per.old_value AS "oldValue",
-
         per.requested_value AS "requestedValue",
-
         per.reason,
-
         per.status AS "requestStatus",
-
         per.requested_at AS "requestedAt",
-
         per.action_by AS "actionBy",
-
         per.action_at AS "actionAt",
-
         per.request_type AS "requestType"
 
       FROM students s
 
-      LEFT JOIN student_drop sd
-        ON s.id = sd.student_id
+      LEFT JOIN student_drop sd ON s.id = sd.student_id
+      LEFT JOIN profile_edit_requests per ON s.id = per.student_id
 
-      LEFT JOIN profile_edit_requests per
-        ON s.id = per.student_id
+      WHERE s.id = $1 AND s.role = 'student'
+      ORDER BY per.requested_at DESC
+      `,
+      [id]
+    );
 
-      WHERE s.id = $1
-
-        AND s.role = 'student'
-
-      ORDER BY
-        per.requested_at DESC
-    `;
-
-    const { rows } =
-      await db.query(
-        sql,
-        [id]
-      );
-
-    if (rows.length === 0) {
+    if (!rows.length) {
       return res.status(404).json({
         success: false,
-        message:
-          "Student not found",
+        message: "Student not found",
       });
     }
 
@@ -1164,49 +974,33 @@ exports.getMyStudentRequests = async (
       success: true,
       student: rows,
     });
-
   } catch (error) {
-    console.error(
-      "Error fetching student data:",
-      error
-    );
+    console.error("getMyStudentRequests:", error);
 
     return res.status(500).json({
       success: false,
-      message:
-        "Server error while fetching student data",
+      message: "Server error while fetching student data",
     });
   }
 };
 
 // ============================================================
-// ADMIN: FETCH DONE ATTENDANCE / SCHEDULE DATE-WISE
+// 12. ADMIN: FETCH ATTENDANCE / COMPLETED SCHEDULE FOR A DATE
 // ============================================================
-// ============================================================
-// ADMIN: FETCH DONE SCHEDULE DATE-WISE
-// ============================================================
+
 exports.fetchDoneSchedule = async (req, res) => {
   try {
     const { date } = req.query;
 
-    // Date required
-    if (!date) {
+    if (!date || !isValidDate(date)) {
       return res.status(400).json({
         success: false,
-        message: "Date is required"
+        message: "Valid date is required in YYYY-MM-DD format",
       });
     }
 
-    // YYYY-MM-DD format validation
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid date format. Use YYYY-MM-DD"
-      });
-    }
-
-    // Fetch attendance records for selected date
-    const { rows } = await db.query(`
+    const { rows } = await db.query(
+      `
       SELECT
         a.id AS "attendanceId",
         a.student_id AS "studentId",
@@ -1218,41 +1012,40 @@ exports.fetchDoneSchedule = async (req, res) => {
         a.subject_code AS "subjectCode",
         a.start_time AS "startTime",
         a.end_time AS "endTime",
-        a.status
+        a.status,
+        a.reason
 
       FROM attendance a
-
-      JOIN students s
-        ON s.id = a.student_id
+      JOIN students s ON s.id = a.student_id
 
       WHERE a.date::date = $1::date
 
-      ORDER BY
-        a.start_time ASC NULLS LAST,
-        s.name ASC
-    `, [date]);
+      ORDER BY a.start_time ASC NULLS LAST, s.name ASC
+      `,
+      [date]
+    );
 
     return res.json({
       success: true,
       date,
       totalRecords: rows.length,
-      attendance: rows
+      attendance: rows,
     });
-
   } catch (error) {
-    console.error("fetchDoneSchedule ERROR:", error);
+    console.error("fetchDoneSchedule:", error);
 
     return res.status(500).json({
       success: false,
       message: "Server error while fetching records",
-      error: error.message
+      error: error.message,
     });
   }
 };
 
 // ============================================================
-// STUDENT: FETCH OWN DONE CLASSES / ATTENDANCE DATE-WISE
+// 13. STUDENT: FETCH OWN COMPLETED CLASSES / ATTENDANCE
 // ============================================================
+
 exports.fetchStudentDoneClassesSchedule = async (req, res) => {
   try {
     const { studentId } = req.params;
@@ -1260,56 +1053,50 @@ exports.fetchStudentDoneClassesSchedule = async (req, res) => {
     if (!studentId) {
       return res.status(400).json({
         success: false,
-        message: "Student ID is required"
+        message: "Student ID is required",
       });
     }
 
-    const { rows } = await db.query(`
+    const { rows } = await db.query(
+      `
       SELECT
         a.id AS "attendanceId",
         a.student_id AS "studentId",
-
         s.name AS "studentName",
         s.class,
         s.stream,
         s.batch,
-
         a.date,
         a.subject_code AS "subjectCode",
         a.start_time AS "startTime",
         a.end_time AS "endTime",
-        a.status
+        a.status,
+        a.reason
 
       FROM attendance a
-
-      INNER JOIN students s
-        ON s.id = a.student_id
+      INNER JOIN students s ON s.id = a.student_id
 
       WHERE a.student_id = $1
         AND s.role = 'student'
 
-      ORDER BY
-        a.date DESC,
-        a.start_time DESC NULLS LAST
-    `, [studentId]);
+      ORDER BY a.date DESC, a.start_time DESC NULLS LAST, a.id DESC
+      `,
+      [studentId]
+    );
 
     return res.json({
       success: true,
       studentId: Number(studentId),
       totalRecords: rows.length,
-      classes: rows
+      classes: rows,
     });
-
   } catch (error) {
-    console.error(
-      "fetchStudentDoneClassesSchedule:",
-      error
-    );
+    console.error("fetchStudentDoneClassesSchedule:", error);
 
     return res.status(500).json({
       success: false,
       message: "Failed to fetch student completed classes",
-      error: error.message
+      error: error.message,
     });
   }
 };

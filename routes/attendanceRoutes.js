@@ -14,9 +14,8 @@ router.get("/list", attendanceController.getStudentsList);
 
 // ------------------------------------
 // POST mark or update attendance (Admin)
-router.post("/mark",authMiddleware,adminMiddleware,attendanceController.markAttendance);
-
-router.put("/edit", attendanceController.editAttendance);
+router.post("/mark", attendanceController.markOrUpdateAttendance); // Yehi route sab handle kar lega
+router.put("/edit", attendanceController.markOrUpdateAttendance);
 
 router.put("/student/:studentId/batch",attendanceController.shiftStudentBatch);
 

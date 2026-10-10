@@ -348,6 +348,46 @@ const getMonthlyFeeByClass = async (req, res) => {
 
 
 
+// =========================
+// GET FEES BY SESSION
+// =========================
+const getFeesBySession = async (req, res) => {
+  try {
+    const { session } = req.query;
+
+    if (!session) {
+      return res.status(400).json({
+        success: false,
+        message: "Session is required",
+      });
+    }
+
+    const result = await pool.query(
+      `SELECT *
+       FROM fees
+       WHERE session = $1
+       ORDER BY payment_date DESC, payment_time DESC`,
+      [session]
+    );
+
+    res.status(200).json({
+      success: true,
+      session,
+      totalRecords: result.rows.length,
+      fees: result.rows,
+    });
+  } catch (error) {
+    console.error("Get Fees By Session Error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch fees by session",
+      error: error.message,
+    });
+  }
+};
+
+
 module.exports = {
   addFee,
   getAllFees,
@@ -355,4 +395,5 @@ module.exports = {
   updateFee,
   deleteFee,
   getMonthlyFeeByClass,
+  getFeesBySession,
 };

@@ -14,8 +14,8 @@ router.get("/list", attendanceController.getStudentsList);
 
 // ------------------------------------
 // POST mark or update attendance (Admin)
-router.post("/mark", attendanceController.markOrUpdateAttendance); // Yehi route sab handle kar lega
-router.put("/edit", attendanceController.markOrUpdateAttendance);
+router.post("/mark", authMiddleware,adminMiddleware,attendanceController.markOrUpdateAttendance); // Yehi route sab handle kar lega
+router.put("/edit", authMiddleware,adminMiddleware,attendanceController.markOrUpdateAttendance);
 
 router.put("/student/:studentId/batch",attendanceController.shiftStudentBatch);
 
@@ -29,7 +29,7 @@ router.get("/attendance-marks",authMiddleware, attendanceController.getAttendanc
 
 // ------------------------------------
 // GET full attendance of a student (Student)
-router.get("/:id", attendanceController.getStudentAttendance);
+router.get("/:id",authMiddleware, attendanceController.getStudentAttendance);
 
 
 

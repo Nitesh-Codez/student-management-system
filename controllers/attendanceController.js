@@ -358,18 +358,8 @@ exports.shiftStudentBatch = async (req, res) => {
 // ============================================================
 // 6. ADMIN: ALL STUDENTS SUBJECT-WISE ATTENDANCE FOR A MONTH
 // ============================================================
-
 exports.getAllStudentsSubjectWiseAttendance = async (req, res) => {
   try {
-    const { month } = req.query;
-
-    if (!month || !/^\d{4}-\d{2}$/.test(month)) {
-      return res.status(400).json({
-        success: false,
-        message: "month is required in YYYY-MM format",
-      });
-    }
-
     const { rows } = await db.query(
       `
       SELECT
@@ -399,18 +389,22 @@ exports.getAllStudentsSubjectWiseAttendance = async (req, res) => {
         AND a.subject_code IS NOT NULL
         AND UPPER(a.subject_code) NOT LIKE '%EXAM%'
         AND LOWER(TRIM(a.subject_code)) <> 'holiday'
-        AND a.date >= TO_DATE($1, 'YYYY-MM')
-        AND a.date < TO_DATE($1, 'YYYY-MM') + INTERVAL '1 month'
 
       WHERE s.role = 'student'
 
       GROUP BY
-        s.id, s.name, s.class, s.batch, s.stream,
+        s.id,
+        s.name,
+        s.class,
+        s.batch,
+        s.stream,
         a.subject_code
 
-      ORDER BY s.class, s.name, a.subject_code
-      `,
-      [month]
+      ORDER BY
+        s.class,
+        s.name,
+        a.subject_code
+      `
     );
 
     const studentsMap = {};
@@ -448,20 +442,21 @@ exports.getAllStudentsSubjectWiseAttendance = async (req, res) => {
 
     return res.json({
       success: true,
-      month,
       totalStudents: students.length,
       students,
     });
   } catch (error) {
-    console.error("getAllStudentsSubjectWiseAttendance:", error);
+    console.error(
+      "getAllStudentsSubjectWiseAttendance:",
+      error
+    );
 
     return res.status(500).json({
       success: false,
-      message: "Server error while fetching monthly attendance",
+      message: "Server error while fetching subject-wise attendance",
     });
   }
 };
-
 // ============================================================
 // 7. STUDENT: FULL ATTENDANCE HISTORY
 // Includes subject, lecture times, exam records and holiday reason.

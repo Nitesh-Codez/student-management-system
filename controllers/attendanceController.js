@@ -391,6 +391,7 @@ exports.getAllStudentsSubjectWiseAttendance = async (req, res) => {
         AND LOWER(TRIM(a.subject_code)) <> 'holiday'
 
       WHERE s.role = 'student'
+       AND s.is_banned = FALSE
 
       GROUP BY
         s.id,

@@ -317,158 +317,140 @@ exports.checkMarks = async (req, res) => {
 // ==================================================
 exports.getCurrentAttendanceMarks = async (req, res) => {
   try {
+    const { studentId, session, examType } = req.query;
 
-    const {
-      studentId
-    } = req.query;
-
-
-    if (!studentId) {
+    if (!studentId || !session || !examType) {
       return res.status(400).json({
         success: false,
-        message: "studentId required"
+        message: "studentId, session and examType required"
       });
     }
 
+    // ==========================================
+    // Check Locked Attendance Marks
+    // ==========================================
+    const { rows: savedRows } = await db.query(
+      `
+        SELECT attendance_marks, attendance_locked
+        FROM marks_new
+        WHERE student_id = $1
+          AND session = $2
+          AND exam_type = $3
+        ORDER BY id DESC
+        LIMIT 1
+      `,
+      [studentId, session, examType]
+    );
 
+    // If attendance is locked, return saved marks
+    if (
+      savedRows.length > 0 &&
+      savedRows[0].attendance_locked === true
+    ) {
+      return res.json({
+        success: true,
+        attendanceMarks: Number(savedRows[0].attendance_marks) || 0,
+        attendanceLocked: true
+      });
+    }
+
+    // ==========================================
+    // Current Session Year
+    // ==========================================
     const today = new Date();
 
-
-    // ===============================
-    // Current Session Year
-    // ===============================
     const sessionYear =
       today.getMonth() + 1 >= 4
         ? today.getFullYear()
         : today.getFullYear() - 1;
 
+    const startDate = `${sessionYear}-04-01`;
+    const endDate = today.toISOString().split("T")[0];
 
-    const startDate =
-      `${sessionYear}-04-01`;
-
-
-    const endDate =
-      today.toISOString().split("T")[0];
-
-
-    const {
-      rows
-    } = await db.query(
+    // ==========================================
+    // Fetch Attendance Records
+    // ==========================================
+    const { rows } = await db.query(
       `
         SELECT
           EXTRACT(MONTH FROM date)::int AS month,
           status
         FROM attendance
         WHERE student_id = $1
-        AND date BETWEEN $2 AND $3
+          AND date BETWEEN $2 AND $3
       `,
-      [
-        studentId,
-        startDate,
-        endDate
-      ]
+      [studentId, startDate, endDate]
     );
-
 
     let totalMarks = 0;
     let totalMonths = 0;
 
-
-    // ===============================
+    // ==========================================
     // April → Current Month
-    // ===============================
+    // ==========================================
     const lastMonth =
       today.getFullYear() === sessionYear
         ? today.getMonth() + 1
         : 12;
 
-
-    for (
-      let month = 4;
-      month <= lastMonth;
-      month++
-    ) {
-
-      const monthData =
-        rows.filter(
-          r => r.month === month
-        );
-
+    for (let month = 4; month <= lastMonth; month++) {
+      const monthData = rows.filter(
+        (r) => r.month === month
+      );
 
       if (monthData.length === 0) {
         continue;
       }
 
+      // Valid attendance days
+      const validDays = monthData.filter(
+        (r) =>
+          r.status === "Present" ||
+          r.status === "Absent"
+      ).length;
 
-      // ===============================
-      // Valid Attendance Days
-      // ===============================
-      const validDays =
-        monthData.filter(
-          r =>
-            r.status === "Present" ||
-            r.status === "Absent"
-        ).length;
+      // Present days
+      const presentDays = monthData.filter(
+        (r) => r.status === "Present"
+      ).length;
 
-
-      // ===============================
-      // Present Days
-      // ===============================
-      const presentDays =
-        monthData.filter(
-          r =>
-            r.status === "Present"
-        ).length;
-
-
-      // ===============================
-      // Percentage
-      // ===============================
+      // Attendance percentage
       const percentage =
         validDays === 0
           ? 0
           : (presentDays / validDays) * 100;
 
-
-      // ===============================
-      // Attendance Marks
-      // ===============================
+      // Attendance marks
       const marks =
         percentage <= 75
           ? 0
-          : Math.ceil(
-              (percentage - 75) / 5
-            );
-
+          : Math.ceil((percentage - 75) / 5);
 
       totalMarks += marks;
       totalMonths++;
     }
 
-
-    // ===============================
+    // ==========================================
     // Final Attendance Marks
-    // ===============================
+    // ==========================================
     const attendanceMarks =
       totalMonths === 0
         ? 0
         : Number(
-            (
-              totalMarks /
-              totalMonths
-            ).toFixed(2)
+            (totalMarks / totalMonths).toFixed(2)
           );
-
 
     return res.json({
       success: true,
-      attendanceMarks
+      attendanceMarks,
+      attendanceLocked: false
     });
 
-
   } catch (error) {
-
-    console.error(error);
+    console.error(
+      "getCurrentAttendanceMarks error:",
+      error
+    );
 
     return res.status(500).json({
       success: false,
@@ -476,7 +458,6 @@ exports.getCurrentAttendanceMarks = async (req, res) => {
     });
   }
 };
-
 
 // ==================================================
 // Get Marks By Selected Date

@@ -354,9 +354,8 @@ exports.shiftStudentBatch = async (req, res) => {
     });
   }
 };
-
 // ============================================================
-// 6. ADMIN: ALL STUDENTS SUBJECT-WISE ATTENDANCE FOR A MONTH
+// 6. ADMIN: ALL STUDENTS SUBJECT-WISE ATTENDANCE
 // ============================================================
 exports.getAllStudentsSubjectWiseAttendance = async (req, res) => {
   try {
@@ -391,7 +390,7 @@ exports.getAllStudentsSubjectWiseAttendance = async (req, res) => {
         AND LOWER(TRIM(a.subject_code)) <> 'holiday'
 
       WHERE s.role = 'student'
-       AND s.is_banned = FALSE
+        AND s.is_banned IS FALSE
 
       GROUP BY
         s.id,

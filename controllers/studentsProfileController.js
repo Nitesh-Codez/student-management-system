@@ -337,7 +337,8 @@ const getStudentsBasic = async (req, res) => {
         session,
         profile_photo,
         stream,
-        joining_date
+        joining_date,
+        is_banned
       FROM students
       ORDER BY id ASC
     `);

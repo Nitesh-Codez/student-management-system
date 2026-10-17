@@ -339,8 +339,10 @@ const getStudentsBasic = async (req, res) => {
         stream,
         joining_date,
         is_banned
-      FROM students
-      ORDER BY id ASC
+FROM students
+WHERE role = 'student'
+  AND is_banned IS FALSE
+ORDER BY id ASC
     `);
 
     res.status(200).json({

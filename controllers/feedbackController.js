@@ -147,7 +147,7 @@ const getTeachersByClass = async (req, res) => {
   try {
     const { class_name } = req.params;
 
-    const { rows } = await db.query(
+    const { rows } = await pool.query(
       `
       SELECT DISTINCT
         ta.teacher_id AS "teacherId",
@@ -169,7 +169,7 @@ const getTeachersByClass = async (req, res) => {
       className: class_name,
       teachers: rows,
     });
-  } catch (error) {
+    } catch (error) {
     console.error("getTeachersByClass:", error);
 
     return res.status(500).json({
@@ -177,12 +177,12 @@ const getTeachersByClass = async (req, res) => {
       message: "Failed to fetch teachers",
     });
   }
-};
+}; // getTeachersByClass function close
 
-module.exports = { 
-  submitFeedback, 
-  getStudentFeedback, 
-  getAllFeedback, 
+module.exports = {
+  submitFeedback,
+  getStudentFeedback,
+  getAllFeedback,
   getAdminFeedbackSummary,
   getTeachersByClass
 };

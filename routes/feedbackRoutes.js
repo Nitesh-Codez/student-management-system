@@ -21,9 +21,6 @@ router.get("/student/:studentId",authMiddleware, getStudentFeedback);
 router.get("/admin/all",authMiddleware,adminMiddleware, getAllFeedback);
 router.get("/admin/summary",authMiddleware,adminMiddleware, getAdminFeedbackSummary);
 
-router.get(
-  "/class-sub-teacher/:class_name",
-  teacherAssignmentController.getTeachersByClass
-);
+router.get("/class-sub-teacher/:class_name",getTeachersByClass);
 
 module.exports = router;

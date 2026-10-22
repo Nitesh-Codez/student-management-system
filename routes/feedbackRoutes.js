@@ -5,7 +5,8 @@ const {
   submitFeedback,
   getStudentFeedback,
   getAllFeedback,
-  getAdminFeedbackSummary
+  getAdminFeedbackSummary,
+  getTeachersByClass
 } = require("../controllers/feedbackController");
 
 //Middlewares
@@ -19,5 +20,10 @@ router.get("/student/:studentId",authMiddleware, getStudentFeedback);
 // Admin
 router.get("/admin/all",authMiddleware,adminMiddleware, getAllFeedback);
 router.get("/admin/summary",authMiddleware,adminMiddleware, getAdminFeedbackSummary);
+
+router.get(
+  "/class-sub-teacher/:class_name",
+  teacherAssignmentController.getTeachersByClass
+);
 
 module.exports = router;

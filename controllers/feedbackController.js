@@ -140,9 +140,49 @@ const getAdminFeedbackSummary = async (req, res) => {
   }
 };
 
+
+
+// GET TEACHERS BY CLASS FOR FEEDBACK
+const getTeachersByClass = async (req, res) => {
+  try {
+    const { class_name } = req.params;
+
+    const { rows } = await db.query(
+      `
+      SELECT DISTINCT
+        ta.teacher_id AS "teacherId",
+        t.name AS "teacherName",
+        t.profile_photo AS "teacherPhoto",
+        ta.class_name AS "className",
+        ta.subject_name AS "subjectName"
+      FROM teacher_assignments ta
+      LEFT JOIN teachers t
+        ON ta.teacher_id = t.id
+      WHERE ta.class_name = $1
+      ORDER BY ta.subject_name
+      `,
+      [class_name]
+    );
+
+    return res.json({
+      success: true,
+      className: class_name,
+      teachers: rows,
+    });
+  } catch (error) {
+    console.error("getTeachersByClass:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch teachers",
+    });
+  }
+};
+
 module.exports = { 
   submitFeedback, 
   getStudentFeedback, 
   getAllFeedback, 
-  getAdminFeedbackSummary 
+  getAdminFeedbackSummary,
+  getTeachersByClass
 };

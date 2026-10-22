@@ -27,7 +27,7 @@ router.delete("/delete/:id",authMiddleware,adminMiddleware, teacherAssignmentCon
 // ================= BULK SUSPEND / HOLIDAY =================
 router.post("/suspend-day",authMiddleware,adminMiddleware, teacherAssignmentController.suspendDay);
 
-router.get("/teacher/:teacher_id",authMiddleware,adminMiddleware, teacherAssignmentController.getTeacherLectures);
+router.get("/teacher/:teacher_id", teacherAssignmentController.getTeacherLectures);
 
 //
 router.get("/student-lectures/:classes/:date",teacherAssignmentController.getStudentLecturesMultipleClasses);

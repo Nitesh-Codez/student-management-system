@@ -263,12 +263,15 @@ const getTeachersByClass = async (req, res) => {
 
 
 
-//GET fACULTY FEEDBACK
+
 
 // GET FACULTY-WISE FEEDBACK PERCENTAGE FOR CLASS 10
+
 const getFacultyFeedbackPercentage = async (req, res) => {
   try {
-    const { rows } = await pool.query(`
+    const { class_name } = req.query;
+
+    let query = `
       SELECT
         teacher_id AS "teacherId",
         subject,
@@ -276,10 +279,21 @@ const getFacultyFeedbackPercentage = async (req, res) => {
         ROUND(AVG(percentage)::numeric, 2) AS "averagePercentage",
         COUNT(*) AS "totalFeedback"
       FROM feedback
-      WHERE class = $1
+    `;
+
+    const values = [];
+
+    if (class_name && class_name !== "All") {
+      query += ` WHERE class = $1`;
+      values.push(class_name);
+    }
+
+    query += `
       GROUP BY teacher_id, subject, class
-      ORDER BY teacher_id, subject
-    `, ["10th"]);
+      ORDER BY class, teacher_id, subject
+    `;
+
+    const { rows } = await pool.query(query, values);
 
     return res.status(200).json({
       success: true,
@@ -287,13 +301,13 @@ const getFacultyFeedbackPercentage = async (req, res) => {
     });
   } catch (error) {
     console.error("Faculty feedback percentage error:", error);
+
     return res.status(500).json({
       success: false,
       message: "Failed to fetch faculty feedback percentage"
     });
   }
 };
-
 
 
 

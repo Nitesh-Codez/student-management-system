@@ -6,7 +6,8 @@ const {
   getStudentFeedback,
   getAllFeedback,
   getAdminFeedbackSummary,
-  getTeachersByClass
+  getTeachersByClass,
+  getFacultyFeedbackPercentage,
 } = require("../controllers/feedbackController");
 
 //Middlewares

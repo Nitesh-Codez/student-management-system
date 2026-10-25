@@ -1,6 +1,6 @@
 const pool = require("../db"); // PostgreSQL pool
 
-// ================= 1. SUBMIT FEEDBACK =================
+/// ================= 1. SUBMIT FEEDBACK =================
 
 const submitFeedback = async (req, res) => {
   try {
@@ -10,7 +10,7 @@ const submitFeedback = async (req, res) => {
       year,
       teacher_id,
       subject,
-      mcqAnswers,
+      percentage,
       suggestion,
       rating,
       problem
@@ -20,64 +20,65 @@ const submitFeedback = async (req, res) => {
       !student_id ||
       !teacher_id ||
       !subject ||
-      !Array.isArray(mcqAnswers) ||
-      mcqAnswers.length !== 10
+      percentage == null ||
+      !Number.isFinite(Number(percentage)) ||
+      Number(percentage) < 0 ||
+      Number(percentage) > 100
     ) {
       return res.status(400).json({
-        error: "Missing required fields or incomplete MCQs"
+        error: "Missing required fields or invalid percentage"
       });
     }
 
-    // 1. Insert feedback with teacher and subject
-    const feedbackResult = await pool.query(
+    // Fetch student's class
+    const studentResult = await pool.query(
+      `SELECT class FROM students WHERE id = $1`,
+      [student_id]
+    );
+
+    if (studentResult.rows.length === 0) {
+      return res.status(404).json({
+        error: "Student not found"
+      });
+    }
+
+    const studentClass = studentResult.rows[0].class;
+
+    // Save feedback with percentage and class
+    const result = await pool.query(
       `INSERT INTO feedback
        (student_id, month, year, teacher_id, subject,
-        suggestion, rating, problem, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-       RETURNING id`,
+        percentage, class, suggestion, rating, problem, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+       RETURNING id, percentage, class`,
       [
         student_id,
         month,
         year,
         teacher_id,
         subject,
+        Number(percentage),
+        studentClass,
         suggestion,
         rating,
         problem
       ]
     );
 
-    const feedbackId = feedbackResult.rows[0].id;
-
-    // 2. Insert MCQ answers
-    const values = [];
-
-    const placeholders = mcqAnswers.map((ans, i) => {
-      values.push(feedbackId, i + 1, ans);
-      const idx = i * 3;
-
-      return `($${idx + 1}, $${idx + 2}, $${idx + 3})`;
-    }).join(",");
-
-    await pool.query(
-      `INSERT INTO feedback_mcq_answers
-       (feedback_id, question_number, answer)
-       VALUES ${placeholders}`,
-      values
-    );
-
-    res.json({
+    return res.json({
       success: true,
-      message: "Feedback submitted successfully"
+      message: "Feedback submitted successfully",
+      feedback: result.rows[0]
     });
 
   } catch (err) {
     console.error("FEEDBACK SUBMIT ERROR:", err);
-    res.status(500).json({ error: "Server error" });
+
+    return res.status(500).json({
+      error: "Server error"
+    });
   }
 };
-
-
 
 // ================= 2. GET FEEDBACK FOR A STUDENT =================
 const getStudentFeedback = async (req, res) => {

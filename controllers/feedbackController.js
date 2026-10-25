@@ -1,9 +1,7 @@
-const pool = require("../db"); // PostgreSQL pool
 
-/// ================= 1. SUBMIT FEEDBACK =================
+const pool = require("../db");
 
-// ============ SUBMIT FEEDBACK ============
-
+// ================= 1. SUBMIT FEEDBACK =================
 const submitFeedback = async (req, res) => {
   try {
     const {
@@ -18,7 +16,6 @@ const submitFeedback = async (req, res) => {
       problem
     } = req.body;
 
-    // Validate required fields
     if (
       !student_id ||
       !teacher_id ||
@@ -56,13 +53,28 @@ const submitFeedback = async (req, res) => {
       });
     }
 
-    // Save feedback
+    // Get teacher name
+    const teacherResult = await pool.query(
+      `SELECT name FROM teachers WHERE id = $1`,
+      [teacher_id]
+    );
+
+    if (teacherResult.rows.length === 0) {
+      return res.status(404).json({
+        error: "Teacher not found"
+      });
+    }
+
+    const teacherName = teacherResult.rows[0].name;
+
+    // Save feedback with teacher_name
     const result = await pool.query(
       `INSERT INTO feedback (
         student_id,
         month,
         year,
         teacher_id,
+        teacher_name,
         subject,
         percentage,
         class,
@@ -71,13 +83,21 @@ const submitFeedback = async (req, res) => {
         problem,
         created_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
-      RETURNING id, student_id, percentage, class`,
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+      RETURNING
+        id,
+        student_id,
+        teacher_id,
+        teacher_name,
+        subject,
+        percentage,
+        class`,
       [
         student_id,
         Number(month),
         Number(year),
         teacher_id,
+        teacherName,
         subject,
         Number(percentage),
         studentClass,
@@ -109,16 +129,17 @@ const getStudentFeedback = async (req, res) => {
     const { studentId } = req.params;
 
     const feedbacks = await pool.query(
-      `SELECT f.*,
-              COALESCE(
-                json_agg(
-                  json_build_object(
-                    'question_number', m.question_number,
-                    'answer', m.answer
-                  ) ORDER BY m.question_number
-                ) FILTER (WHERE m.id IS NOT NULL),
-                '[]'
-              ) AS mcq_answers
+      `SELECT
+          f.*,
+          COALESCE(
+            json_agg(
+              json_build_object(
+                'question_number', m.question_number,
+                'answer', m.answer
+              ) ORDER BY m.question_number
+            ) FILTER (WHERE m.id IS NOT NULL),
+            '[]'
+          ) AS mcq_answers
        FROM feedback f
        LEFT JOIN feedback_mcq_answers m
          ON f.id = m.feedback_id
@@ -128,13 +149,17 @@ const getStudentFeedback = async (req, res) => {
       [studentId]
     );
 
-    res.json({
+    return res.json({
       success: true,
       feedbacks: feedbacks.rows
     });
+
   } catch (err) {
     console.error("GET STUDENT FEEDBACK ERROR:", err);
-    res.status(500).json({ error: "Server error" });
+
+    return res.status(500).json({
+      error: "Server error"
+    });
   }
 };
 
@@ -144,14 +169,16 @@ const getAllFeedback = async (req, res) => {
   try {
     const feedbacks = await pool.query(
       `SELECT
-          s.name,
-          s.class,
+          s.name AS student_name,
+          s.class AS student_class,
           f.id,
           f.student_id,
           f.teacher_id,
+          f.teacher_name,
           f.subject,
           f.month,
           f.year,
+          f.percentage,
           f.suggestion,
           f.rating,
           f.problem,
@@ -173,18 +200,22 @@ const getAllFeedback = async (req, res) => {
        ORDER BY f.year DESC, f.month DESC, f.id DESC`
     );
 
-    res.json({
+    return res.json({
       success: true,
       feedbacks: feedbacks.rows
     });
+
   } catch (err) {
     console.error("GET ALL FEEDBACK ERROR:", err);
-    res.status(500).json({ error: "Server error" });
+
+    return res.status(500).json({
+      error: "Server error"
+    });
   }
 };
 
 
-// ================= 4. ADMIN SUMMARY (SENTIMENT BASED) =================
+// ================= 4. ADMIN SUMMARY =================
 const getAdminFeedbackSummary = async (req, res) => {
   try {
     const result = await pool.query(
@@ -201,7 +232,7 @@ const getAdminFeedbackSummary = async (req, res) => {
       ? 0
       : Math.round((positiveCount / totalAnswers) * 100);
 
-    res.json({
+    return res.json({
       success: true,
       summary: {
         percentage,
@@ -213,9 +244,11 @@ const getAdminFeedbackSummary = async (req, res) => {
           "Needs Improvement"
       }
     });
+
   } catch (err) {
     console.error("ADMIN SUMMARY ERROR:", err);
-    res.status(500).json({
+
+    return res.status(500).json({
       success: false,
       error: "Server error"
     });
@@ -223,50 +256,44 @@ const getAdminFeedbackSummary = async (req, res) => {
 };
 
 
-
-// GET TEACHERS BY CLASS FOR FEEDBACK
+// ================= 5. GET TEACHERS BY CLASS =================
 const getTeachersByClass = async (req, res) => {
   try {
     const { class_name } = req.params;
 
     const { rows } = await pool.query(
-      `
-      SELECT DISTINCT
-        ta.teacher_id AS "teacherId",
-        t.name AS "teacherName",
-        t.profile_photo AS "teacherPhoto",
-        ta.class_name AS "className",
-        ta.subject_name AS "subjectName"
-      FROM teacher_assignments ta
-      LEFT JOIN teachers t
-        ON ta.teacher_id = t.id
-      WHERE ta.class_name = $1
-      ORDER BY ta.subject_name
-      `,
+      `SELECT DISTINCT
+          ta.teacher_id AS "teacherId",
+          t.name AS "teacherName",
+          t.profile_photo AS "teacherPhoto",
+          ta.class_name AS "className",
+          ta.subject_name AS "subjectName"
+       FROM teacher_assignments ta
+       LEFT JOIN teachers t
+         ON ta.teacher_id = t.id
+       WHERE ta.class_name = $1
+       ORDER BY ta.subject_name`,
       [class_name]
     );
 
     return res.json({
       success: true,
       className: class_name,
-      teachers: rows,
+      teachers: rows
     });
-    } catch (error) {
+
+  } catch (error) {
     console.error("getTeachersByClass:", error);
 
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch teachers",
+      message: "Failed to fetch teachers"
     });
   }
-}; // getTeachersByClass function close
+};
 
 
-
-
-
-// GET FACULTY-WISE FEEDBACK PERCENTAGE FOR CLASS 10
-
+// ================= 6. FACULTY-WISE FEEDBACK PERCENTAGE =================
 const getFacultyFeedbackPercentage = async (req, res) => {
   try {
     const { class_name } = req.query;
@@ -274,6 +301,7 @@ const getFacultyFeedbackPercentage = async (req, res) => {
     let query = `
       SELECT
         teacher_id AS "teacherId",
+        teacher_name AS "teacherName",
         subject,
         class AS "className",
         ROUND(AVG(percentage)::numeric, 2) AS "averagePercentage",
@@ -289,8 +317,8 @@ const getFacultyFeedbackPercentage = async (req, res) => {
     }
 
     query += `
-      GROUP BY teacher_id, subject, class
-      ORDER BY class, teacher_id, subject
+      GROUP BY teacher_id, teacher_name, subject, class
+      ORDER BY class, teacher_name, subject
     `;
 
     const { rows } = await pool.query(query, values);
@@ -299,6 +327,7 @@ const getFacultyFeedbackPercentage = async (req, res) => {
       success: true,
       data: rows
     });
+
   } catch (error) {
     console.error("Faculty feedback percentage error:", error);
 
@@ -308,7 +337,6 @@ const getFacultyFeedbackPercentage = async (req, res) => {
     });
   }
 };
-
 
 
 module.exports = {

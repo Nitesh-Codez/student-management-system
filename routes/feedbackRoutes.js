@@ -23,4 +23,6 @@ router.get("/admin/summary",authMiddleware,adminMiddleware, getAdminFeedbackSumm
 
 router.get("/class-sub-teacher/:class_name",getTeachersByClass);
 
+router.get("/faculty-feedback-percentage",getFacultyFeedbackPercentage);
+
 module.exports = router;

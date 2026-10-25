@@ -261,10 +261,47 @@ const getTeachersByClass = async (req, res) => {
   }
 }; // getTeachersByClass function close
 
+
+
+//GET fACULTY FEEDBACK
+
+// GET FACULTY-WISE FEEDBACK PERCENTAGE FOR CLASS 10
+const getFacultyFeedbackPercentage = async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT
+        teacher_id AS "teacherId",
+        subject,
+        class AS "className",
+        ROUND(AVG(percentage)::numeric, 2) AS "averagePercentage",
+        COUNT(*) AS "totalFeedback"
+      FROM feedback
+      WHERE class = $1
+      GROUP BY teacher_id, subject, class
+      ORDER BY teacher_id, subject
+    `, ["10th"]);
+
+    return res.status(200).json({
+      success: true,
+      data: rows
+    });
+  } catch (error) {
+    console.error("Faculty feedback percentage error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch faculty feedback percentage"
+    });
+  }
+};
+
+
+
+
 module.exports = {
   submitFeedback,
   getStudentFeedback,
   getAllFeedback,
   getAdminFeedbackSummary,
-  getTeachersByClass
+  getTeachersByClass,
+  getFacultyFeedbackPercentage
 };

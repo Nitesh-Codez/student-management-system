@@ -2,6 +2,8 @@ const pool = require("../db"); // PostgreSQL pool
 
 /// ================= 1. SUBMIT FEEDBACK =================
 
+// ============ SUBMIT FEEDBACK ============
+
 const submitFeedback = async (req, res) => {
   try {
     const {
@@ -16,21 +18,25 @@ const submitFeedback = async (req, res) => {
       problem
     } = req.body;
 
+    // Validate required fields
     if (
       !student_id ||
       !teacher_id ||
       !subject ||
+      month == null ||
+      year == null ||
       percentage == null ||
       !Number.isFinite(Number(percentage)) ||
       Number(percentage) < 0 ||
-      Number(percentage) > 100
+      Number(percentage) > 100 ||
+      !rating
     ) {
       return res.status(400).json({
-        error: "Missing required fields or invalid percentage"
+        error: "Invalid or missing feedback fields"
       });
     }
 
-    // Fetch student's class
+    // Get student class
     const studentResult = await pool.query(
       `SELECT class FROM students WHERE id = $1`,
       [student_id]
@@ -44,28 +50,44 @@ const submitFeedback = async (req, res) => {
 
     const studentClass = studentResult.rows[0].class;
 
-    // Save feedback with percentage and class
+    if (!studentClass) {
+      return res.status(400).json({
+        error: "Student class is missing in database"
+      });
+    }
+
+    // Save feedback
     const result = await pool.query(
-      `INSERT INTO feedback
-       (student_id, month, year, teacher_id, subject,
-        percentage, class, suggestion, rating, problem, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
-       RETURNING id, percentage, class`,
-      [
+      `INSERT INTO feedback (
         student_id,
         month,
         year,
         teacher_id,
         subject,
-        Number(percentage),
-        studentClass,
+        percentage,
+        class,
         suggestion,
         rating,
-        problem
+        problem,
+        created_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+      RETURNING id, student_id, percentage, class`,
+      [
+        student_id,
+        Number(month),
+        Number(year),
+        teacher_id,
+        subject,
+        Number(percentage),
+        studentClass,
+        suggestion || null,
+        Number(rating),
+        problem || null
       ]
     );
 
-    return res.json({
+    return res.status(201).json({
       success: true,
       message: "Feedback submitted successfully",
       feedback: result.rows[0]
@@ -75,10 +97,11 @@ const submitFeedback = async (req, res) => {
     console.error("FEEDBACK SUBMIT ERROR:", err);
 
     return res.status(500).json({
-      error: "Server error"
+      error: err.message
     });
   }
 };
+
 
 // ================= 2. GET FEEDBACK FOR A STUDENT =================
 const getStudentFeedback = async (req, res) => {

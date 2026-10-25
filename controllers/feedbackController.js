@@ -33,9 +33,9 @@ const submitFeedback = async (req, res) => {
       });
     }
 
-    // Get student class
+    // Get student name and class
     const studentResult = await pool.query(
-      `SELECT class FROM students WHERE id = $1`,
+      `SELECT name, class FROM students WHERE id = $1`,
       [student_id]
     );
 
@@ -45,6 +45,7 @@ const submitFeedback = async (req, res) => {
       });
     }
 
+    const studentName = studentResult.rows[0].name;
     const studentClass = studentResult.rows[0].class;
 
     if (!studentClass) {
@@ -67,10 +68,11 @@ const submitFeedback = async (req, res) => {
 
     const teacherName = teacherResult.rows[0].name;
 
-    // Save feedback with teacher_name
+    // Insert feedback with both names
     const result = await pool.query(
       `INSERT INTO feedback (
         student_id,
+        student_name,
         month,
         year,
         teacher_id,
@@ -83,10 +85,14 @@ const submitFeedback = async (req, res) => {
         problem,
         created_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+      VALUES (
+        $1, $2, $3, $4, $5, $6,
+        $7, $8, $9, $10, $11, $12, NOW()
+      )
       RETURNING
         id,
         student_id,
+        student_name,
         teacher_id,
         teacher_name,
         subject,
@@ -94,6 +100,7 @@ const submitFeedback = async (req, res) => {
         class`,
       [
         student_id,
+        studentName,
         Number(month),
         Number(year),
         teacher_id,
@@ -169,13 +176,13 @@ const getAllFeedback = async (req, res) => {
   try {
     const feedbacks = await pool.query(
       `SELECT
-          s.name AS student_name,
-          s.class AS student_class,
           f.id,
           f.student_id,
+          f.student_name,
           f.teacher_id,
           f.teacher_name,
           f.subject,
+          f.class,
           f.month,
           f.year,
           f.percentage,
@@ -193,10 +200,9 @@ const getAllFeedback = async (req, res) => {
             '[]'
           ) AS mcq_answers
        FROM feedback f
-       JOIN students s ON f.student_id = s.id
        LEFT JOIN feedback_mcq_answers m
          ON f.id = m.feedback_id
-       GROUP BY s.id, f.id
+       GROUP BY f.id
        ORDER BY f.year DESC, f.month DESC, f.id DESC`
     );
 

@@ -142,29 +142,29 @@ const getAllFees = async (req, res) => {
 // =========================
 // GET FEE BY ID
 // =========================
-
-
 const getFeeById = async (req, res) => {
   try {
     const { id } = req.params;
     const { session } = req.query;
 
+    if (!session) {
+      return res.status(400).json({
+        success: false,
+        message: "Session is required",
+      });
+    }
+
     const result = await pool.query(
-      `SELECT * FROM fees
+      `SELECT *
+       FROM fees
        WHERE student_id = $1
        AND session = $2
+       AND payment_status = 'SUCCESS'
        ORDER BY payment_date DESC`,
       [id, session]
     );
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Fee record not found",
-      });
-    }
-
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       fees: result.rows,
     });
@@ -172,14 +172,15 @@ const getFeeById = async (req, res) => {
   } catch (error) {
     console.error("Get Fee Error:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Failed to fetch fee",
       error: error.message,
     });
   }
 };
-// =========================
+
+//=========================
 // UPDATE FEE
 // =========================
 const updateFee = async (req, res) => {

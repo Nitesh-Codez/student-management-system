@@ -34,6 +34,6 @@ router.put("/update/:id", authMiddleware, adminMiddleware, updateFee);
 router.delete("/delete/:id", authMiddleware, adminMiddleware, deleteFee);
 
 // GET single student's fees — keep after specific routes
-router.get("/:id", authMiddleware, getFeeById);
+router.get("/:id", getFeeById);
 
 module.exports = router;

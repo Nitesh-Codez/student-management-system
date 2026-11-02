@@ -345,6 +345,7 @@ const getMyInternalMarks = async (req, res) => {
   }
 };
 
+
 // ==========================================
 // 1. GET ALL STUDENTS EXAM RESULT
 // ==========================================
@@ -362,8 +363,8 @@ const getAllStudentsExamResult = async (req, res) => {
     const query = `
       SELECT
         m.student_id,
-        s.student_name,
-        s.student_class,
+        s.name AS student_name,
+        s.class AS student_class,
         m.exam_type,
         m.session,
 
@@ -405,12 +406,12 @@ const getAllStudentsExamResult = async (req, res) => {
 
       GROUP BY
         m.student_id,
-        s.student_name,
-        s.student_class,
+        s.name,
+        s.class,
         m.exam_type,
         m.session
 
-      ORDER BY s.student_class, s.student_name;
+      ORDER BY s.class, s.name;
     `;
 
     const { rows } = await pool.query(query, [
@@ -455,8 +456,8 @@ const getSupplementaryStudents = async (req, res) => {
     const query = `
       SELECT
         m.student_id,
-        s.student_name,
-        s.student_class,
+        s.name AS student_name,
+        s.class AS student_class,
         m.exam_type,
         m.session,
 
@@ -472,14 +473,11 @@ const getSupplementaryStudents = async (req, res) => {
         ) AS subjects,
 
         JSON_AGG(
-          CASE
-            WHEN m.obtained_marks < 33
-            THEN JSON_BUILD_OBJECT(
-              'subject', m.subject,
-              'obtained_marks', m.obtained_marks,
-              'total_marks', m.total_marks
-            )
-          END
+          JSON_BUILD_OBJECT(
+            'subject', m.subject,
+            'obtained_marks', m.obtained_marks,
+            'total_marks', m.total_marks
+          ) ORDER BY m.subject
         ) FILTER (
           WHERE m.obtained_marks < 33
         ) AS failed_subjects,
@@ -501,14 +499,14 @@ const getSupplementaryStudents = async (req, res) => {
 
       GROUP BY
         m.student_id,
-        s.student_name,
-        s.student_class,
+        s.name,
+        s.class,
         m.exam_type,
         m.session
 
       HAVING BOOL_OR(m.obtained_marks < 33)
 
-      ORDER BY s.student_class, s.student_name;
+      ORDER BY s.class, s.name;
     `;
 
     const { rows } = await pool.query(query, [
@@ -534,6 +532,7 @@ const getSupplementaryStudents = async (req, res) => {
     });
   }
 };
+
 module.exports = {
   getMyExamDetails,
   finalizeExamSubmission,

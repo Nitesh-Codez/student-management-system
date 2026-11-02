@@ -453,13 +453,27 @@ const getSupplementaryStudents = async (req, res) => {
             'subject', m.subject,
             'obtained_marks', m.obtained_marks,
             'total_marks', m.total_marks,
-            'theory_marks', m.theory_marks
+            'theory_marks', m.theory_marks,
+            'required_marks', 33,
+            'shortage_marks',
+              GREATEST(33 - m.obtained_marks, 0),
+            'status', 'Fail'
           )
+          ORDER BY m.subject
         ) FILTER (
           WHERE m.obtained_marks < 33
-        ) AS failed_subjects
+        ) AS failed_subjects,
+
+        COUNT(*) FILTER (
+          WHERE m.obtained_marks >= 33
+        ) AS passed_subject_count,
+
+        SUM(m.obtained_marks) FILTER (
+          WHERE m.obtained_marks < 33
+        ) AS failed_subject_obtained_marks
 
       FROM marks_new m
+
       LEFT JOIN students s
         ON s.id = m.student_id
 

@@ -344,7 +344,6 @@ const getMyInternalMarks = async (req, res) => {
     });
   }
 };
-
 const getAllStudentsExamResult = async (req, res) => {
   try {
     const { exam_type, session } = req.query;
@@ -363,7 +362,9 @@ const getAllStudentsExamResult = async (req, res) => {
         s.class AS student_class,
         m.exam_type,
         m.session,
+
         COUNT(*) AS total_subjects,
+
         SUM(m.total_marks) AS maximum_marks,
         SUM(m.obtained_marks) AS obtained_marks,
 
@@ -379,22 +380,28 @@ const getAllStudentsExamResult = async (req, res) => {
         END AS result
 
       FROM marks_new m
-      LEFT JOIN students s ON s.id = m.student_id
+      LEFT JOIN students s
+        ON s.id = m.student_id
 
       WHERE m.exam_type = $1
         AND m.session = $2
         AND m.subject IS NOT NULL
         AND m.obtained_marks IS NOT NULL
+        AND m.theory_marks > 0
 
       GROUP BY
-        m.student_id, s.name, s.class,
-        m.exam_type, m.session
+        m.student_id,
+        s.name,
+        s.class,
+        m.exam_type,
+        m.session
 
       ORDER BY s.class, s.name;
     `;
 
     const { rows } = await pool.query(query, [
-      exam_type, session
+      exam_type,
+      session
     ]);
 
     res.json({
@@ -405,6 +412,7 @@ const getAllStudentsExamResult = async (req, res) => {
 
   } catch (error) {
     console.error(error);
+
     res.status(500).json({
       success: false,
       message: "Server Error"
@@ -444,23 +452,29 @@ const getSupplementaryStudents = async (req, res) => {
           JSON_BUILD_OBJECT(
             'subject', m.subject,
             'obtained_marks', m.obtained_marks,
-            'total_marks', m.total_marks
+            'total_marks', m.total_marks,
+            'theory_marks', m.theory_marks
           )
         ) FILTER (
           WHERE m.obtained_marks < 33
         ) AS failed_subjects
 
       FROM marks_new m
-      LEFT JOIN students s ON s.id = m.student_id
+      LEFT JOIN students s
+        ON s.id = m.student_id
 
       WHERE m.exam_type = $1
         AND m.session = $2
         AND m.subject IS NOT NULL
         AND m.obtained_marks IS NOT NULL
+        AND m.theory_marks > 0
 
       GROUP BY
-        m.student_id, s.name, s.class,
-        m.exam_type, m.session
+        m.student_id,
+        s.name,
+        s.class,
+        m.exam_type,
+        m.session
 
       HAVING BOOL_OR(m.obtained_marks < 33)
 
@@ -468,7 +482,8 @@ const getSupplementaryStudents = async (req, res) => {
     `;
 
     const { rows } = await pool.query(query, [
-      exam_type, session
+      exam_type,
+      session
     ]);
 
     res.json({
@@ -479,13 +494,13 @@ const getSupplementaryStudents = async (req, res) => {
 
   } catch (error) {
     console.error(error);
+
     res.status(500).json({
       success: false,
       message: "Server Error"
     });
   }
 };
-
 
 module.exports = {
   getMyExamDetails,

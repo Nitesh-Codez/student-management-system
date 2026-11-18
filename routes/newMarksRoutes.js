@@ -8,7 +8,7 @@ const adminMiddleware = require("../middlewares/adminMiddleware");
 router.get("/classes",authMiddleware, adminMiddleware, newMarksController.getClasses);
 router.get("/students/:className",authMiddleware, adminMiddleware, newMarksController.getStudentsByClass);
 router.post("/add",authMiddleware, adminMiddleware, newMarksController.addMarks);
-router.post("/check",authMiddleware, newMarksController.checkMarks);
+router.post("/check", newMarksController.checkMarks);
 
 router.get("/attendance/current-marks",authMiddleware,adminMiddleware, newMarksController.getCurrentAttendanceMarks);
 

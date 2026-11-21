@@ -27,7 +27,7 @@ router.delete("/delete/:quizId",authMiddleware,adminMiddleware, quizController.d
 // Admin - Edit Quiz
 router.put(
   "/admin/edit-quiz/:quizId",
-  adminMiddleware,
+  authMiddleware,
   adminMiddleware,
   quizController.editQuiz
 );
@@ -35,7 +35,7 @@ router.put(
 // Admin - Renew Student Quiz
 router.delete(
   "/admin/renew-quiz/:quizId/:studentId",
-  adminMiddleware,
+  authMiddleware,
   adminMiddleware,
   quizController.renewQuiz
 );

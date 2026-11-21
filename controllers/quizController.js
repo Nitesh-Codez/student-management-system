@@ -487,8 +487,9 @@ exports.getQuizReview = async (req, res) => {
   }
 };
 
-
+//===============================
 // 8. UPDATE QUESTION
+//===============================
 exports.updateQuestion = async (req, res) => {
   try {
     const { quizId, questionIndex } = req.params;

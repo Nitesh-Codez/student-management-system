@@ -28,12 +28,14 @@ router.delete("/delete/:quizId",authMiddleware,adminMiddleware, quizController.d
 router.put(
   "/admin/edit-quiz/:quizId",
   adminMiddleware,
+  adminMiddleware,
   quizController.editQuiz
 );
 
 // Admin - Renew Student Quiz
 router.delete(
   "/admin/renew-quiz/:quizId/:studentId",
+  adminMiddleware,
   adminMiddleware,
   quizController.renewQuiz
 );

@@ -579,3 +579,129 @@ exports.deleteQuiz = async (req, res) => {
     });
   }
 };
+
+
+//==========================
+//EDIT quiz
+//=========================
+// 10. EDIT QUIZ (ADMIN)
+exports.editQuiz = async (req, res) => {
+  try {
+    const { quizId } = req.params;
+
+    const {
+      created_at,
+      start_at,
+      end_at,
+      timer_minutes
+    } = req.body;
+
+    const result = await db.query(
+      `UPDATE quizzes
+       SET
+         created_at = COALESCE($1, created_at),
+         start_at = COALESCE($2, start_at),
+         end_at = COALESCE($3, end_at),
+         timer_minutes = COALESCE($4, timer_minutes)
+       WHERE id = $5
+       RETURNING *`,
+      [
+        created_at ?? null,
+        start_at ?? null,
+        end_at ?? null,
+        timer_minutes ?? null,
+        quizId
+      ]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Quiz not found"
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Quiz updated successfully",
+      data: result.rows[0]
+    });
+
+  } catch (err) {
+    console.error("Edit Quiz Error:", err);
+
+    res.status(500).json({
+      success: false,
+      message: err.message
+    });
+  }
+};
+
+//=====================================
+//RENIEW QUIZ
+//=======================================
+
+// 11. RENEW QUIZ (ADMIN - RESET STUDENT ATTEMPT)
+exports.renewQuiz = async (req, res) => {
+  try {
+    const { quizId, studentId } = req.params;
+
+    // Check quiz exists
+    const quiz = await db.query(
+      `SELECT id, title FROM quizzes WHERE id = $1`,
+      [quizId]
+    );
+
+    if (quiz.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Quiz not found"
+      });
+    }
+
+    // Check student exists
+    const student = await db.query(
+      `SELECT id, name FROM students WHERE id = $1`,
+      [studentId]
+    );
+
+    if (student.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Student not found"
+      });
+    }
+
+    // Delete only selected student's result
+    const deleted = await db.query(
+      `DELETE FROM quiz_results
+       WHERE quiz_id = $1
+       AND student_id = $2
+       RETURNING *`,
+      [quizId, studentId]
+    );
+
+    if (deleted.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Student has not attempted this quiz yet"
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Student quiz renewed successfully. Student can attempt again.",
+      student: student.rows[0].name,
+      quiz: quiz.rows[0].title,
+      previous_result_deleted: true
+    });
+
+  } catch (err) {
+    console.error("Renew Quiz Error:", err);
+
+    res.status(500).json({
+      success: false,
+      message: err.message
+    });
+  }
+};

@@ -24,6 +24,19 @@ router.put("/update/:quizId/:questionIndex",authMiddleware,adminMiddleware, quiz
 // 4. Delete quiz and its associated results
 router.delete("/delete/:quizId",authMiddleware,adminMiddleware, quizController.deleteQuiz);
 
+// Admin - Edit Quiz
+router.put(
+  "/admin/edit-quiz/:quizId",
+  adminMiddleware,
+  quizController.editQuiz
+);
+
+// Admin - Renew Student Quiz
+router.delete(
+  "/admin/renew-quiz/:quizId/:studentId",
+  adminMiddleware,
+  quizController.renewQuiz
+);
 
 /** * ==========================================
  * STUDENT SIDE ROUTES 

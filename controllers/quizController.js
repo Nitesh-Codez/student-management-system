@@ -547,8 +547,9 @@ exports.updateQuestion = async (req, res) => {
   }
 };
 
-
+//===================================
 // 9. DELETE QUIZ
+//===================================
 exports.deleteQuiz = async (req, res) => {
   try {
     const { quizId } = req.params;

@@ -23,7 +23,6 @@ const {
   getSubmissionsByTask,
   updateRating,
   editAssignment,// ✅ ADD THIS
-  editAssignment
 } = require("../controllers/assignmentController");
 
 // ================= ROUTES =================

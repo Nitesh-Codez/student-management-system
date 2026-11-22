@@ -481,7 +481,7 @@ module.exports = {
   deleteAssignment,
   getAssignmentsByClass,
   getTasksByClass,
-  updateAdminAssignment,
+  editAssignment,
   getSubmissionsByTask,
   updateRating,
 };

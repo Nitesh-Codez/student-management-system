@@ -22,7 +22,8 @@ const {
   deleteAssignment,
   getSubmissionsByTask,
   updateRating,
-  updateAdminAssignment   // ✅ ADD THIS
+  editAssignment,// ✅ ADD THIS
+  editAssignment
 } = require("../controllers/assignmentController");
 
 // ================= ROUTES =================
@@ -48,7 +49,7 @@ router.put(
   "/admin/assignment/:id",
   authMiddleware,
   adminUpload.single("file"),
-  updateAdminAssignment
+  editAssignment
 );
 
 

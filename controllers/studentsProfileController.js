@@ -281,52 +281,46 @@ const handleEditRequest = async (req, res) => {
   }
 };
 
-// ================= GET PENDING EDIT + APPROVED HOLIDAY REQUESTS =================
+// ================= GET PENDING REQUESTS =================
 const getPendingEditRequests = async (req, res) => {
   try {
     const query = `
-      SELECT
-        per.id,
-        s.id AS student_id,
-        s.name AS student_name,
-        per.field_name,
-        per.old_value,
-        per.requested_value,
-        per.reason,
-        per.status,
-        per.requested_at,
-        per.action_by,
-        per.action_at,
-        per.request_type,
-        per.start_date,
-        per.end_date,
-        per.drop_type
-
+      SELECT per.id, s.name as student_name, per.field_name, per.old_value, per.requested_value, per.reason, per.status
       FROM profile_edit_requests per
-
       JOIN students s ON s.id = per.student_id
+      WHERE per.status = 'pending'
+      ORDER BY per.id DESC
+    `;
+    const { rows } = await pool.query(query);
+    res.json({ success: true, requests: rows });
+  } catch (error) {
+    console.error("Error fetching pending edit requests:", error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
 
-      WHERE
-        per.status = 'pending'
-        OR (per.request_type = 'DROP' AND per.status = 'approved')
+// ================= GET EDIT REQUESTS BY STUDENT =================
+const getEditRequests = async (req, res) => {
+  try {
+    const studentId = Number(req.query.id);
+    if (!studentId || isNaN(studentId)) {
+      return res.status(400).json({ success: false, message: "Valid student id is required" });
+    }
 
+    const query = `
+      SELECT per.id, s.id AS student_id, s.name as student_name, per.field_name, 
+             per.old_value, per.requested_value, per.reason, per.status, per.action_at, per.requested_at
+      FROM profile_edit_requests per
+      JOIN students s ON s.id = per.student_id
+      WHERE s.id = $1
       ORDER BY per.id DESC
     `;
 
-    const { rows } = await pool.query(query);
-
-    res.json({
-      success: true,
-      requests: rows
-    });
-
+    const { rows } = await pool.query(query, [studentId]);
+    res.json({ success: true, requests: rows });
   } catch (error) {
-    console.error("Error fetching requests:", error);
-
-    res.status(500).json({
-      success: false,
-      message: "Server error"
-    });
+    console.error("Error fetching edit requests:", error);
+    res.status(500).json({ success: false, message: "Server error" });
   }
 };
 // GET STUDENTS PROFILE BASIC INFORMATION
@@ -373,5 +367,6 @@ module.exports = {
   requestProfileEdit,
   handleEditRequest,
   getPendingEditRequests,
+  getEditRequests,
   getStudentsBasic,
 };

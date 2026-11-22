@@ -260,29 +260,45 @@ async function getAssignmentsByClass(req, res) {
 // ============================================================
 // ================= GET ADMIN TASKS ===========================
 // ============================================================
+
 async function getTasksByClass(req, res) {
   try {
     const { className } = req.params;
 
     const { rows } = await db.query(
       `
-      SELECT 
-        task_title,
-        subject,
-        deadline,
-        MAX(uploaded_at) AS latest_upload
-      FROM assignment_uploads
-      WHERE uploader_role='admin'
-        AND class=$1
-      GROUP BY task_title, subject, deadline
-      ORDER BY latest_upload DESC
+      SELECT
+        a.id AS id,
+        a.id AS assignment_id,
+        a.task_title,
+        a.subject,
+        a.class,
+        a.deadline,
+        a.file_path,
+        a.uploaded_at AS latest_upload
+
+      FROM assignment_uploads a
+
+      WHERE a.uploader_role = 'admin'
+        AND a.class = $1
+
+      ORDER BY a.uploaded_at DESC
       `,
       [className]
     );
 
-    res.json({ success: true, tasks: rows });
+    res.json({
+      success: true,
+      tasks: rows
+    });
+
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    console.error("GET TASKS ERROR:", err);
+
+    res.status(500).json({
+      success: false,
+      message: err.message
+    });
   }
 }
 

@@ -368,51 +368,45 @@ async function updateRating(req, res) {
 
 //==============EDIT=====================
 
-async function updateAdminAssignment(req, res) {
-  try {
-    const assignmentId = req.params.id;
-    const { deadline } = req.body;
 
-    // 1️⃣ Fetch existing admin assignment
+// ================= EDIT ADMIN ASSIGNMENT =================
+async function editAssignment(req, res) {
+  try {
+    const { id } = req.params;
+    const { task_title, subject, class: className, deadline } = req.body;
+
+    // 1. Existing assignment fetch
     const { rows } = await db.query(
       `SELECT * FROM assignment_uploads
        WHERE id = $1 AND uploader_role = 'admin'`,
-      [assignmentId]
+      [id]
     );
 
     if (!rows.length) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Admin assignment not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Assignment not found"
+      });
     }
 
     const old = rows[0];
+
+    // 2. Existing values retain, new values update
     let filePath = old.file_path;
     let storageType = old.storage_type;
 
-    // 2️⃣ Replace file if uploaded
+    // 3. New PDF upload (if provided)
     if (req.file) {
-      if (storageType === "supabase" && filePath) {
-        const objectPath = filePath.split(
-          `/storage/v1/object/public/${ASSIGNMENT_BUCKET}/`
-        )[1];
+      const newFileName =
+        `${Date.now()}-${req.file.originalname}`;
 
-        if (objectPath) {
-          await supabase
-            .storage
-            .from(ASSIGNMENT_BUCKET)
-            .remove([objectPath]);
-        }
-      }
-
-      const newFileName = `${Date.now()}-${req.file.originalname}`;
-      const folder = `assignments/admin/class-${old.class}`;
+      const folder = `assignments/admin/class-${className || old.class}`;
       const newPath = `${folder}/${newFileName}`;
 
       const { error } = await supabase.storage
         .from(ASSIGNMENT_BUCKET)
         .upload(newPath, req.file.buffer, {
-          contentType: req.file.mimetype,
+          contentType: req.file.mimetype
         });
 
       if (error) throw error;
@@ -425,28 +419,59 @@ async function updateAdminAssignment(req, res) {
       storageType = "supabase";
     }
 
-    // 3️⃣ Update ONLY deadline + file
+    // 4. Update assignment details
     const { rows: updated } = await db.query(
-      `
-      UPDATE assignment_uploads
-      SET deadline = $1,
-          file_path = $2,
-          storage_type = $3
-      WHERE id = $4
-      RETURNING *;
-      `,
-      [deadline || old.deadline, filePath, storageType, assignmentId]
+      `UPDATE assignment_uploads
+       SET task_title = $1,
+           subject = $2,
+           class = $3,
+           deadline = $4,
+           file_path = $5,
+           storage_type = $6
+       WHERE id = $7
+       RETURNING *`,
+      [
+        task_title ?? old.task_title,
+        subject ?? old.subject,
+        className ?? old.class,
+        deadline ?? old.deadline,
+        filePath,
+        storageType,
+        id
+      ]
     );
+
+    // 5. Remove old PDF after successful update
+    if (req.file && old.storage_type === "supabase" && old.file_path) {
+      try {
+        const marker =
+          `/storage/v1/object/public/${ASSIGNMENT_BUCKET}/`;
+
+        const objectPath = old.file_path.split(marker)[1];
+
+        if (objectPath) {
+          await supabase.storage
+            .from(ASSIGNMENT_BUCKET)
+            .remove([objectPath]);
+        }
+      } catch (deleteError) {
+        console.error("Old PDF deletion error:", deleteError);
+      }
+    }
 
     res.json({
       success: true,
-      message: "Deadline / File updated successfully ✅",
-      data: updated[0],
+      message: "Assignment updated successfully",
+      data: updated[0]
     });
 
   } catch (err) {
-    console.error("ADMIN UPDATE ERROR:", err);
-    res.status(500).json({ success: false, message: err.message });
+    console.error("EDIT ASSIGNMENT ERROR:", err);
+
+    res.status(500).json({
+      success: false,
+      message: err.message
+    });
   }
 }
 

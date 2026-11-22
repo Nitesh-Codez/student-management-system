@@ -373,6 +373,5 @@ module.exports = {
   requestProfileEdit,
   handleEditRequest,
   getPendingEditRequests,
-  getEditRequests,
   getStudentsBasic,
 };

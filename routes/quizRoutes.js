@@ -47,13 +47,13 @@ router.delete(
 
 // 5. Get quizzes assigned to student's class (Filtered by Session & Stream)
 // Usage: /api/quiz/class/12?session=2026-27&stream=Science
-router.get("/class/:class_name", quizController.getQuizByClass);
+router.get("/class/:class_name",authMiddleware, quizController.getQuizByClass);
 
 // 6. Get full quiz details (Questions/Timer) for attempting
 router.get("/:id",authMiddleware, quizController.getSingleQuiz);
 
 // 7. Check if student has already done this quiz (Lock mechanism)
-router.get("/status/:quizId/:studentId", quizController.checkAttemptStatus);
+router.get("/status/:quizId/:studentId",authMiddleware, quizController.checkAttemptStatus);
 
 // 8. Final submission and score calculation
 router.post("/submit",authMiddleware, quizController.submitQuiz);

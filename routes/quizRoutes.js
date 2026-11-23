@@ -47,7 +47,7 @@ router.delete(
 
 // 5. Get quizzes assigned to student's class (Filtered by Session & Stream)
 // Usage: /api/quiz/class/12?session=2026-27&stream=Science
-router.get("/class/:class_name",authMiddleware, quizController.getQuizByClass);
+router.get("/class/:class_name", quizController.getQuizByClass);
 
 // 6. Get full quiz details (Questions/Timer) for attempting
 router.get("/:id",authMiddleware, quizController.getSingleQuiz);

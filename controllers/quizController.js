@@ -164,8 +164,14 @@ exports.checkAttemptStatus = async (req, res) => {
     const { quizId, studentId } = req.params;
 
     const check = await db.query(
-      `SELECT * FROM quiz_results
-       WHERE quiz_id=$1 AND student_id=$2`,
+      `SELECT 
+          qr.*,
+          q.title AS quiz_title
+       FROM quiz_results qr
+       INNER JOIN quizzes q 
+          ON qr.quiz_id = q.id
+       WHERE qr.quiz_id = $1 
+       AND qr.student_id = $2`,
       [quizId, studentId]
     );
 
@@ -173,7 +179,8 @@ exports.checkAttemptStatus = async (req, res) => {
       return res.json({
         attempted: true,
         result: check.rows[0],
-        attempted_at: check.rows[0].attempted_at
+        attempted_at: check.rows[0].attempted_at,
+        quiz_title: check.rows[0].quiz_title
       });
     }
 
@@ -189,8 +196,6 @@ exports.checkAttemptStatus = async (req, res) => {
     });
   }
 };
-
-
 // 5. SUBMIT QUIZ (STUDENT)
 exports.submitQuiz = async (req, res) => {
   try {

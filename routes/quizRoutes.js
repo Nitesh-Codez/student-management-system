@@ -53,7 +53,7 @@ router.get("/class/:class_name", quizController.getQuizByClass);
 router.get("/:id",authMiddleware, quizController.getSingleQuiz);
 
 // 7. Check if student has already done this quiz (Lock mechanism)
-router.get("/status/:quizId/:studentId",authMiddleware, quizController.checkAttemptStatus);
+router.get("/status/:quizId/:studentId", quizController.checkAttemptStatus);
 
 // 8. Final submission and score calculation
 router.post("/submit",authMiddleware, quizController.submitQuiz);

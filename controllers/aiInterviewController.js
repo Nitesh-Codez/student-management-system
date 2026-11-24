@@ -1,7 +1,45 @@
 const db = require("../db");
 const genAI = require("../config/gemini");
 
-// ==================== GEMINI QUESTION HELPER ====================
+const ALLOWED_LEVELS = ["Beginner", "Intermediate", "Advanced"];
+const ALLOWED_INTERVIEW_TYPES = [
+    "General English",
+    "Academic Interview",
+    "Job Interview"
+];
+const ALLOWED_QUESTION_COUNTS = [5, 10];
+const SCORE_KEYS = [
+    "grammarScore",
+    "fluencyScore",
+    "vocabularyScore",
+    "relevanceScore"
+];
+
+// ==================== GEMINI HELPERS ====================
+
+const extractJsonObject = (text) => {
+    if (typeof text !== "string") {
+        throw new Error("Gemini response is not a string");
+    }
+
+    const cleaned = text
+        .replace(/```json/gi, "")
+        .replace(/```/g, "")
+        .trim();
+
+    if (!cleaned) {
+        throw new Error("Gemini returned empty text");
+    }
+
+    const startIdx = cleaned.indexOf("{");
+    const endIdx = cleaned.lastIndexOf("}");
+
+    if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) {
+        throw new Error("No valid JSON object found in Gemini response");
+    }
+
+    return JSON.parse(cleaned.slice(startIdx, endIdx + 1));
+};
 
 const generateAIQuestion = async (
     level,
@@ -26,15 +64,17 @@ Rules:
 - Adapt difficulty to the selected level.
 - Avoid repeating previous questions.
 - Keep questions relevant to the interview type.
-- Return only the question.
-`;
+- Return only the question text with no markdown or numbering.
+`.trim();
 
     const response = await genAI.models.generateContent({
         model: "gemini-2.5-flash",
         contents: prompt
     });
 
-    const question = response.text?.trim();
+    const question = typeof response?.text === "string"
+        ? response.text.replace(/^["']|["']$/g, "").trim()
+        : "";
 
     if (!question) {
         throw new Error("Gemini returned an empty question");
@@ -42,9 +82,6 @@ Rules:
 
     return question;
 };
-
-
-// ==================== GEMINI EVALUATION HELPER ====================
 
 const evaluateAIAnswer = async (question, answer) => {
     const prompt = `
@@ -55,7 +92,7 @@ Evaluate the student's answer.
 Question: ${question}
 Answer: ${answer}
 
-Return valid JSON only:
+Return valid JSON only in this exact structure:
 {
   "grammarScore": 0,
   "fluencyScore": 0,
@@ -66,71 +103,85 @@ Return valid JSON only:
   "improvedAnswer": "Corrected answer"
 }
 
-All scores must be between 0 and 100.
-
-Evaluate the transcript, not accent.
-Do not assume speaking speed from text.
-Be encouraging and constructive.
-`;
+Rules:
+- All scores must be numbers between 0 and 100.
+- mistakes must be an array of strings (use [] if no mistakes).
+- Evaluate the transcript, not accent.
+- Do not assume speaking speed from text.
+- Be encouraging and constructive.
+`.trim();
 
     const response = await genAI.models.generateContent({
         model: "gemini-2.5-flash",
         contents: prompt
     });
 
-    const raw = response.text
-        ?.replace(/```json/gi, "")
-        .replace(/```/g, "")
-        .trim();
+    const evaluation = extractJsonObject(response?.text);
 
-    if (!raw) {
-        throw new Error("Gemini returned empty evaluation");
-    }
-
-    const evaluation = JSON.parse(raw);
-
-    const scoreKeys = [
-        "grammarScore",
-        "fluencyScore",
-        "vocabularyScore",
-        "relevanceScore"
-    ];
-
-    for (const key of scoreKeys) {
+    for (const key of SCORE_KEYS) {
+        const val = evaluation[key];
         if (
-            typeof evaluation[key] !== "number" ||
-            !Number.isFinite(evaluation[key]) ||
-            evaluation[key] < 0 ||
-            evaluation[key] > 100
+            typeof val !== "number" ||
+            !Number.isFinite(val) ||
+            val < 0 ||
+            val > 100
         ) {
-            throw new Error(`Invalid ${key}`);
+            throw new Error(`Invalid score for ${key}`);
         }
+        evaluation[key] = Math.round(val * 100) / 100;
     }
 
     if (
         typeof evaluation.feedback !== "string" ||
-        !Array.isArray(evaluation.mistakes) ||
-        typeof evaluation.improvedAnswer !== "string"
+        !evaluation.feedback.trim()
     ) {
-        throw new Error("Invalid evaluation response");
+        throw new Error("Invalid feedback in evaluation response");
     }
 
-    return evaluation;
-};
+    if (
+        !Array.isArray(evaluation.mistakes) ||
+        !evaluation.mistakes.every((item) => typeof item === "string")
+    ) {
+        throw new Error("Invalid mistakes array in evaluation response");
+    }
 
+    if (
+        typeof evaluation.improvedAnswer !== "string" ||
+        !evaluation.improvedAnswer.trim()
+    ) {
+        throw new Error("Invalid improvedAnswer in evaluation response");
+    }
+
+    return {
+        grammarScore: evaluation.grammarScore,
+        fluencyScore: evaluation.fluencyScore,
+        vocabularyScore: evaluation.vocabularyScore,
+        relevanceScore: evaluation.relevanceScore,
+        feedback: evaluation.feedback.trim(),
+        mistakes: evaluation.mistakes.map((m) => m.trim()).filter(Boolean),
+        improvedAnswer: evaluation.improvedAnswer.trim()
+    };
+};
 
 // ==================== 1. START INTERVIEW ====================
 
 exports.startInterview = async (req, res) => {
     try {
-        const { level, interviewType } = req.body;
-        const totalQuestions = Number(req.body.totalQuestions ?? 5);
-        const studentId = req.user.id;
+        const studentId = req.user?.id;
+        if (!studentId) {
+            return res.status(401).json({
+                success: false,
+                message: "Unauthorized"
+            });
+        }
+
+        const { level, interviewType } = req.body ?? {};
+        const totalQuestions = Number(req.body?.totalQuestions ?? 5);
 
         if (
-            !["Beginner", "Intermediate", "Advanced"].includes(level) ||
-            !["General English", "Academic Interview", "Job Interview"].includes(interviewType) ||
-            ![5, 10].includes(totalQuestions)
+            !ALLOWED_LEVELS.includes(level) ||
+            !ALLOWED_INTERVIEW_TYPES.includes(interviewType) ||
+            !ALLOWED_QUESTION_COUNTS.includes(totalQuestions)
         ) {
             return res.status(400).json({
                 success: false,
@@ -138,7 +189,7 @@ exports.startInterview = async (req, res) => {
             });
         }
 
-        const result = await db.query(
+        const inserted = await db.query(
             `INSERT INTO ai_interviews
              (student_id, level, interview_type, total_questions, status)
              VALUES ($1, $2, $3, $4, 'In Progress')
@@ -146,18 +197,20 @@ exports.startInterview = async (req, res) => {
             [studentId, level, interviewType, totalQuestions]
         );
 
-        const interview = result.rows[0];
-        const question = await generateAIQuestion(level, interviewType, 1);
+        const interview = inserted.rows[0];
+        const question = await generateAIQuestion(level, interviewType, 1, []);
 
         await db.query(
             `UPDATE ai_interviews
              SET pending_question = $1,
                  pending_question_number = 1
-             WHERE id = $2 AND student_id = $3`,
+             WHERE id = $2
+             AND student_id = $3
+             AND status = 'In Progress'`,
             [question, interview.id, studentId]
         );
 
-        res.status(201).json({
+        return res.status(201).json({
             success: true,
             interviewId: interview.id,
             questionNumber: 1,
@@ -165,19 +218,27 @@ exports.startInterview = async (req, res) => {
         });
     } catch (error) {
         console.error("Start Interview Error:", error);
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
             message: "Unable to start interview"
         });
     }
 };
 
-
 // ==================== 2. EVALUATE ANSWER ====================
 
 exports.evaluateAnswer = async (req, res) => {
+    const client = await db.connect();
     try {
-        const { interviewId, question, answer } = req.body;
+        const studentId = req.user?.id;
+        if (!studentId) {
+            return res.status(401).json({
+                success: false,
+                message: "Unauthorized"
+            });
+        }
+
+        const { interviewId, question, answer } = req.body ?? {};
 
         if (
             !interviewId ||
@@ -192,18 +253,22 @@ exports.evaluateAnswer = async (req, res) => {
             });
         }
 
-        const interviewResult = await db.query(
+        await client.query("BEGIN");
+
+        const interviewResult = await client.query(
             `SELECT * FROM ai_interviews
              WHERE id = $1
              AND student_id = $2
-             AND status = 'In Progress'`,
-            [interviewId, req.user.id]
+             AND status = 'In Progress'
+             FOR UPDATE`,
+            [interviewId, studentId]
         );
 
         if (!interviewResult.rows.length) {
+            await client.query("ROLLBACK");
             return res.status(404).json({
                 success: false,
-                message: "Interview not found"
+                message: "Active interview not found"
             });
         }
 
@@ -213,24 +278,34 @@ exports.evaluateAnswer = async (req, res) => {
             !interview.pending_question ||
             question.trim() !== interview.pending_question.trim()
         ) {
+            await client.query("ROLLBACK");
             return res.status(400).json({
                 success: false,
                 message: "Invalid or outdated interview question"
             });
         }
 
-        const questionNumber = interview.pending_question_number;
+        const questionNumber = Number(interview.pending_question_number);
+        const totalQuestions = Number(interview.total_questions);
 
-        if (!questionNumber || questionNumber > interview.total_questions) {
+        if (
+            !Number.isInteger(questionNumber) ||
+            questionNumber < 1 ||
+            questionNumber > totalQuestions
+        ) {
+            await client.query("ROLLBACK");
             return res.status(400).json({
                 success: false,
                 message: "Invalid question number"
             });
         }
 
-        const evaluation = await evaluateAIAnswer(question, answer);
+        const evaluation = await evaluateAIAnswer(
+            interview.pending_question.trim(),
+            answer.trim()
+        );
 
-        const saved = await db.query(
+        const saved = await client.query(
             `INSERT INTO ai_interview_answers
              (
                  interview_id,
@@ -245,13 +320,13 @@ exports.evaluateAnswer = async (req, res) => {
                  mistakes,
                  improved_answer
              )
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11)
              RETURNING *`,
             [
                 interviewId,
                 questionNumber,
-                question,
-                answer,
+                interview.pending_question.trim(),
+                answer.trim(),
                 evaluation.grammarScore,
                 evaluation.fluencyScore,
                 evaluation.vocabularyScore,
@@ -262,48 +337,67 @@ exports.evaluateAnswer = async (req, res) => {
             ]
         );
 
-        await db.query(
+        await client.query(
             `UPDATE ai_interviews
              SET pending_question = NULL,
                  pending_question_number = NULL
-             WHERE id = $1 AND student_id = $2`,
-            [interviewId, req.user.id]
+             WHERE id = $1
+             AND student_id = $2`,
+            [interviewId, studentId]
         );
 
-        res.json({
+        await client.query("COMMIT");
+
+        return res.json({
             success: true,
             questionNumber,
             evaluation,
             savedAnswer: saved.rows[0]
         });
     } catch (error) {
+        await client.query("ROLLBACK").catch(() => {});
         console.error("Evaluate Answer Error:", error);
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
             message: "Unable to evaluate answer"
         });
+    } finally {
+        client.release();
     }
 };
-
 
 // ==================== 3. GET NEXT QUESTION ====================
 
 exports.getNextQuestion = async (req, res) => {
     try {
+        const studentId = req.user?.id;
+        if (!studentId) {
+            return res.status(401).json({
+                success: false,
+                message: "Unauthorized"
+            });
+        }
+
         const { interviewId } = req.params;
+        if (!interviewId) {
+            return res.status(400).json({
+                success: false,
+                message: "Interview ID is required"
+            });
+        }
 
         const result = await db.query(
             `SELECT * FROM ai_interviews
              WHERE id = $1
              AND student_id = $2
              AND status = 'In Progress'`,
-            [interviewId, req.user.id]
+            [interviewId, studentId]
         );
 
         if (!result.rows.length) {
             return res.status(404).json({
                 success: false,
-                message: "Interview not found"
+                message: "Active interview not found"
             });
         }
 
@@ -322,13 +416,13 @@ exports.getNextQuestion = async (req, res) => {
             `SELECT question_number, question, answer_text
              FROM ai_interview_answers
              WHERE interview_id = $1
-             ORDER BY question_number`,
+             ORDER BY question_number ASC`,
             [interviewId]
         );
 
         const nextNumber = answers.rows.length + 1;
 
-        if (nextNumber > interview.total_questions) {
+        if (nextNumber > Number(interview.total_questions)) {
             return res.json({
                 success: true,
                 completed: true,
@@ -350,10 +444,10 @@ exports.getNextQuestion = async (req, res) => {
              WHERE id = $3
              AND student_id = $4
              AND status = 'In Progress'`,
-            [question, nextNumber, interviewId, req.user.id]
+            [question, nextNumber, interviewId, studentId]
         );
 
-        res.json({
+        return res.json({
             success: true,
             completed: false,
             questionNumber: nextNumber,
@@ -361,20 +455,27 @@ exports.getNextQuestion = async (req, res) => {
         });
     } catch (error) {
         console.error("Next Question Error:", error);
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
             message: "Unable to generate next question"
         });
     }
 };
 
-
 // ==================== 4. COMPLETE INTERVIEW ====================
 
 exports.completeInterview = async (req, res) => {
+    const client = await db.connect();
     try {
-        const { interviewId } = req.body;
+        const studentId = req.user?.id;
+        if (!studentId) {
+            return res.status(401).json({
+                success: false,
+                message: "Unauthorized"
+            });
+        }
 
+        const { interviewId } = req.body ?? {};
         if (!interviewId) {
             return res.status(400).json({
                 success: false,
@@ -382,31 +483,36 @@ exports.completeInterview = async (req, res) => {
             });
         }
 
-        const result = await db.query(
+        await client.query("BEGIN");
+
+        const result = await client.query(
             `SELECT * FROM ai_interviews
              WHERE id = $1
              AND student_id = $2
-             AND status = 'In Progress'`,
-            [interviewId, req.user.id]
+             AND status = 'In Progress'
+             FOR UPDATE`,
+            [interviewId, studentId]
         );
 
         if (!result.rows.length) {
+            await client.query("ROLLBACK");
             return res.status(404).json({
                 success: false,
-                message: "Interview not found"
+                message: "Active interview not found"
             });
         }
 
         const interview = result.rows[0];
 
         if (interview.pending_question) {
+            await client.query("ROLLBACK");
             return res.status(400).json({
                 success: false,
                 message: "Current question must be answered first"
             });
         }
 
-        const scores = await db.query(
+        const scores = await client.query(
             `SELECT
                  COALESCE(
                      ROUND(
@@ -425,15 +531,19 @@ exports.completeInterview = async (req, res) => {
         );
 
         const data = scores.rows[0];
+        const answeredCount = Number(data?.answered ?? 0);
 
-        if (data.answered !== interview.total_questions) {
+        if (answeredCount !== Number(interview.total_questions)) {
+            await client.query("ROLLBACK");
             return res.status(400).json({
                 success: false,
                 message: "All questions must be answered first"
             });
         }
 
-        const updated = await db.query(
+        const overallScore = Number(data.overall_score ?? 0);
+
+        const updated = await client.query(
             `UPDATE ai_interviews
              SET status = 'Completed',
                  overall_score = $1,
@@ -444,60 +554,85 @@ exports.completeInterview = async (req, res) => {
              AND student_id = $3
              AND status = 'In Progress'
              RETURNING *`,
-            [Number(data.overall_score), interviewId, req.user.id]
+            [overallScore, interviewId, studentId]
         );
 
-        res.json({
+        await client.query("COMMIT");
+
+        return res.json({
             success: true,
             message: "Interview completed successfully",
             report: updated.rows[0]
         });
     } catch (error) {
+        await client.query("ROLLBACK").catch(() => {});
         console.error("Complete Interview Error:", error);
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
             message: "Unable to complete interview"
         });
+    } finally {
+        client.release();
     }
 };
-
 
 // ==================== 5. GET INTERVIEW HISTORY ====================
 
 exports.getInterviewHistory = async (req, res) => {
     try {
+        const studentId = req.user?.id;
+        if (!studentId) {
+            return res.status(401).json({
+                success: false,
+                message: "Unauthorized"
+            });
+        }
+
         const result = await db.query(
             `SELECT * FROM ai_interviews
              WHERE student_id = $1
              ORDER BY started_at DESC`,
-            [req.user.id]
+            [studentId]
         );
 
-        res.json({
+        return res.json({
             success: true,
             interviews: result.rows
         });
     } catch (error) {
         console.error("Interview History Error:", error);
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
             message: "Unable to fetch interview history"
         });
     }
 };
 
-
 // ==================== 6. GET INTERVIEW REPORT ====================
 
 exports.getInterviewReport = async (req, res) => {
     try {
+        const studentId = req.user?.id;
+        if (!studentId) {
+            return res.status(401).json({
+                success: false,
+                message: "Unauthorized"
+            });
+        }
+
         const { interviewId } = req.params;
+        if (!interviewId) {
+            return res.status(400).json({
+                success: false,
+                message: "Interview ID is required"
+            });
+        }
 
         const interview = await db.query(
             `SELECT * FROM ai_interviews
              WHERE id = $1
              AND student_id = $2`,
-            [interviewId, req.user.id]
+            [interviewId, studentId]
         );
 
         if (!interview.rows.length) {
@@ -510,18 +645,18 @@ exports.getInterviewReport = async (req, res) => {
         const answers = await db.query(
             `SELECT * FROM ai_interview_answers
              WHERE interview_id = $1
-             ORDER BY question_number`,
+             ORDER BY question_number ASC`,
             [interviewId]
         );
 
-        res.json({
+        return res.json({
             success: true,
             interview: interview.rows[0],
             answers: answers.rows
         });
     } catch (error) {
         console.error("Interview Report Error:", error);
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
             message: "Unable to fetch report"
         });

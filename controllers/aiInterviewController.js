@@ -2,7 +2,7 @@
 const db = require("../db");
 const genAI = require("../config/gemini");
 
-// ==================== GEMINI HELPER ====================
+// ==================== GEMINI QUESTION HELPER ====================
 
 const generateAIQuestion = async (
     level,
@@ -81,9 +81,13 @@ Be encouraging and constructive.
     });
 
     const raw = response.text
-        .replace(/```json/gi, "")
+        ?.replace(/```json/gi, "")
         .replace(/```/g, "")
         .trim();
+
+    if (!raw) {
+        throw new Error("Gemini returned empty evaluation");
+    }
 
     const evaluation = JSON.parse(raw);
 
@@ -154,7 +158,7 @@ exports.startInterview = async (req, res) => {
             1
         );
 
-        // Save question in database
+        // Save first question
         await db.query(
             `UPDATE ai_interviews
              SET pending_question = $1,
@@ -217,7 +221,7 @@ exports.evaluateAnswer = async (req, res) => {
 
         const interview = interviewResult.rows[0];
 
-        // Verify saved question instead of generating a new one
+        // Verify previously saved question
         if (
             !interview.pending_question ||
             question.trim() !== interview.pending_question.trim()
@@ -246,7 +250,7 @@ exports.evaluateAnswer = async (req, res) => {
             answer
         );
 
-        // Save evaluated answer
+        // Save answer
         const saved = await db.query(
             `INSERT INTO ai_interview_answers
             (
@@ -279,7 +283,7 @@ exports.evaluateAnswer = async (req, res) => {
             ]
         );
 
-        // Clear current question after successful evaluation
+        // Clear current question
         await db.query(
             `UPDATE ai_interviews
              SET pending_question = NULL,
@@ -329,7 +333,7 @@ exports.getNextQuestion = async (req, res) => {
 
         const interview = result.rows[0];
 
-        // If a question is already generated, return the same question
+        // Return existing pending question
         if (interview.pending_question) {
             return res.json({
                 success: true,
@@ -370,7 +374,8 @@ exports.getNextQuestion = async (req, res) => {
             `UPDATE ai_interviews
              SET pending_question = $1,
                  pending_question_number = $2
-             WHERE id = $3 AND student_id = $4
+             WHERE id = $3
+             AND student_id = $4
              AND status = 'In Progress'`,
             [question, nextNumber, interviewId, req.user.id]
         );
@@ -422,6 +427,14 @@ exports.completeInterview = async (req, res) => {
         }
 
         const interview = result.rows[0];
+
+        // Do not complete if a question is still pending
+        if (interview.pending_question) {
+            return res.status(400).json({
+                success: false,
+                message: "Current question must be answered first"
+            });
+        }
 
         const scores = await db.query(
             `SELECT

@@ -1,4 +1,3 @@
-
 const db = require("../db");
 const genAI = require("../config/gemini");
 
@@ -48,7 +47,6 @@ Rules:
 // ==================== GEMINI EVALUATION HELPER ====================
 
 const evaluateAIAnswer = async (question, answer) => {
-
     const prompt = `
 You are a professional English communication teacher.
 
@@ -127,7 +125,6 @@ exports.startInterview = async (req, res) => {
     try {
         const { level, interviewType } = req.body;
         const totalQuestions = Number(req.body.totalQuestions ?? 5);
-
         const studentId = req.user.id;
 
         if (
@@ -143,22 +140,15 @@ exports.startInterview = async (req, res) => {
 
         const result = await db.query(
             `INSERT INTO ai_interviews
-            (student_id, level, interview_type, total_questions, status)
-            VALUES ($1, $2, $3, $4, 'In Progress')
-            RETURNING *`,
+             (student_id, level, interview_type, total_questions, status)
+             VALUES ($1, $2, $3, $4, 'In Progress')
+             RETURNING *`,
             [studentId, level, interviewType, totalQuestions]
         );
 
         const interview = result.rows[0];
+        const question = await generateAIQuestion(level, interviewType, 1);
 
-        // Generate first question
-        const question = await generateAIQuestion(
-            level,
-            interviewType,
-            1
-        );
-
-        // Save first question
         await db.query(
             `UPDATE ai_interviews
              SET pending_question = $1,
@@ -173,10 +163,8 @@ exports.startInterview = async (req, res) => {
             questionNumber: 1,
             question
         });
-
     } catch (error) {
         console.error("Start Interview Error:", error);
-
         res.status(500).json({
             success: false,
             message: "Unable to start interview"
@@ -221,7 +209,6 @@ exports.evaluateAnswer = async (req, res) => {
 
         const interview = interviewResult.rows[0];
 
-        // Verify previously saved question
         if (
             !interview.pending_question ||
             question.trim() !== interview.pending_question.trim()
@@ -234,40 +221,32 @@ exports.evaluateAnswer = async (req, res) => {
 
         const questionNumber = interview.pending_question_number;
 
-        if (
-            !questionNumber ||
-            questionNumber > interview.total_questions
-        ) {
+        if (!questionNumber || questionNumber > interview.total_questions) {
             return res.status(400).json({
                 success: false,
                 message: "Invalid question number"
             });
         }
 
-        // Evaluate answer using Gemini
-        const evaluation = await evaluateAIAnswer(
-            question,
-            answer
-        );
+        const evaluation = await evaluateAIAnswer(question, answer);
 
-        // Save answer
         const saved = await db.query(
             `INSERT INTO ai_interview_answers
-            (
-                interview_id,
-                question_number,
-                question,
-                answer_text,
-                grammar_score,
-                fluency_score,
-                vocabulary_score,
-                relevance_score,
-                feedback,
-                mistakes,
-                improved_answer
-            )
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-            RETURNING *`,
+             (
+                 interview_id,
+                 question_number,
+                 question,
+                 answer_text,
+                 grammar_score,
+                 fluency_score,
+                 vocabulary_score,
+                 relevance_score,
+                 feedback,
+                 mistakes,
+                 improved_answer
+             )
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+             RETURNING *`,
             [
                 interviewId,
                 questionNumber,
@@ -283,7 +262,6 @@ exports.evaluateAnswer = async (req, res) => {
             ]
         );
 
-        // Clear current question
         await db.query(
             `UPDATE ai_interviews
              SET pending_question = NULL,
@@ -298,10 +276,8 @@ exports.evaluateAnswer = async (req, res) => {
             evaluation,
             savedAnswer: saved.rows[0]
         });
-
     } catch (error) {
         console.error("Evaluate Answer Error:", error);
-
         res.status(500).json({
             success: false,
             message: "Unable to evaluate answer"
@@ -333,7 +309,6 @@ exports.getNextQuestion = async (req, res) => {
 
         const interview = result.rows[0];
 
-        // Return existing pending question
         if (interview.pending_question) {
             return res.json({
                 success: true,
@@ -361,7 +336,6 @@ exports.getNextQuestion = async (req, res) => {
             });
         }
 
-        // Generate next question
         const question = await generateAIQuestion(
             interview.level,
             interview.interview_type,
@@ -369,7 +343,6 @@ exports.getNextQuestion = async (req, res) => {
             answers.rows
         );
 
-        // Save next question
         await db.query(
             `UPDATE ai_interviews
              SET pending_question = $1,
@@ -386,10 +359,8 @@ exports.getNextQuestion = async (req, res) => {
             questionNumber: nextNumber,
             question
         });
-
     } catch (error) {
         console.error("Next Question Error:", error);
-
         res.status(500).json({
             success: false,
             message: "Unable to generate next question"
@@ -428,7 +399,6 @@ exports.completeInterview = async (req, res) => {
 
         const interview = result.rows[0];
 
-        // Do not complete if a question is still pending
         if (interview.pending_question) {
             return res.status(400).json({
                 success: false,
@@ -438,11 +408,17 @@ exports.completeInterview = async (req, res) => {
 
         const scores = await db.query(
             `SELECT
-             AVG(
-                (grammar_score + fluency_score +
-                 vocabulary_score + relevance_score) / 4.0
-             ) AS overall_score,
-             COUNT(*)::int AS answered
+                 COALESCE(
+                     ROUND(
+                         AVG(
+                             (grammar_score + fluency_score +
+                              vocabulary_score + relevance_score) / 4.0
+                         )::numeric,
+                         2
+                     ),
+                     0
+                 ) AS overall_score,
+                 COUNT(*)::int AS answered
              FROM ai_interview_answers
              WHERE interview_id = $1`,
             [interviewId]
@@ -468,7 +444,7 @@ exports.completeInterview = async (req, res) => {
              AND student_id = $3
              AND status = 'In Progress'
              RETURNING *`,
-            [data.overall_score, interviewId, req.user.id]
+            [Number(data.overall_score), interviewId, req.user.id]
         );
 
         res.json({
@@ -476,10 +452,8 @@ exports.completeInterview = async (req, res) => {
             message: "Interview completed successfully",
             report: updated.rows[0]
         });
-
     } catch (error) {
         console.error("Complete Interview Error:", error);
-
         res.status(500).json({
             success: false,
             message: "Unable to complete interview"
@@ -503,10 +477,8 @@ exports.getInterviewHistory = async (req, res) => {
             success: true,
             interviews: result.rows
         });
-
     } catch (error) {
         console.error("Interview History Error:", error);
-
         res.status(500).json({
             success: false,
             message: "Unable to fetch interview history"
@@ -547,10 +519,8 @@ exports.getInterviewReport = async (req, res) => {
             interview: interview.rows[0],
             answers: answers.rows
         });
-
     } catch (error) {
         console.error("Interview Report Error:", error);
-
         res.status(500).json({
             success: false,
             message: "Unable to fetch report"

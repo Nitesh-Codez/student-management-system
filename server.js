@@ -25,6 +25,7 @@ const studentStarsRoutes = require("./routes/studentStarsRoutes");
 const academicRoutes = require("./routes/academicDocumentRoutes.js")
 const holidayRoutes = require("./routes/holidayRoutes");
 const aiInertivewRoutes = require("./routes/aiInterviewRoutes.js");
+const genAI = require("../config/gemini");
 
 
 // ==================== DB INIT ====================

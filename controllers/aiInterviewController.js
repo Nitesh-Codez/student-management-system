@@ -21,11 +21,17 @@ const SCORE_KEYS = [
     "relevanceScore"
 ];
 
-// ==================== GEMINI HELPERS ====================
+// ==================== COMMON HELPERS ====================
+
+const rollback = async (client) => {
+    if (client) {
+        await client.query("ROLLBACK").catch(() => {});
+    }
+};
 
 const extractJsonObject = (text) => {
-    if (typeof text !== "string") {
-        throw new Error("Gemini response is not a string");
+    if (typeof text !== "string" || !text.trim()) {
+        throw new Error("Empty Gemini response");
     }
 
     const cleaned = text
@@ -33,14 +39,14 @@ const extractJsonObject = (text) => {
         .replace(/```/g, "")
         .trim();
 
-    const startIdx = cleaned.indexOf("{");
-    const endIdx = cleaned.lastIndexOf("}");
+    const start = cleaned.indexOf("{");
+    const end = cleaned.lastIndexOf("}");
 
-    if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) {
-        throw new Error("Invalid JSON response from Gemini");
+    if (start === -1 || end === -1 || end <= start) {
+        throw new Error("Invalid JSON from Gemini");
     }
 
-    return JSON.parse(cleaned.slice(startIdx, endIdx + 1));
+    return JSON.parse(cleaned.slice(start, end + 1));
 };
 
 // ==================== GENERATE QUESTION ====================
@@ -66,9 +72,9 @@ Generate exactly ONE English interview question.
 Rules:
 - Use simple English for beginners.
 - Adapt difficulty to the selected level.
-- Avoid repeating previous questions.
-- Keep questions relevant to the interview type.
-- Return only the question text without markdown or numbering.
+- Do not repeat previous questions.
+- Keep the question relevant to the interview type.
+- Return only the question text.
 `.trim();
 
     const response = await genAI.models.generateContent({
@@ -76,9 +82,9 @@ Rules:
         contents: prompt
     });
 
-    const question = typeof response?.text === "string"
-        ? response.text.replace(/^["']|["']$/g, "").trim()
-        : "";
+    const question = response?.text
+        ?.replace(/^["']|["']$/g, "")
+        .trim();
 
     if (!question) {
         throw new Error("Gemini returned an empty question");
@@ -98,7 +104,7 @@ Evaluate the student's answer.
 Question: ${question}
 Answer: ${answer}
 
-Return valid JSON only in this exact structure:
+Return valid JSON only:
 
 {
     "grammarScore": 0,
@@ -106,7 +112,7 @@ Return valid JSON only in this exact structure:
     "vocabularyScore": 0,
     "relevanceScore": 0,
     "feedback": "Simple feedback",
-    "mistakes": ["mistake"],
+    "mistakes": [],
     "improvedAnswer": "Corrected answer"
 }
 
@@ -116,7 +122,7 @@ Rules:
 - Use [] if there are no mistakes.
 - Evaluate the transcript, not accent.
 - Do not assume speaking speed from text.
-- Be encouraging and constructive.
+- Give encouraging and constructive feedback.
 `.trim();
 
     const response = await genAI.models.generateContent({
@@ -126,6 +132,7 @@ Rules:
 
     const evaluation = extractJsonObject(response?.text);
 
+    // Validate scores
     for (const key of SCORE_KEYS) {
         const value = evaluation[key];
 
@@ -135,12 +142,13 @@ Rules:
             value < 0 ||
             value > 100
         ) {
-            throw new Error(`Invalid score for ${key}`);
+            throw new Error(`Invalid score: ${key}`);
         }
 
         evaluation[key] = Math.round(value * 100) / 100;
     }
 
+    // Validate feedback
     if (
         typeof evaluation.feedback !== "string" ||
         !evaluation.feedback.trim()
@@ -148,15 +156,15 @@ Rules:
         throw new Error("Invalid feedback");
     }
 
+    // Validate mistakes
     if (
         !Array.isArray(evaluation.mistakes) ||
-        !evaluation.mistakes.every(
-            item => typeof item === "string"
-        )
+        !evaluation.mistakes.every(item => typeof item === "string")
     ) {
-        throw new Error("Invalid mistakes array");
+        throw new Error("Invalid mistakes");
     }
 
+    // Validate improved answer
     if (
         typeof evaluation.improvedAnswer !== "string" ||
         !evaluation.improvedAnswer.trim()
@@ -170,9 +178,9 @@ Rules:
         vocabularyScore: evaluation.vocabularyScore,
         relevanceScore: evaluation.relevanceScore,
         feedback: evaluation.feedback.trim(),
-        mistakes: evaluation.mistakes.map(
-            item => item.trim()
-        ).filter(Boolean),
+        mistakes: evaluation.mistakes
+            .map(item => item.trim())
+            .filter(Boolean),
         improvedAnswer: evaluation.improvedAnswer.trim()
     };
 };
@@ -180,8 +188,6 @@ Rules:
 // ==================== 1. START INTERVIEW ====================
 
 exports.startInterview = async (req, res) => {
-    let client;
-
     try {
         const studentId = req.user?.id;
 
@@ -194,9 +200,7 @@ exports.startInterview = async (req, res) => {
 
         const { level, interviewType } = req.body ?? {};
 
-        const totalQuestions = Number(
-            req.body?.totalQuestions ?? 5
-        );
+        const totalQuestions = Number(req.body?.totalQuestions ?? 5);
 
         if (
             !ALLOWED_LEVELS.includes(level) ||
@@ -209,20 +213,7 @@ exports.startInterview = async (req, res) => {
             });
         }
 
-        client = await db.connect();
-
-        await client.query("BEGIN");
-
-        const inserted = await client.query(
-            `INSERT INTO ai_interviews
-             (student_id, level, interview_type, total_questions, status)
-             VALUES ($1, $2, $3, $4, 'In Progress')
-             RETURNING *`,
-            [studentId, level, interviewType, totalQuestions]
-        );
-
-        const interview = inserted.rows[0];
-
+        // Generate question before creating database record
         const question = await generateAIQuestion(
             level,
             interviewType,
@@ -230,38 +221,42 @@ exports.startInterview = async (req, res) => {
             []
         );
 
-        await client.query(
-            `UPDATE ai_interviews
-             SET pending_question = $1,
-                 pending_question_number = 1
-             WHERE id = $2
-             AND student_id = $3`,
-            [question, interview.id, studentId]
+        const result = await db.query(
+            `INSERT INTO ai_interviews
+             (
+                 student_id,
+                 level,
+                 interview_type,
+                 total_questions,
+                 status,
+                 pending_question,
+                 pending_question_number
+             )
+             VALUES ($1, $2, $3, $4, 'In Progress', $5, 1)
+             RETURNING id`,
+            [
+                studentId,
+                level,
+                interviewType,
+                totalQuestions,
+                question
+            ]
         );
-
-        await client.query("COMMIT");
 
         return res.status(201).json({
             success: true,
-            interviewId: interview.id,
+            interviewId: result.rows[0].id,
             questionNumber: 1,
             question
         });
 
     } catch (error) {
-        if (client) {
-            await client.query("ROLLBACK").catch(() => {});
-        }
-
         console.error("Start Interview Error:", error);
 
         return res.status(500).json({
             success: false,
             message: "Unable to start interview"
         });
-
-    } finally {
-        client?.release();
     }
 };
 
@@ -296,10 +291,9 @@ exports.evaluateAnswer = async (req, res) => {
         }
 
         client = await db.connect();
-
         await client.query("BEGIN");
 
-        const interviewResult = await client.query(
+        const result = await client.query(
             `SELECT *
              FROM ai_interviews
              WHERE id = $1
@@ -309,8 +303,8 @@ exports.evaluateAnswer = async (req, res) => {
             [interviewId, studentId]
         );
 
-        if (!interviewResult.rows.length) {
-            await client.query("ROLLBACK");
+        if (!result.rows.length) {
+            await rollback(client);
 
             return res.status(404).json({
                 success: false,
@@ -318,13 +312,13 @@ exports.evaluateAnswer = async (req, res) => {
             });
         }
 
-        const interview = interviewResult.rows[0];
+        const interview = result.rows[0];
 
         if (
             !interview.pending_question ||
             question.trim() !== interview.pending_question.trim()
         ) {
-            await client.query("ROLLBACK");
+            await rollback(client);
 
             return res.status(400).json({
                 success: false,
@@ -332,20 +326,15 @@ exports.evaluateAnswer = async (req, res) => {
             });
         }
 
-        const questionNumber = Number(
-            interview.pending_question_number
-        );
-
-        const totalQuestions = Number(
-            interview.total_questions
-        );
+        const questionNumber = Number(interview.pending_question_number);
+        const totalQuestions = Number(interview.total_questions);
 
         if (
             !Number.isInteger(questionNumber) ||
             questionNumber < 1 ||
             questionNumber > totalQuestions
         ) {
-            await client.query("ROLLBACK");
+            await rollback(client);
 
             return res.status(400).json({
                 success: false,
@@ -354,7 +343,7 @@ exports.evaluateAnswer = async (req, res) => {
         }
 
         const evaluation = await evaluateAIAnswer(
-            interview.pending_question.trim(),
+            interview.pending_question,
             answer.trim()
         );
 
@@ -381,7 +370,7 @@ exports.evaluateAnswer = async (req, res) => {
             [
                 interviewId,
                 questionNumber,
-                interview.pending_question.trim(),
+                interview.pending_question,
                 answer.trim(),
                 evaluation.grammarScore,
                 evaluation.fluencyScore,
@@ -412,9 +401,7 @@ exports.evaluateAnswer = async (req, res) => {
         });
 
     } catch (error) {
-        if (client) {
-            await client.query("ROLLBACK").catch(() => {});
-        }
+        await rollback(client);
 
         console.error("Evaluate Answer Error:", error);
 
@@ -453,7 +440,6 @@ exports.getNextQuestion = async (req, res) => {
         }
 
         client = await db.connect();
-
         await client.query("BEGIN");
 
         const result = await client.query(
@@ -467,7 +453,7 @@ exports.getNextQuestion = async (req, res) => {
         );
 
         if (!result.rows.length) {
-            await client.query("ROLLBACK");
+            await rollback(client);
 
             return res.status(404).json({
                 success: false,
@@ -477,15 +463,14 @@ exports.getNextQuestion = async (req, res) => {
 
         const interview = result.rows[0];
 
+        // Return existing pending question
         if (interview.pending_question) {
             await client.query("COMMIT");
 
             return res.json({
                 success: true,
                 completed: false,
-                questionNumber: Number(
-                    interview.pending_question_number
-                ),
+                questionNumber: Number(interview.pending_question_number),
                 question: interview.pending_question
             });
         }
@@ -522,8 +507,7 @@ exports.getNextQuestion = async (req, res) => {
              SET pending_question = $1,
                  pending_question_number = $2
              WHERE id = $3
-             AND student_id = $4
-             AND status = 'In Progress'`,
+             AND student_id = $4`,
             [question, nextNumber, interviewId, studentId]
         );
 
@@ -537,9 +521,7 @@ exports.getNextQuestion = async (req, res) => {
         });
 
     } catch (error) {
-        if (client) {
-            await client.query("ROLLBACK").catch(() => {});
-        }
+        await rollback(client);
 
         console.error("Next Question Error:", error);
 
@@ -578,7 +560,6 @@ exports.completeInterview = async (req, res) => {
         }
 
         client = await db.connect();
-
         await client.query("BEGIN");
 
         const result = await client.query(
@@ -592,7 +573,7 @@ exports.completeInterview = async (req, res) => {
         );
 
         if (!result.rows.length) {
-            await client.query("ROLLBACK");
+            await rollback(client);
 
             return res.status(404).json({
                 success: false,
@@ -603,7 +584,7 @@ exports.completeInterview = async (req, res) => {
         const interview = result.rows[0];
 
         if (interview.pending_question) {
-            await client.query("ROLLBACK");
+            await rollback(client);
 
             return res.status(400).json({
                 success: false,
@@ -631,18 +612,14 @@ exports.completeInterview = async (req, res) => {
 
         const data = scores.rows[0];
 
-        const answeredCount = Number(data.answered);
-
-        if (answeredCount !== Number(interview.total_questions)) {
-            await client.query("ROLLBACK");
+        if (Number(data.answered) !== Number(interview.total_questions)) {
+            await rollback(client);
 
             return res.status(400).json({
                 success: false,
                 message: "All questions must be answered first"
             });
         }
-
-        const overallScore = Number(data.overall_score);
 
         const updated = await client.query(
             `UPDATE ai_interviews
@@ -655,7 +632,7 @@ exports.completeInterview = async (req, res) => {
              AND student_id = $3
              AND status = 'In Progress'
              RETURNING *`,
-            [overallScore, interviewId, studentId]
+            [Number(data.overall_score), interviewId, studentId]
         );
 
         await client.query("COMMIT");
@@ -667,9 +644,7 @@ exports.completeInterview = async (req, res) => {
         });
 
     } catch (error) {
-        if (client) {
-            await client.query("ROLLBACK").catch(() => {});
-        }
+        await rollback(client);
 
         console.error("Complete Interview Error:", error);
 

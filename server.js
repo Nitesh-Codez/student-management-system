@@ -24,8 +24,8 @@ const examRoutes = require("./routes/examRoutes.js")
 const studentStarsRoutes = require("./routes/studentStarsRoutes");
 const academicRoutes = require("./routes/academicDocumentRoutes.js")
 const holidayRoutes = require("./routes/holidayRoutes");
-const aiInertivewRoutes = require("./routes/aiInterviewRoutes.js");
-const genAI = require("../config/gemini");
+const aiInterviewRoutes = require("./routes/aiInterviewRoutes.js");
+const genAI = require("./config/gemini.js");
 
 
 // ==================== DB INIT ====================
@@ -65,7 +65,7 @@ app.use("/api/student-stars", studentStarsRoutes);
 app.use("/api/exam", examRoutes);
 app.use("/api/exams-details",academicRoutes);
 app.use("/api/holidays", holidayRoutes);
-app.use("/api/interview", aiInertivewRoutes);
+app.use("/api/interview", aiInterviewRoutes);
 
 
 // ==================== STATIC FILES ====================

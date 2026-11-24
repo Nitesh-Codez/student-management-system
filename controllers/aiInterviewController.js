@@ -2,7 +2,8 @@
 const db = require("../db");
 const genAI = require("../config/gemini");
 
-// Helper: Generate AI Question
+// ==================== GEMINI HELPER ====================
+
 const generateAIQuestion = async (
     level,
     interviewType,
@@ -34,124 +35,21 @@ Rules:
         contents: prompt
     });
 
-    return response.text.trim();
-};
+    const question = response.text?.trim();
 
-
-// 1. START INTERVIEW
-exports.startInterview = async (req, res) => {
-    try {
-        const { level, interviewType, totalQuestions = 5 } = req.body;
-
-        const studentId = req.user.id;
-
-        if (
-            !["Beginner", "Intermediate", "Advanced"].includes(level) ||
-            !["General English", "Academic Interview", "Job Interview"].includes(interviewType) ||
-            ![5, 10].includes(totalQuestions)
-        ) {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid interview settings"
-            });
-        }
-
-        const result = await db.query(
-            `INSERT INTO ai_interviews
-            (student_id, level, interview_type, total_questions, status)
-            VALUES ($1, $2, $3, $4, 'In Progress')
-            RETURNING *`,
-            [studentId, level, interviewType, totalQuestions]
-        );
-
-        const interview = result.rows[0];
-
-        const question = await generateAIQuestion(
-            level,
-            interviewType,
-            1
-        );
-
-        res.status(201).json({
-            success: true,
-            interviewId: interview.id,
-            questionNumber: 1,
-            question
-        });
-
-    } catch (error) {
-        console.error("Start Interview Error:", error);
-
-        res.status(500).json({
-            success: false,
-            message: "Unable to start interview"
-        });
+    if (!question) {
+        throw new Error("Gemini returned an empty question");
     }
+
+    return question;
 };
 
 
-// 2. EVALUATE ANSWER
-exports.evaluateAnswer = async (req, res) => {
-    try {
-        const { interviewId, question, answer } = req.body;
+// ==================== GEMINI EVALUATION HELPER ====================
 
-        if (!interviewId || !question || !answer?.trim()) {
-            return res.status(400).json({
-                success: false,
-                message: "Interview ID, question and answer are required"
-            });
-        }
+const evaluateAIAnswer = async (question, answer) => {
 
-        const interviewResult = await db.query(
-            `SELECT * FROM ai_interviews
-             WHERE id = $1 AND student_id = $2
-             AND status = 'In Progress'`,
-            [interviewId, req.user.id]
-        );
-
-        if (!interviewResult.rows.length) {
-            return res.status(404).json({
-                success: false,
-                message: "Interview not found"
-            });
-        }
-
-        const interview = interviewResult.rows[0];
-
-        const previous = await db.query(
-            `SELECT question_number, question, answer_text
-             FROM ai_interview_answers
-             WHERE interview_id = $1
-             ORDER BY question_number`,
-            [interviewId]
-        );
-
-        const questionNumber = previous.rows.length + 1;
-
-        if (questionNumber > interview.total_questions) {
-            return res.status(400).json({
-                success: false,
-                message: "All questions already answered"
-            });
-        }
-
-        const expectedQuestion = await generateAIQuestion(
-            interview.level,
-            interview.interview_type,
-            questionNumber,
-            previous.rows
-        );
-
-        // Verify that the submitted question matches
-        // the question generated for this interview.
-        if (question.trim() !== expectedQuestion.trim()) {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid interview question"
-            });
-        }
-
-        const prompt = `
+    const prompt = `
 You are a professional English communication teacher.
 
 Evaluate the student's answer.
@@ -177,44 +75,192 @@ Do not assume speaking speed from text.
 Be encouraging and constructive.
 `;
 
-        const response = await genAI.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: prompt
-        });
+    const response = await genAI.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: prompt
+    });
 
-        const raw = response.text
-            .replace(/```json/gi, "")
-            .replace(/```/g, "")
-            .trim();
+    const raw = response.text
+        .replace(/```json/gi, "")
+        .replace(/```/g, "")
+        .trim();
 
-        const evaluation = JSON.parse(raw);
+    const evaluation = JSON.parse(raw);
 
-        const scoreKeys = [
-            "grammarScore",
-            "fluencyScore",
-            "vocabularyScore",
-            "relevanceScore"
-        ];
+    const scoreKeys = [
+        "grammarScore",
+        "fluencyScore",
+        "vocabularyScore",
+        "relevanceScore"
+    ];
 
-        for (const key of scoreKeys) {
-            if (
-                typeof evaluation[key] !== "number" ||
-                !Number.isFinite(evaluation[key]) ||
-                evaluation[key] < 0 ||
-                evaluation[key] > 100
-            ) {
-                throw new Error("Invalid AI evaluation score");
-            }
+    for (const key of scoreKeys) {
+        if (
+            typeof evaluation[key] !== "number" ||
+            !Number.isFinite(evaluation[key]) ||
+            evaluation[key] < 0 ||
+            evaluation[key] > 100
+        ) {
+            throw new Error(`Invalid ${key}`);
+        }
+    }
+
+    if (
+        typeof evaluation.feedback !== "string" ||
+        !Array.isArray(evaluation.mistakes) ||
+        typeof evaluation.improvedAnswer !== "string"
+    ) {
+        throw new Error("Invalid evaluation response");
+    }
+
+    return evaluation;
+};
+
+
+// ==================== 1. START INTERVIEW ====================
+
+exports.startInterview = async (req, res) => {
+    try {
+        const { level, interviewType } = req.body;
+        const totalQuestions = Number(req.body.totalQuestions ?? 5);
+
+        const studentId = req.user.id;
+
+        if (
+            !["Beginner", "Intermediate", "Advanced"].includes(level) ||
+            !["General English", "Academic Interview", "Job Interview"].includes(interviewType) ||
+            ![5, 10].includes(totalQuestions)
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid interview settings"
+            });
         }
 
+        const result = await db.query(
+            `INSERT INTO ai_interviews
+            (student_id, level, interview_type, total_questions, status)
+            VALUES ($1, $2, $3, $4, 'In Progress')
+            RETURNING *`,
+            [studentId, level, interviewType, totalQuestions]
+        );
+
+        const interview = result.rows[0];
+
+        // Generate first question
+        const question = await generateAIQuestion(
+            level,
+            interviewType,
+            1
+        );
+
+        // Save question in database
+        await db.query(
+            `UPDATE ai_interviews
+             SET pending_question = $1,
+                 pending_question_number = 1
+             WHERE id = $2 AND student_id = $3`,
+            [question, interview.id, studentId]
+        );
+
+        res.status(201).json({
+            success: true,
+            interviewId: interview.id,
+            questionNumber: 1,
+            question
+        });
+
+    } catch (error) {
+        console.error("Start Interview Error:", error);
+
+        res.status(500).json({
+            success: false,
+            message: "Unable to start interview"
+        });
+    }
+};
+
+
+// ==================== 2. EVALUATE ANSWER ====================
+
+exports.evaluateAnswer = async (req, res) => {
+    try {
+        const { interviewId, question, answer } = req.body;
+
+        if (
+            !interviewId ||
+            typeof question !== "string" ||
+            typeof answer !== "string" ||
+            !question.trim() ||
+            !answer.trim()
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: "Interview ID, question and answer are required"
+            });
+        }
+
+        const interviewResult = await db.query(
+            `SELECT * FROM ai_interviews
+             WHERE id = $1
+             AND student_id = $2
+             AND status = 'In Progress'`,
+            [interviewId, req.user.id]
+        );
+
+        if (!interviewResult.rows.length) {
+            return res.status(404).json({
+                success: false,
+                message: "Interview not found"
+            });
+        }
+
+        const interview = interviewResult.rows[0];
+
+        // Verify saved question instead of generating a new one
+        if (
+            !interview.pending_question ||
+            question.trim() !== interview.pending_question.trim()
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid or outdated interview question"
+            });
+        }
+
+        const questionNumber = interview.pending_question_number;
+
+        if (
+            !questionNumber ||
+            questionNumber > interview.total_questions
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid question number"
+            });
+        }
+
+        // Evaluate answer using Gemini
+        const evaluation = await evaluateAIAnswer(
+            question,
+            answer
+        );
+
+        // Save evaluated answer
         const saved = await db.query(
             `INSERT INTO ai_interview_answers
             (
-                interview_id, question_number,
-                question, answer_text,
-                grammar_score, fluency_score,
-                vocabulary_score, relevance_score,
-                feedback, mistakes, improved_answer
+                interview_id,
+                question_number,
+                question,
+                answer_text,
+                grammar_score,
+                fluency_score,
+                vocabulary_score,
+                relevance_score,
+                feedback,
+                mistakes,
+                improved_answer
             )
             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
             RETURNING *`,
@@ -228,9 +274,18 @@ Be encouraging and constructive.
                 evaluation.vocabularyScore,
                 evaluation.relevanceScore,
                 evaluation.feedback,
-                JSON.stringify(evaluation.mistakes || []),
+                JSON.stringify(evaluation.mistakes),
                 evaluation.improvedAnswer
             ]
+        );
+
+        // Clear current question after successful evaluation
+        await db.query(
+            `UPDATE ai_interviews
+             SET pending_question = NULL,
+                 pending_question_number = NULL
+             WHERE id = $1 AND student_id = $2`,
+            [interviewId, req.user.id]
         );
 
         res.json({
@@ -251,14 +306,16 @@ Be encouraging and constructive.
 };
 
 
-// 3. GET NEXT QUESTION
+// ==================== 3. GET NEXT QUESTION ====================
+
 exports.getNextQuestion = async (req, res) => {
     try {
         const { interviewId } = req.params;
 
         const result = await db.query(
             `SELECT * FROM ai_interviews
-             WHERE id = $1 AND student_id = $2
+             WHERE id = $1
+             AND student_id = $2
              AND status = 'In Progress'`,
             [interviewId, req.user.id]
         );
@@ -271,6 +328,16 @@ exports.getNextQuestion = async (req, res) => {
         }
 
         const interview = result.rows[0];
+
+        // If a question is already generated, return the same question
+        if (interview.pending_question) {
+            return res.json({
+                success: true,
+                completed: false,
+                questionNumber: interview.pending_question_number,
+                question: interview.pending_question
+            });
+        }
 
         const answers = await db.query(
             `SELECT question_number, question, answer_text
@@ -290,11 +357,22 @@ exports.getNextQuestion = async (req, res) => {
             });
         }
 
+        // Generate next question
         const question = await generateAIQuestion(
             interview.level,
             interview.interview_type,
             nextNumber,
             answers.rows
+        );
+
+        // Save next question
+        await db.query(
+            `UPDATE ai_interviews
+             SET pending_question = $1,
+                 pending_question_number = $2
+             WHERE id = $3 AND student_id = $4
+             AND status = 'In Progress'`,
+            [question, nextNumber, interviewId, req.user.id]
         );
 
         res.json({
@@ -315,14 +393,23 @@ exports.getNextQuestion = async (req, res) => {
 };
 
 
-// 4. COMPLETE INTERVIEW
+// ==================== 4. COMPLETE INTERVIEW ====================
+
 exports.completeInterview = async (req, res) => {
     try {
         const { interviewId } = req.body;
 
+        if (!interviewId) {
+            return res.status(400).json({
+                success: false,
+                message: "Interview ID is required"
+            });
+        }
+
         const result = await db.query(
             `SELECT * FROM ai_interviews
-             WHERE id = $1 AND student_id = $2
+             WHERE id = $1
+             AND student_id = $2
              AND status = 'In Progress'`,
             [interviewId, req.user.id]
         );
@@ -361,8 +448,11 @@ exports.completeInterview = async (req, res) => {
             `UPDATE ai_interviews
              SET status = 'Completed',
                  overall_score = $1,
-                 completed_at = NOW()
-             WHERE id = $2 AND student_id = $3
+                 completed_at = NOW(),
+                 pending_question = NULL,
+                 pending_question_number = NULL
+             WHERE id = $2
+             AND student_id = $3
              AND status = 'In Progress'
              RETURNING *`,
             [data.overall_score, interviewId, req.user.id]
@@ -385,7 +475,8 @@ exports.completeInterview = async (req, res) => {
 };
 
 
-// 5. GET INTERVIEW HISTORY
+// ==================== 5. GET INTERVIEW HISTORY ====================
+
 exports.getInterviewHistory = async (req, res) => {
     try {
         const result = await db.query(
@@ -401,6 +492,8 @@ exports.getInterviewHistory = async (req, res) => {
         });
 
     } catch (error) {
+        console.error("Interview History Error:", error);
+
         res.status(500).json({
             success: false,
             message: "Unable to fetch interview history"
@@ -409,14 +502,16 @@ exports.getInterviewHistory = async (req, res) => {
 };
 
 
-// 6. GET INTERVIEW REPORT
+// ==================== 6. GET INTERVIEW REPORT ====================
+
 exports.getInterviewReport = async (req, res) => {
     try {
         const { interviewId } = req.params;
 
         const interview = await db.query(
             `SELECT * FROM ai_interviews
-             WHERE id = $1 AND student_id = $2`,
+             WHERE id = $1
+             AND student_id = $2`,
             [interviewId, req.user.id]
         );
 
@@ -441,6 +536,8 @@ exports.getInterviewReport = async (req, res) => {
         });
 
     } catch (error) {
+        console.error("Interview Report Error:", error);
+
         res.status(500).json({
             success: false,
             message: "Unable to fetch report"

@@ -82,24 +82,52 @@ const extractJsonObject = (text) => {
     }
 };
 
+
 const generateContent = async (prompt) => {
     if (!genAI?.models?.generateContent) {
         throw new Error("Gemini SDK is not configured correctly");
     }
 
-    const response = await genAI.models.generateContent({
-        model: MODEL_NAME,
-        contents: prompt
-    });
+    const maxRetries = 3;
 
-    const text = response?.text;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            const response = await genAI.models.generateContent({
+                model: MODEL_NAME,
+                contents: prompt
+            });
 
-    if (typeof text !== "string" || !text.trim()) {
-        throw new Error("Gemini returned an empty response");
+            const text = response?.text;
+
+            if (typeof text !== "string" || !text.trim()) {
+                throw new Error("Gemini returned an empty response");
+            }
+
+            return text.trim();
+
+        } catch (error) {
+            const status = error.status || error.code;
+            const retryable = status === 503 ||
+                              status === 429 ||
+                              status === 500 ||
+                              status === 502 ||
+                              status === 504;
+
+            if (!retryable || attempt === maxRetries) {
+                throw error;
+            }
+
+            const delay = 1000 * Math.pow(2, attempt - 1);
+
+            console.log(
+                `Gemini temporary error. Retry ${attempt}/${maxRetries} after ${delay}ms`
+            );
+
+            await new Promise(resolve => setTimeout(resolve, delay));
+        }
     }
-
-    return text.trim();
 };
+
 
 // ======================================================
 // GENERATE AI QUESTION

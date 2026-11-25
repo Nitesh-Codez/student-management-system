@@ -243,10 +243,14 @@ Rules:
 // ======================================================
 // 1. START INTERVIEW
 // ======================================================
-
 exports.startInterview = async (req, res) => {
+    let stage = "initialization";
+
     try {
         const studentId = getStudentId(req);
+
+        console.log("Student ID:", studentId);
+        console.log("Request Body:", req.body);
 
         if (!studentId) {
             return res.status(401).json({
@@ -259,9 +263,7 @@ exports.startInterview = async (req, res) => {
 
         const { level, interviewType } = body;
 
-        const totalQuestions = Number(
-            body.totalQuestions ?? 5
-        );
+        const totalQuestions = Number(body.totalQuestions ?? 5);
 
         if (
             !ALLOWED_LEVELS.includes(level) ||
@@ -274,13 +276,18 @@ exports.startInterview = async (req, res) => {
             });
         }
 
-        // Generate first question before inserting interview.
+        stage = "Gemini question generation";
+
         const question = await generateAIQuestion(
             level,
             interviewType,
             1,
             []
         );
+
+        console.log("Generated Question:", question);
+
+        stage = "Database INSERT";
 
         const result = await db.query(
             `INSERT INTO ai_interviews
@@ -304,9 +311,7 @@ exports.startInterview = async (req, res) => {
             ]
         );
 
-        if (!result.rows.length) {
-            throw new Error("Interview could not be created");
-        }
+        console.log("Interview Created:", result.rows[0]);
 
         return res.status(201).json({
             success: true,
@@ -316,15 +321,19 @@ exports.startInterview = async (req, res) => {
         });
 
     } catch (error) {
-        console.error("Start Interview Error:", error);
+        console.error("START INTERVIEW FAILED");
+        console.error("Failed Stage:", stage);
+        console.error("Error Message:", error.message);
+        console.error("Error Code:", error.code);
+        console.error("Full Error:", error);
 
         return res.status(500).json({
             success: false,
-            message: "Unable to start interview"
+            message: "Unable to start interview",
+            stage
         });
     }
 };
-
 // ======================================================
 // 2. EVALUATE ANSWER
 // ======================================================

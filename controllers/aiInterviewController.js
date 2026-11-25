@@ -213,7 +213,7 @@ exports.startInterview = async (req, res) => {
             });
         }
 
-        // Generate question before creating database record
+        // Generate question first
         const question = await generateAIQuestion(
             level,
             interviewType,
@@ -221,6 +221,7 @@ exports.startInterview = async (req, res) => {
             []
         );
 
+        // Save interview
         const result = await db.query(
             `INSERT INTO ai_interviews
              (
@@ -463,7 +464,6 @@ exports.getNextQuestion = async (req, res) => {
 
         const interview = result.rows[0];
 
-        // Return existing pending question
         if (interview.pending_question) {
             await client.query("COMMIT");
 
@@ -507,7 +507,8 @@ exports.getNextQuestion = async (req, res) => {
              SET pending_question = $1,
                  pending_question_number = $2
              WHERE id = $3
-             AND student_id = $4`,
+             AND student_id = $4
+             AND status = 'In Progress'`,
             [question, nextNumber, interviewId, studentId]
         );
 

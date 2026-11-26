@@ -210,11 +210,13 @@ exports.getAvailableVivas = async (req, res) => {
         const result = await db.query(
             `SELECT
                 v.*,
+
                 COALESCE(
-                    ARRAY_AGG(t.topic_name)
+                    ARRAY_AGG(DISTINCT t.topic_name)
                     FILTER (WHERE t.id IS NOT NULL),
                     '{}'
                 ) AS topics,
+
                 CASE
                     WHEN CURRENT_DATE < v.start_date
                     THEN 'Upcoming'
@@ -222,28 +224,42 @@ exports.getAvailableVivas = async (req, res) => {
                     THEN 'Expired'
                     ELSE 'Available'
                 END AS availability_status
-             FROM admin_vivas v
-             LEFT JOIN admin_viva_topics t
+
+            FROM admin_vivas v
+
+            LEFT JOIN admin_viva_topics t
                 ON t.viva_id = v.id
-             WHERE v.class_name = $1
-             AND v.status = 'Active'
-             AND v.end_date >= CURRENT_DATE
-             GROUP BY v.id
-             ORDER BY v.start_date ASC`,
-            [className]
+
+            WHERE
+                LOWER(TRIM(v.class_name)) =
+                LOWER(TRIM($1))
+
+                AND LOWER(TRIM(v.status)) = 'active'
+
+                AND v.end_date >= CURRENT_DATE
+
+            GROUP BY v.id
+
+            ORDER BY v.start_date ASC`,
+
+            [String(className)]
         );
 
-        return res.json({
+        return res.status(200).json({
             success: true,
+            studentId,
+            studentClass: className,
+            total: result.rows.length,
             vivas: result.rows
         });
 
     } catch (error) {
-        console.error("Available Vivas:", error);
+        console.error("Available Vivas Error:", error);
 
         return res.status(500).json({
             success: false,
-            message: "Unable to fetch available vivas"
+            message: "Unable to fetch available vivas",
+            error: error.message
         });
     }
 };

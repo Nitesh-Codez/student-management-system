@@ -1,3 +1,8 @@
+const express = require("express");
+const router = express.Router();
+
+const student = require("../controllers/studentVivaController");
+
 router.get("/available", student.getAvailableVivas);
 
 router.post("/:id/start", student.startViva);

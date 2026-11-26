@@ -82,16 +82,17 @@ const generateContent = async (prompt) => {
             return text.trim();
 
         } catch (error) {
+            console.error("Gemini API Error:", {
+                message: error?.message,
+                status: error?.status,
+                code: error?.code,
+                attempt
+            });
+
             const retryable = isRetryableGeminiError(error);
 
             if (!retryable || attempt === GEMINI_MAX_RETRIES) {
-                console.error("Gemini API Failed:", {
-                    status: error?.status,
-                    code: error?.code,
-                    message: error?.message,
-                    attempt
-                });
-
+                console.error("Gemini API Failed after retries");
                 throw error;
             }
 
@@ -109,6 +110,7 @@ const generateContent = async (prompt) => {
 
     throw new Error("Gemini generation failed");
 };
+
 
 // ======================================================
 // EXTRACT JSON

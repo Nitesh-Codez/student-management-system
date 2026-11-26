@@ -27,13 +27,13 @@ const getStudentId = (req) => {
 // Get student class
 const getStudentClass = async (studentId) => {
     const result = await db.query(
-        `SELECT class_name
+        `SELECT class
          FROM students
          WHERE id = $1`,
         [studentId]
     );
 
-    return result.rows[0]?.class_name || null;
+    return result.rows[0]?.class || null;
 };
 
 

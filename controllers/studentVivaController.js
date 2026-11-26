@@ -12,15 +12,19 @@ const MAX_SCORE = 10;
 // COMMON HELPERS
 // ======================================================
 
+// Middleware-free student ID handling
 const getStudentId = (req) => {
-    return req.user?.id || null;
+    const id = req.body?.studentId || req.query?.studentId;
+
+    if (!id || !Number.isInteger(Number(id)) || Number(id) <= 0) {
+        return null;
+    }
+
+    return Number(id);
 };
 
 
-// IMPORTANT:
-// Change this query if your actual student table or
-// class column has a different name.
-
+// Get student class
 const getStudentClass = async (studentId) => {
     const result = await db.query(
         `SELECT class_name
@@ -33,6 +37,7 @@ const getStudentClass = async (studentId) => {
 };
 
 
+// Gemini content generation
 const generateContent = async (prompt) => {
     if (!genAI?.models?.generateContent) {
         throw new Error("Gemini SDK is not configured");
@@ -51,6 +56,7 @@ const generateContent = async (prompt) => {
 };
 
 
+// Extract JSON from Gemini response
 const extractJSON = (text) => {
     const cleaned = text
         .replace(/```json/gi, "")
@@ -68,11 +74,19 @@ const extractJSON = (text) => {
 };
 
 
+// ======================================================
+// GENERATE ONE QUESTION
+// ======================================================
+
 const generateQuestion = async (
     viva,
     topics,
     previousQuestions = []
 ) => {
+    if (!topics.length) {
+        throw new Error("No topics configured");
+    }
+
     const prompt = `
 You are an experienced school teacher conducting an oral viva.
 
@@ -96,6 +110,7 @@ Instructions:
 7. Do not include answers or explanations.
 
 Return valid JSON only:
+
 {
     "topic": "topic name",
     "question": "question text"
@@ -126,6 +141,10 @@ Return valid JSON only:
 };
 
 
+// ======================================================
+// EVALUATE ANSWER
+// ======================================================
+
 const evaluateAnswer = async (question, answer, viva) => {
     const prompt = `
 You are an experienced ${viva.subject} teacher.
@@ -145,6 +164,7 @@ and understanding appropriate for this class.
 Maximum Marks: 10
 
 Return valid JSON only:
+
 {
     "score": 0,
     "feedback": "Simple constructive feedback",
@@ -192,9 +212,9 @@ exports.getAvailableVivas = async (req, res) => {
         const studentId = getStudentId(req);
 
         if (!studentId) {
-            return res.status(401).json({
+            return res.status(400).json({
                 success: false,
-                message: "Unauthorized"
+                message: "Valid studentId is required"
             });
         }
 
@@ -220,8 +240,10 @@ exports.getAvailableVivas = async (req, res) => {
                 CASE
                     WHEN CURRENT_DATE < v.start_date
                     THEN 'Upcoming'
+
                     WHEN CURRENT_DATE > v.end_date
                     THEN 'Expired'
+
                     ELSE 'Available'
                 END AS availability_status
 
@@ -241,7 +263,6 @@ exports.getAvailableVivas = async (req, res) => {
             GROUP BY v.id
 
             ORDER BY v.start_date ASC`,
-
             [String(className)]
         );
 
@@ -270,16 +291,17 @@ exports.getAvailableVivas = async (req, res) => {
 // ======================================================
 
 exports.startViva = async (req, res) => {
-    const client = await db.connect();
+    let client;
+    let transactionStarted = false;
 
     try {
         const studentId = getStudentId(req);
         const vivaId = req.params.id;
 
         if (!studentId) {
-            return res.status(401).json({
+            return res.status(400).json({
                 success: false,
-                message: "Unauthorized"
+                message: "Valid studentId is required"
             });
         }
 
@@ -292,14 +314,17 @@ exports.startViva = async (req, res) => {
             });
         }
 
+        client = await db.connect();
+
         await client.query("BEGIN");
+        transactionStarted = true;
 
         const vivaResult = await client.query(
             `SELECT *
              FROM admin_vivas
              WHERE id = $1
-             AND class_name = $2
-             AND status = 'Active'
+             AND LOWER(TRIM(class_name)) = LOWER(TRIM($2))
+             AND LOWER(TRIM(status)) = 'active'
              AND CURRENT_DATE BETWEEN start_date AND end_date
              FOR UPDATE`,
             [vivaId, className]
@@ -307,6 +332,7 @@ exports.startViva = async (req, res) => {
 
         if (!vivaResult.rows.length) {
             await client.query("ROLLBACK");
+            transactionStarted = false;
 
             return res.status(404).json({
                 success: false,
@@ -316,7 +342,7 @@ exports.startViva = async (req, res) => {
 
         const viva = vivaResult.rows[0];
 
-        // Check existing in-progress attempt.
+        // Check existing attempt
         const existing = await client.query(
             `SELECT *
              FROM student_viva_attempts
@@ -333,6 +359,7 @@ exports.startViva = async (req, res) => {
             const attempt = existing.rows[0];
 
             await client.query("COMMIT");
+            transactionStarted = false;
 
             return res.json({
                 success: true,
@@ -345,7 +372,7 @@ exports.startViva = async (req, res) => {
             });
         }
 
-        // Check attempt limit.
+        // Check attempt limit
         const countResult = await client.query(
             `SELECT COUNT(*)::INTEGER AS attempts
              FROM student_viva_attempts
@@ -358,6 +385,7 @@ exports.startViva = async (req, res) => {
             countResult.rows[0].attempts >= viva.attempt_limit
         ) {
             await client.query("ROLLBACK");
+            transactionStarted = false;
 
             return res.status(403).json({
                 success: false,
@@ -365,6 +393,7 @@ exports.startViva = async (req, res) => {
             });
         }
 
+        // Get allowed topics
         const topicResult = await client.query(
             `SELECT topic_name
              FROM admin_viva_topics
@@ -380,12 +409,14 @@ exports.startViva = async (req, res) => {
             throw new Error("No topics configured for viva");
         }
 
+        // Generate first question
         const generated = await generateQuestion(
             viva,
             topics,
             []
         );
 
+        // Create attempt
         const attempt = await client.query(
             `INSERT INTO student_viva_attempts
             (
@@ -408,6 +439,7 @@ exports.startViva = async (req, res) => {
         );
 
         await client.query("COMMIT");
+        transactionStarted = false;
 
         return res.status(201).json({
             success: true,
@@ -420,16 +452,20 @@ exports.startViva = async (req, res) => {
         });
 
     } catch (error) {
-        await client.query("ROLLBACK");
+        if (transactionStarted && client) {
+            await client.query("ROLLBACK").catch(console.error);
+        }
+
         console.error("Start Viva:", error);
 
         return res.status(500).json({
             success: false,
-            message: "Unable to start viva"
+            message: "Unable to start viva",
+            error: error.message
         });
 
     } finally {
-        client.release();
+        if (client) client.release();
     }
 };
 
@@ -439,26 +475,36 @@ exports.startViva = async (req, res) => {
 // ======================================================
 
 exports.submitVivaAnswer = async (req, res) => {
-    const client = await db.connect();
+    let client;
+    let transactionStarted = false;
 
     try {
         const studentId = getStudentId(req);
-        const { answer } = req.body;
+        const { answer } = req.body || {};
         const { attemptId } = req.params;
 
+        if (!studentId) {
+            return res.status(400).json({
+                success: false,
+                message: "Valid studentId is required"
+            });
+        }
+
         if (
-            !studentId ||
             typeof answer !== "string" ||
             !answer.trim() ||
             answer.trim().length > 5000
         ) {
             return res.status(400).json({
                 success: false,
-                message: "Valid student and answer are required"
+                message: "Valid answer is required"
             });
         }
 
+        client = await db.connect();
+
         await client.query("BEGIN");
+        transactionStarted = true;
 
         const result = await client.query(
             `SELECT
@@ -467,18 +513,24 @@ exports.submitVivaAnswer = async (req, res) => {
                 v.class_name,
                 v.difficulty,
                 v.end_date
+
              FROM student_viva_attempts a
-             JOIN admin_vivas v ON v.id = a.viva_id
+
+             JOIN admin_vivas v
+                ON v.id = a.viva_id
+
              WHERE a.id = $1
              AND a.student_id = $2
              AND a.status = 'In Progress'
              AND CURRENT_DATE <= v.end_date
+
              FOR UPDATE OF a`,
             [attemptId, studentId]
         );
 
         if (!result.rows.length) {
             await client.query("ROLLBACK");
+            transactionStarted = false;
 
             return res.status(404).json({
                 success: false,
@@ -490,6 +542,7 @@ exports.submitVivaAnswer = async (req, res) => {
 
         if (!attempt.current_question) {
             await client.query("ROLLBACK");
+            transactionStarted = false;
 
             return res.status(400).json({
                 success: false,
@@ -497,6 +550,7 @@ exports.submitVivaAnswer = async (req, res) => {
             });
         }
 
+        // AI evaluation
         const evaluation = await evaluateAnswer(
             attempt.current_question,
             answer.trim(),
@@ -506,6 +560,7 @@ exports.submitVivaAnswer = async (req, res) => {
         const questionNumber =
             Number(attempt.current_question_number);
 
+        // Save answer
         const saved = await client.query(
             `INSERT INTO student_viva_answers
             (
@@ -534,6 +589,7 @@ exports.submitVivaAnswer = async (req, res) => {
             ]
         );
 
+        // Update attempt
         await client.query(
             `UPDATE student_viva_attempts
              SET attempted_questions = attempted_questions + 1,
@@ -547,6 +603,7 @@ exports.submitVivaAnswer = async (req, res) => {
         );
 
         await client.query("COMMIT");
+        transactionStarted = false;
 
         return res.json({
             success: true,
@@ -557,16 +614,20 @@ exports.submitVivaAnswer = async (req, res) => {
         });
 
     } catch (error) {
-        await client.query("ROLLBACK");
+        if (transactionStarted && client) {
+            await client.query("ROLLBACK").catch(console.error);
+        }
+
         console.error("Submit Viva Answer:", error);
 
         return res.status(500).json({
             success: false,
-            message: "Unable to evaluate answer"
+            message: "Unable to evaluate answer",
+            error: error.message
         });
 
     } finally {
-        client.release();
+        if (client) client.release();
     }
 };
 
@@ -576,20 +637,24 @@ exports.submitVivaAnswer = async (req, res) => {
 // ======================================================
 
 exports.getNextQuestion = async (req, res) => {
-    const client = await db.connect();
+    let client;
+    let transactionStarted = false;
 
     try {
         const studentId = getStudentId(req);
         const { attemptId } = req.params;
 
         if (!studentId) {
-            return res.status(401).json({
+            return res.status(400).json({
                 success: false,
-                message: "Unauthorized"
+                message: "Valid studentId is required"
             });
         }
 
+        client = await db.connect();
+
         await client.query("BEGIN");
+        transactionStarted = true;
 
         const result = await client.query(
             `SELECT
@@ -598,18 +663,24 @@ exports.getNextQuestion = async (req, res) => {
                 v.class_name,
                 v.difficulty,
                 v.end_date
+
              FROM student_viva_attempts a
-             JOIN admin_vivas v ON v.id = a.viva_id
+
+             JOIN admin_vivas v
+                ON v.id = a.viva_id
+
              WHERE a.id = $1
              AND a.student_id = $2
              AND a.status = 'In Progress'
              AND CURRENT_DATE <= v.end_date
+
              FOR UPDATE OF a`,
             [attemptId, studentId]
         );
 
         if (!result.rows.length) {
             await client.query("ROLLBACK");
+            transactionStarted = false;
 
             return res.status(404).json({
                 success: false,
@@ -619,9 +690,10 @@ exports.getNextQuestion = async (req, res) => {
 
         const attempt = result.rows[0];
 
-        // Return pending question if it already exists.
+        // Return existing pending question
         if (attempt.current_question) {
             await client.query("COMMIT");
+            transactionStarted = false;
 
             return res.json({
                 success: true,
@@ -633,6 +705,7 @@ exports.getNextQuestion = async (req, res) => {
             });
         }
 
+        // Get previous answers
         const answers = await client.query(
             `SELECT question, student_answer
              FROM student_viva_answers
@@ -645,6 +718,7 @@ exports.getNextQuestion = async (req, res) => {
 
         if (nextNumber > attempt.total_questions) {
             await client.query("COMMIT");
+            transactionStarted = false;
 
             return res.json({
                 success: true,
@@ -653,6 +727,7 @@ exports.getNextQuestion = async (req, res) => {
             });
         }
 
+        // Get topics
         const topicsResult = await client.query(
             `SELECT topic_name
              FROM admin_viva_topics
@@ -668,6 +743,7 @@ exports.getNextQuestion = async (req, res) => {
             row => row.question
         );
 
+        // Generate next question
         const generated = await generateQuestion(
             attempt,
             topics,
@@ -691,6 +767,7 @@ exports.getNextQuestion = async (req, res) => {
         );
 
         await client.query("COMMIT");
+        transactionStarted = false;
 
         return res.json({
             success: true,
@@ -702,16 +779,20 @@ exports.getNextQuestion = async (req, res) => {
         });
 
     } catch (error) {
-        await client.query("ROLLBACK");
+        if (transactionStarted && client) {
+            await client.query("ROLLBACK").catch(console.error);
+        }
+
         console.error("Next Viva Question:", error);
 
         return res.status(500).json({
             success: false,
-            message: "Unable to generate next question"
+            message: "Unable to generate next question",
+            error: error.message
         });
 
     } finally {
-        client.release();
+        if (client) client.release();
     }
 };
 
@@ -726,21 +807,24 @@ exports.completeViva = async (req, res) => {
         const { attemptId } = req.params;
 
         if (!studentId) {
-            return res.status(401).json({
+            return res.status(400).json({
                 success: false,
-                message: "Unauthorized"
+                message: "Valid studentId is required"
             });
         }
 
         const result = await db.query(
             `UPDATE student_viva_attempts a
+
              SET status = 'Completed',
                  completed_at = NOW()
+
              WHERE a.id = $1
              AND a.student_id = $2
              AND a.status = 'In Progress'
              AND a.current_question IS NULL
              AND a.attempted_questions = a.total_questions
+
              RETURNING *`,
             [attemptId, studentId]
         );
@@ -754,14 +838,20 @@ exports.completeViva = async (req, res) => {
 
         const report = result.rows[0];
 
-        const percentage = (
-            Number(report.total_score) /
-            (Number(report.total_questions) * MAX_SCORE)
-        ) * 100;
+        const totalPossible =
+            Number(report.total_questions) * MAX_SCORE;
+
+        const percentage = totalPossible > 0
+            ? (
+                Number(report.total_score) /
+                totalPossible
+            ) * 100
+            : 0;
 
         return res.json({
             success: true,
             message: "Viva completed successfully",
+
             report: {
                 ...report,
                 percentage: Math.round(percentage * 100) / 100
@@ -773,7 +863,8 @@ exports.completeViva = async (req, res) => {
 
         return res.status(500).json({
             success: false,
-            message: "Unable to complete viva"
+            message: "Unable to complete viva",
+            error: error.message
         });
     }
 };
@@ -788,9 +879,9 @@ exports.getVivaHistory = async (req, res) => {
         const studentId = getStudentId(req);
 
         if (!studentId) {
-            return res.status(401).json({
+            return res.status(400).json({
                 success: false,
-                message: "Unauthorized"
+                message: "Valid studentId is required"
             });
         }
 
@@ -800,15 +891,21 @@ exports.getVivaHistory = async (req, res) => {
                 v.title,
                 v.subject,
                 v.class_name
+
              FROM student_viva_attempts a
-             JOIN admin_vivas v ON v.id = a.viva_id
+
+             JOIN admin_vivas v
+                ON v.id = a.viva_id
+
              WHERE a.student_id = $1
+
              ORDER BY a.started_at DESC`,
             [studentId]
         );
 
         return res.json({
             success: true,
+            total: result.rows.length,
             history: result.rows
         });
 
@@ -817,7 +914,8 @@ exports.getVivaHistory = async (req, res) => {
 
         return res.status(500).json({
             success: false,
-            message: "Unable to fetch viva history"
+            message: "Unable to fetch viva history",
+            error: error.message
         });
     }
 };
@@ -833,20 +931,25 @@ exports.getVivaReport = async (req, res) => {
         const { attemptId } = req.params;
 
         if (!studentId) {
-            return res.status(401).json({
+            return res.status(400).json({
                 success: false,
-                message: "Unauthorized"
+                message: "Valid studentId is required"
             });
         }
 
+        // Get attempt
         const attempt = await db.query(
             `SELECT
                 a.*,
                 v.title,
                 v.subject,
                 v.class_name
+
              FROM student_viva_attempts a
-             JOIN admin_vivas v ON v.id = a.viva_id
+
+             JOIN admin_vivas v
+                ON v.id = a.viva_id
+
              WHERE a.id = $1
              AND a.student_id = $2`,
             [attemptId, studentId]
@@ -859,6 +962,7 @@ exports.getVivaReport = async (req, res) => {
             });
         }
 
+        // Get answers
         const answers = await db.query(
             `SELECT *
              FROM student_viva_answers
@@ -873,15 +977,20 @@ exports.getVivaReport = async (req, res) => {
             Number(report.total_questions) * MAX_SCORE;
 
         const percentage = totalPossible > 0
-            ? (Number(report.total_score) / totalPossible) * 100
+            ? (
+                Number(report.total_score) /
+                totalPossible
+            ) * 100
             : 0;
 
         return res.json({
             success: true,
+
             report: {
                 ...report,
                 percentage: Math.round(percentage * 100) / 100
             },
+
             answers: answers.rows
         });
 
@@ -890,7 +999,8 @@ exports.getVivaReport = async (req, res) => {
 
         return res.status(500).json({
             success: false,
-            message: "Unable to fetch viva report"
+            message: "Unable to fetch viva report",
+            error: error.message
         });
     }
 };

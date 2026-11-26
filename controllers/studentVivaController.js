@@ -12,14 +12,17 @@ const MODEL_NAME =
 const MAX_SCORE = 10;
 const MAX_ANSWER_LENGTH = 5000;
 const MAX_QUESTION_LENGTH = 1000;
-const GEMINI_MAX_RETRIES = 3;
+const MAX_QUESTIONS = 50;
 
 // ======================================================
 // COMMON HELPERS
 // ======================================================
 
 const getStudentId = (req) => {
-    const id = req.user?.id || req.body?.studentId || req.query?.studentId;
+    const id =
+        req.user?.id ||
+        req.body?.studentId ||
+        req.query?.studentId;
 
     if (!id || !Number.isInteger(Number(id)) || Number(id) <= 0) {
         return null;
@@ -30,7 +33,7 @@ const getStudentId = (req) => {
 
 const getStudentClass = async (studentId) => {
     const result = await db.query(
-        `SELECT class FROM students WHERE id = $1`,
+        "SELECT class FROM students WHERE id = $1",
         [studentId]
     );
 
@@ -43,7 +46,7 @@ const rollback = async (client) => {
     try {
         await client.query("ROLLBACK");
     } catch (error) {
-        console.error("Rollback Error:", error.message);
+        console.error("Rollback error:", error.message);
     }
 };
 
@@ -53,8 +56,30 @@ const isRetryableGeminiError = (error) => {
     return [429, 500, 502, 503, 504].includes(status);
 };
 
+const handleControllerError = (res, error, message) => {
+    console.error(message, {
+        message: error?.message,
+        status: error?.status,
+        code: error?.code
+    });
+
+    if (isRetryableGeminiError(error)) {
+        return res.status(503).json({
+            success: false,
+            message: "AI service is temporarily busy. Please try again.",
+            code: "AI_SERVICE_UNAVAILABLE"
+        });
+    }
+
+    return res.status(500).json({
+        success: false,
+        message,
+        error: error?.message
+    });
+};
+
 // ======================================================
-// GEMINI CONTENT GENERATION WITH RETRY
+// GEMINI GENERATION
 // ======================================================
 
 const generateContent = async (prompt) => {
@@ -62,58 +87,22 @@ const generateContent = async (prompt) => {
         throw new Error("Gemini SDK is not configured correctly");
     }
 
-    for (
-        let attempt = 1;
-        attempt <= GEMINI_MAX_RETRIES;
-        attempt++
-    ) {
-        try {
-            const response = await genAI.models.generateContent({
-                model: MODEL_NAME,
-                contents: prompt
-            });
+    const response = await genAI.models.generateContent({
+        model: MODEL_NAME,
+        contents: prompt
+    });
 
-            const text = response?.text;
+    const text = response?.text;
 
-            if (typeof text !== "string" || !text.trim()) {
-                throw new Error("Gemini returned an empty response");
-            }
-
-            return text.trim();
-
-        } catch (error) {
-            console.error("Gemini API Error:", {
-                message: error?.message,
-                status: error?.status,
-                code: error?.code,
-                attempt
-            });
-
-            const retryable = isRetryableGeminiError(error);
-
-            if (!retryable || attempt === GEMINI_MAX_RETRIES) {
-                console.error("Gemini API Failed after retries");
-                throw error;
-            }
-
-            const delay = 1000 * Math.pow(2, attempt - 1);
-
-            console.log(
-                `Gemini temporary error. Retry ${attempt}/${GEMINI_MAX_RETRIES} after ${delay}ms`
-            );
-
-            await new Promise(resolve =>
-                setTimeout(resolve, delay)
-            );
-        }
+    if (typeof text !== "string" || !text.trim()) {
+        throw new Error("Gemini returned an empty response");
     }
 
-    throw new Error("Gemini generation failed");
+    return text.trim();
 };
 
-
 // ======================================================
-// EXTRACT JSON
+// JSON EXTRACTION
 // ======================================================
 
 const extractJSON = (text) => {
@@ -135,65 +124,21 @@ const extractJSON = (text) => {
 
     try {
         return JSON.parse(cleaned.slice(start, end + 1));
-    } catch (error) {
+    } catch {
         throw new Error("Gemini returned malformed JSON");
     }
 };
 
 // ======================================================
-// GENERATE ONE VIVA QUESTION
+// VALIDATE GENERATED QUESTION
 // ======================================================
 
-const generateQuestion = async (
-    viva,
-    topics,
-    previousQuestions = []
-) => {
-    if (!Array.isArray(topics) || !topics.length) {
-        throw new Error("No topics configured");
-    }
-
-    const prompt = `
-You are an experienced school teacher conducting an oral viva.
-
-Class: ${viva.class_name}
-Subject: ${viva.subject}
-Difficulty: ${viva.difficulty}
-
-Allowed Topics:
-${topics.join(", ")}
-
-Previously Asked Questions:
-${JSON.stringify(previousQuestions)}
-
-Instructions:
-1. Generate exactly ONE question.
-2. Question must belong to the given subject and allowed topics.
-3. Follow the specified class level.
-4. Do not repeat previous questions.
-5. Keep the question clear and educational.
-6. Match the specified difficulty.
-7. Do not include answers or explanations.
-8. Return only valid JSON.
-
-Required JSON:
-
-{
-    "topic": "topic name",
-    "question": "question text"
-}
-`.trim();
-
-    const raw = await generateContent(prompt);
-    const data = extractJSON(raw);
-
+const validateQuestion = (data, topics) => {
     if (
-        typeof data.question !== "string" ||
-        !data.question.trim() ||
-        data.question.trim().length > MAX_QUESTION_LENGTH ||
-        typeof data.topic !== "string"
+        typeof data?.topic !== "string" ||
+        typeof data?.question !== "string"
     ) {
-        throw new Error("Invalid generated viva question");
+        throw new Error("Gemini returned invalid question structure");
     }
 
     const matchedTopic = topics.find(
@@ -202,14 +147,190 @@ Required JSON:
             data.topic.trim().toLowerCase()
     );
 
+    const question = data.question.trim();
+
     if (!matchedTopic) {
-        throw new Error("Gemini generated an invalid topic");
+        throw new Error("Gemini generated a topic outside admin configuration");
+    }
+
+    if (
+        !question ||
+        question.length > MAX_QUESTION_LENGTH
+    ) {
+        throw new Error("Invalid generated question");
     }
 
     return {
-        question: data.question.trim(),
-        topic: matchedTopic
+        topic: matchedTopic,
+        question
     };
+};
+
+// ======================================================
+// GET ADMIN CONFIGURED TOPICS
+// ======================================================
+
+const getVivaTopics = async (vivaId) => {
+    const result = await db.query(
+        `SELECT topic_name
+         FROM admin_viva_topics
+         WHERE viva_id = $1
+         ORDER BY id ASC`,
+        [vivaId]
+    );
+
+    const topics = result.rows
+        .map(row => row.topic_name?.trim())
+        .filter(Boolean);
+
+    if (!topics.length) {
+        throw new Error("No topics configured for this viva");
+    }
+
+    return topics;
+};
+
+// ======================================================
+// GENERATE FIRST QUESTION
+// ======================================================
+
+const generateFirstQuestion = async (viva, topics) => {
+    const prompt = `
+You are an experienced school teacher conducting a real conversational oral viva.
+
+CLASS: ${viva.class_name}
+SUBJECT: ${viva.subject}
+DIFFICULTY: ${viva.difficulty}
+
+ADMIN CONFIGURED TOPICS:
+${JSON.stringify(topics)}
+
+TASK:
+Generate ONLY ONE first viva question.
+
+RULES:
+1. Use only admin configured topics.
+2. Select one topic from the configured list.
+3. Generate a meaningful conceptual question.
+4. Match the student's class level.
+5. Use simple student-friendly language.
+6. Do not generate answers.
+7. Do not generate multiple questions.
+8. Do not introduce external topics.
+9. Avoid generic repetitive questions.
+
+RETURN ONLY VALID JSON:
+
+{
+    "topic": "Exact configured topic",
+    "question": "Your generated question"
+}
+`.trim();
+
+    const raw = await generateContent(prompt);
+
+    return validateQuestion(extractJSON(raw), topics);
+};
+
+// ======================================================
+// GENERATE NEXT CONVERSATIONAL QUESTION
+// ======================================================
+
+const generateNextQuestion = async (
+    viva,
+    topics,
+    history,
+    previousQuestion,
+    previousTopic
+) => {
+    const usedQuestions = history.map(item => item.question);
+
+    const answeredTopics = history.map(item => item.topic_name);
+
+    const prompt = `
+You are an intelligent school teacher conducting a REAL-TIME
+CONVERSATIONAL ORAL VIVA.
+
+You must behave like a real interviewer, not a fixed question generator.
+
+STUDENT DETAILS:
+
+Class: ${viva.class_name}
+Subject: ${viva.subject}
+Difficulty: ${viva.difficulty}
+
+ADMIN CONFIGURED TOPICS:
+${JSON.stringify(topics)}
+
+PREVIOUS QUESTION:
+${previousQuestion}
+
+PREVIOUS TOPIC:
+${previousTopic}
+
+STUDENT'S COMPLETE PREVIOUS ANSWERS AND EVALUATIONS:
+${JSON.stringify(history)}
+
+ALREADY ASKED QUESTIONS:
+${JSON.stringify(usedQuestions)}
+
+TOPICS ALREADY COVERED:
+${JSON.stringify(answeredTopics)}
+
+TASK:
+
+Generate EXACTLY ONE next question.
+
+CONVERSATIONAL INTELLIGENCE:
+
+1. Carefully understand the student's previous answer.
+
+2. If the student gives an incomplete answer:
+   Ask a meaningful follow-up question to test understanding.
+
+3. If the student gives a correct answer:
+   You may increase the difficulty slightly or move to another topic.
+
+4. If the student gives an incorrect answer:
+   Ask a simpler conceptual question or move to another configured topic.
+
+5. If the student gives an excellent answer:
+   Ask an application-based or analytical follow-up.
+
+6. If the student is struggling repeatedly:
+   Gradually simplify the question.
+
+7. Maintain a natural teacher-student conversation.
+
+8. Do not repeat previous questions.
+
+9. Do not ask questions outside admin configured topics.
+
+10. You may continue the previous topic or select another configured topic.
+
+11. Maintain the configured difficulty level overall.
+
+12. Generate only ONE question.
+
+13. Do not reveal the correct answer.
+
+14. Do not generate explanations or feedback here.
+
+IMPORTANT:
+The question must genuinely depend on the student's previous responses.
+Do not simply select a random question template.
+
+RETURN ONLY VALID JSON:
+
+{
+    "topic": "Exact configured topic",
+    "question": "New conversational viva question"
+}
+`.trim();
+
+    const raw = await generateContent(prompt);
+
+    return validateQuestion(extractJSON(raw), topics);
 };
 
 // ======================================================
@@ -224,37 +345,37 @@ Class: ${viva.class_name}
 Subject: ${viva.subject}
 Difficulty: ${viva.difficulty}
 
-Question:
+QUESTION:
 ${question}
 
-Student Answer:
+STUDENT ANSWER:
 ${answer}
 
-Evaluate the answer according to factual correctness
-and understanding appropriate for this class.
+Evaluate the student's conceptual understanding.
 
 Maximum Marks: 10
 
-Return valid JSON only:
-
-{
-    "score": 0,
-    "feedback": "Simple constructive feedback",
-    "isCorrect": false
-}
-
-Rules:
-1. Score must be between 0 and 10.
+RULES:
+1. Score between 0 and 10.
 2. Give partial marks for partially correct answers.
 3. Do not award marks for unrelated answers.
 4. Be fair to short but correct answers.
-5. Do not penalize spelling unless it changes meaning.
-6. Do not assume facts that are not in the answer.
-7. Feedback should be simple and encouraging.
-8. Do not include Markdown outside JSON.
+5. Do not penalize spelling unless meaning changes.
+6. Feedback must be simple and constructive.
+7. Do not assume facts absent from the answer.
+8. isCorrect should be true only when the answer is substantially correct.
+
+RETURN ONLY VALID JSON:
+
+{
+    "score": 0,
+    "feedback": "Constructive feedback",
+    "isCorrect": false
+}
 `.trim();
 
     const raw = await generateContent(prompt);
+
     const data = extractJSON(raw);
 
     const score = Number(data.score);
@@ -275,28 +396,6 @@ Rules:
         feedback: data.feedback.trim(),
         isCorrect: data.isCorrect
     };
-};
-
-// ======================================================
-// GEMINI ERROR RESPONSE
-// ======================================================
-
-const handleControllerError = (res, error, message) => {
-    console.error(message, error);
-
-    if (isRetryableGeminiError(error)) {
-        return res.status(503).json({
-            success: false,
-            message: "AI service is temporarily busy. Please try again shortly.",
-            code: "AI_SERVICE_UNAVAILABLE"
-        });
-    }
-
-    return res.status(500).json({
-        success: false,
-        message,
-        error: error.message
-    });
 };
 
 // ======================================================
@@ -326,37 +425,29 @@ exports.getAvailableVivas = async (req, res) => {
         const result = await db.query(
             `SELECT
                 v.*,
-
                 COALESCE(
                     ARRAY_AGG(DISTINCT t.topic_name)
                     FILTER (WHERE t.id IS NOT NULL),
                     '{}'
                 ) AS topics,
-
                 CASE
-                    WHEN CURRENT_DATE < v.start_date
-                        THEN 'Upcoming'
-                    WHEN CURRENT_DATE > v.end_date
-                        THEN 'Expired'
+                    WHEN CURRENT_DATE < v.start_date THEN 'Upcoming'
+                    WHEN CURRENT_DATE > v.end_date THEN 'Expired'
                     ELSE 'Available'
                 END AS availability_status
-
-            FROM admin_vivas v
-
-            LEFT JOIN admin_viva_topics t
+             FROM admin_vivas v
+             LEFT JOIN admin_viva_topics t
                 ON t.viva_id = v.id
-
-            WHERE
-                LOWER(TRIM(v.class_name)) = LOWER(TRIM($1))
-                AND LOWER(TRIM(v.status)) = 'active'
-                AND v.end_date >= CURRENT_DATE
-
-            GROUP BY v.id
-            ORDER BY v.start_date ASC`,
+             WHERE LOWER(TRIM(v.class_name)) =
+                   LOWER(TRIM($1))
+               AND LOWER(TRIM(v.status)) = 'active'
+               AND v.end_date >= CURRENT_DATE
+             GROUP BY v.id
+             ORDER BY v.start_date ASC`,
             [String(className)]
         );
 
-        return res.status(200).json({
+        return res.json({
             success: true,
             studentId,
             studentClass: className,
@@ -366,36 +457,31 @@ exports.getAvailableVivas = async (req, res) => {
 
     } catch (error) {
         return handleControllerError(
-            res,
-            error,
-            "Unable to fetch available vivas"
+            res, error, "Unable to fetch available vivas"
         );
     }
 };
 
 // ======================================================
 // 2. START VIVA
+// Gemini generates ONLY the first question.
 // ======================================================
 
 exports.startViva = async (req, res) => {
     let client;
-    let transactionStarted = false;
 
     try {
         const studentId = getStudentId(req);
         const vivaId = Number(req.params.id);
 
-        if (!studentId) {
+        if (
+            !studentId ||
+            !Number.isInteger(vivaId) ||
+            vivaId <= 0
+        ) {
             return res.status(400).json({
                 success: false,
-                message: "Valid studentId is required"
-            });
-        }
-
-        if (!Number.isInteger(vivaId) || vivaId <= 0) {
-            return res.status(400).json({
-                success: false,
-                message: "Valid viva ID is required"
+                message: "Invalid student or viva ID"
             });
         }
 
@@ -408,13 +494,14 @@ exports.startViva = async (req, res) => {
             });
         }
 
-        // 1. Check if an attempt already exists.
+        // Check existing attempt first.
+
         const existing = await db.query(
             `SELECT *
              FROM student_viva_attempts
              WHERE viva_id = $1
-             AND student_id = $2
-             AND status = 'In Progress'
+               AND student_id = $2
+               AND status = 'In Progress'
              ORDER BY id DESC
              LIMIT 1`,
             [vivaId, studentId]
@@ -430,18 +517,21 @@ exports.startViva = async (req, res) => {
                 question: attempt.current_question,
                 topic: attempt.current_topic,
                 questionNumber: attempt.current_question_number,
-                totalQuestions: attempt.total_questions
+                totalQuestions: attempt.total_questions,
+                needsNextQuestion: !attempt.current_question
             });
         }
 
-        // 2. Fetch viva details.
+        // Fetch active viva.
+
         const vivaResult = await db.query(
             `SELECT *
              FROM admin_vivas
              WHERE id = $1
-             AND LOWER(TRIM(class_name)) = LOWER(TRIM($2))
-             AND LOWER(TRIM(status)) = 'active'
-             AND CURRENT_DATE BETWEEN start_date AND end_date`,
+               AND LOWER(TRIM(class_name)) =
+                   LOWER(TRIM($2))
+               AND LOWER(TRIM(status)) = 'active'
+               AND CURRENT_DATE BETWEEN start_date AND end_date`,
             [vivaId, className]
         );
 
@@ -454,63 +544,42 @@ exports.startViva = async (req, res) => {
 
         const viva = vivaResult.rows[0];
 
-        // 3. Fetch configured topics.
-        const topicResult = await db.query(
-            `SELECT topic_name
-             FROM admin_viva_topics
-             WHERE viva_id = $1`,
-            [vivaId]
-        );
+        const quantity = Number(viva.total_questions);
 
-        const topics = topicResult.rows
-            .map(row => row.topic_name)
-            .filter(Boolean);
-
-        if (!topics.length) {
+        if (
+            !Number.isInteger(quantity) ||
+            quantity < 1 ||
+            quantity > MAX_QUESTIONS
+        ) {
             return res.status(400).json({
                 success: false,
-                message: "No topics configured for this viva"
+                message: "Invalid viva question quantity"
             });
         }
 
-        // 4. Select one topic for the first question.
-        const selectedTopic =
-            topics[Math.floor(Math.random() * topics.length)];
+        const topics = await getVivaTopics(vivaId);
 
-        // 5. Generate question OUTSIDE database transaction.
-        let generated;
+        // Generate first question using Gemini.
 
-        try {
-            generated = await generateQuestion(
-                viva,
-                [selectedTopic],
-                []
-            );
-        } catch (error) {
-            console.error("Gemini question generation failed:", error);
+        const startedAt = Date.now();
 
-            // Fallback question so the viva can still start.
-            generated = {
-                question: `Explain the important concepts of ${selectedTopic} with a suitable example.`,
-                topic: selectedTopic
-            };
-        }
+        const firstQuestion = await generateFirstQuestion(
+            viva,
+            topics
+        );
 
-        const question =
-            generated?.question?.trim() ||
-            `Explain the important concepts of ${selectedTopic} with a suitable example.`;
+        console.log(
+            `First question generated in ${Date.now() - startedAt}ms`
+        );
 
-        const topic = topics.includes(generated?.topic)
-            ? generated.topic
-            : selectedTopic;
+        // Create attempt only after successful generation.
 
-        // 6. Create attempt with a short transaction.
         client = await db.connect();
 
         await client.query("BEGIN");
-        transactionStarted = true;
 
-        // Lock viva row to prevent simultaneous duplicate attempts.
+        // Serialize attempt creation.
+
         const lockedViva = await client.query(
             `SELECT *
              FROM admin_vivas
@@ -524,7 +593,6 @@ exports.startViva = async (req, res) => {
 
         if (!lockedViva.rows.length) {
             await client.query("ROLLBACK");
-            transactionStarted = false;
 
             return res.status(404).json({
                 success: false,
@@ -532,13 +600,14 @@ exports.startViva = async (req, res) => {
             });
         }
 
-        // Recheck attempt after acquiring lock.
+        // Check duplicate attempt again.
+
         const recheck = await client.query(
             `SELECT *
              FROM student_viva_attempts
              WHERE viva_id = $1
-             AND student_id = $2
-             AND status = 'In Progress'
+               AND student_id = $2
+               AND status = 'In Progress'
              ORDER BY id DESC
              LIMIT 1
              FOR UPDATE`,
@@ -546,10 +615,9 @@ exports.startViva = async (req, res) => {
         );
 
         if (recheck.rows.length) {
-            const attempt = recheck.rows[0];
-
             await client.query("COMMIT");
-            transactionStarted = false;
+
+            const attempt = recheck.rows[0];
 
             return res.json({
                 success: true,
@@ -558,16 +626,18 @@ exports.startViva = async (req, res) => {
                 question: attempt.current_question,
                 topic: attempt.current_topic,
                 questionNumber: attempt.current_question_number,
-                totalQuestions: attempt.total_questions
+                totalQuestions: attempt.total_questions,
+                needsNextQuestion: !attempt.current_question
             });
         }
 
-        // 7. Check attempt limit.
+        // Attempt limit.
+
         const countResult = await client.query(
             `SELECT COUNT(*)::INTEGER AS attempts
              FROM student_viva_attempts
              WHERE viva_id = $1
-             AND student_id = $2`,
+               AND student_id = $2`,
             [vivaId, studentId]
         );
 
@@ -576,7 +646,6 @@ exports.startViva = async (req, res) => {
             Number(lockedViva.rows[0].attempt_limit)
         ) {
             await client.query("ROLLBACK");
-            transactionStarted = false;
 
             return res.status(403).json({
                 success: false,
@@ -584,8 +653,9 @@ exports.startViva = async (req, res) => {
             });
         }
 
-        // 8. Insert attempt.
-        const attempt = await client.query(
+        // Create attempt with first question.
+
+        const attemptResult = await client.query(
             `INSERT INTO student_viva_attempts
             (
                 viva_id,
@@ -600,36 +670,33 @@ exports.startViva = async (req, res) => {
             [
                 vivaId,
                 studentId,
-                lockedViva.rows[0].total_questions,
-                question,
-                topic
+                quantity,
+                firstQuestion.question,
+                firstQuestion.topic
             ]
         );
 
         await client.query("COMMIT");
-        transactionStarted = false;
+
+        const attemptId = attemptResult.rows[0].id;
 
         return res.status(201).json({
             success: true,
-            message: "Viva started successfully",
-            attemptId: attempt.rows[0].id,
-            question,
-            topic,
+            message: "AI Viva started successfully",
+            attemptId,
+            question: firstQuestion.question,
+            topic: firstQuestion.topic,
             questionNumber: 1,
-            totalQuestions: lockedViva.rows[0].total_questions
+            totalQuestions: quantity
         });
 
     } catch (error) {
-        if (transactionStarted && client) {
-            await client.query("ROLLBACK");
+        if (client) {
+            await rollback(client);
         }
 
-        console.error("Start Viva Error:", error);
-
         return handleControllerError(
-            res,
-            error,
-            "Unable to start viva"
+            res, error, "Unable to start viva"
         );
 
     } finally {
@@ -643,28 +710,20 @@ exports.startViva = async (req, res) => {
 
 exports.submitVivaAnswer = async (req, res) => {
     let client;
-    let transactionStarted = false;
 
     try {
         const studentId = getStudentId(req);
-        const { answer } = req.body || {};
-        const { attemptId } = req.params;
-
-        if (!studentId) {
-            return res.status(400).json({
-                success: false,
-                message: "Valid studentId is required"
-            });
-        }
+        const attemptId = Number(req.params.attemptId);
+        const answer = req.body?.answer;
 
         if (
-            !attemptId ||
-            !Number.isInteger(Number(attemptId)) ||
-            Number(attemptId) <= 0
+            !studentId ||
+            !Number.isInteger(attemptId) ||
+            attemptId <= 0
         ) {
             return res.status(400).json({
                 success: false,
-                message: "Valid attempt ID is required"
+                message: "Invalid student or attempt ID"
             });
         }
 
@@ -679,66 +738,85 @@ exports.submitVivaAnswer = async (req, res) => {
             });
         }
 
-        client = await db.connect();
+        // Fetch attempt.
 
-        await client.query("BEGIN");
-        transactionStarted = true;
-
-        const result = await client.query(
+        const attemptResult = await db.query(
             `SELECT
                 a.*,
                 v.subject,
                 v.class_name,
                 v.difficulty,
                 v.end_date
-
              FROM student_viva_attempts a
-
-             JOIN admin_vivas v
-                ON v.id = a.viva_id
-
+             JOIN admin_vivas v ON v.id = a.viva_id
              WHERE a.id = $1
-             AND a.student_id = $2
-             AND a.status = 'In Progress'
-             AND CURRENT_DATE <= v.end_date
-
-             FOR UPDATE OF a`,
-            [Number(attemptId), studentId]
+               AND a.student_id = $2
+               AND a.status = 'In Progress'
+               AND CURRENT_DATE <= v.end_date`,
+            [attemptId, studentId]
         );
 
-        if (!result.rows.length) {
-            await rollback(client);
-            transactionStarted = false;
-
+        if (!attemptResult.rows.length) {
             return res.status(404).json({
                 success: false,
                 message: "Active viva attempt not found"
             });
         }
 
-        const attempt = result.rows[0];
+        const attempt = attemptResult.rows[0];
 
         if (!attempt.current_question) {
-            await rollback(client);
-            transactionStarted = false;
-
             return res.status(400).json({
                 success: false,
                 message: "No pending question available"
             });
         }
 
-        // Evaluate answer.
+        const questionNumber =
+            Number(attempt.current_question_number);
+
+        // Evaluate with Gemini.
+
         const evaluation = await evaluateAnswer(
             attempt.current_question,
             answer.trim(),
             attempt
         );
 
-        const questionNumber =
-            Number(attempt.current_question_number);
+        client = await db.connect();
 
-        // Save answer.
+        await client.query("BEGIN");
+
+        // Lock current attempt.
+
+        const locked = await client.query(
+            `SELECT *
+             FROM student_viva_attempts
+             WHERE id = $1
+               AND student_id = $2
+               AND status = 'In Progress'
+               AND current_question_number = $3
+               AND current_question = $4
+             FOR UPDATE`,
+            [
+                attemptId,
+                studentId,
+                questionNumber,
+                attempt.current_question
+            ]
+        );
+
+        if (!locked.rows.length) {
+            await client.query("ROLLBACK");
+
+            return res.status(409).json({
+                success: false,
+                message: "Question already submitted or changed"
+            });
+        }
+
+        // Save answer and evaluation.
+
         const saved = await client.query(
             `INSERT INTO student_viva_answers
             (
@@ -767,8 +845,10 @@ exports.submitVivaAnswer = async (req, res) => {
             ]
         );
 
-        // Update attempt.
-        const updated = await client.query(
+        // Clear current question.
+        // Next API will generate a fresh Gemini question.
+
+        await client.query(
             `UPDATE student_viva_attempts
              SET attempted_questions = attempted_questions + 1,
                  total_score = total_score + $1,
@@ -776,36 +856,29 @@ exports.submitVivaAnswer = async (req, res) => {
                  current_topic = NULL,
                  current_question_number = NULL
              WHERE id = $2
-             AND student_id = $3
-             AND status = 'In Progress'`,
+               AND student_id = $3`,
             [evaluation.score, attemptId, studentId]
         );
 
-        if (updated.rowCount !== 1) {
-            throw new Error("Viva attempt could not be updated");
-        }
-
         await client.query("COMMIT");
-        transactionStarted = false;
 
         return res.json({
             success: true,
             message: "Answer evaluated successfully",
             questionNumber,
             evaluation,
-            savedAnswer: saved.rows[0]
+            savedAnswer: saved.rows[0],
+            nextQuestionAvailable:
+                questionNumber < Number(attempt.total_questions)
         });
 
     } catch (error) {
-        if (transactionStarted) {
+        if (client) {
             await rollback(client);
-            transactionStarted = false;
         }
 
         return handleControllerError(
-            res,
-            error,
-            "Unable to evaluate answer"
+            res, error, "Unable to evaluate answer"
         );
 
     } finally {
@@ -814,66 +887,47 @@ exports.submitVivaAnswer = async (req, res) => {
 };
 
 // ======================================================
-// 4. GENERATE NEXT QUESTION
+// 4. GET NEXT QUESTION
+// Every new question is generated by Gemini.
 // ======================================================
 
 exports.getNextQuestion = async (req, res) => {
     let client;
-    let transactionStarted = false;
 
     try {
         const studentId = getStudentId(req);
-        const { attemptId } = req.params;
-
-        if (!studentId) {
-            return res.status(400).json({
-                success: false,
-                message: "Valid studentId is required"
-            });
-        }
+        const attemptId = Number(req.params.attemptId);
 
         if (
-            !attemptId ||
-            !Number.isInteger(Number(attemptId)) ||
-            Number(attemptId) <= 0
+            !studentId ||
+            !Number.isInteger(attemptId) ||
+            attemptId <= 0
         ) {
             return res.status(400).json({
                 success: false,
-                message: "Valid attempt ID is required"
+                message: "Invalid student or attempt ID"
             });
         }
 
-        client = await db.connect();
+        // Fetch attempt.
 
-        await client.query("BEGIN");
-        transactionStarted = true;
-
-        const result = await client.query(
+        const result = await db.query(
             `SELECT
                 a.*,
                 v.subject,
                 v.class_name,
                 v.difficulty,
                 v.end_date
-
              FROM student_viva_attempts a
-
-             JOIN admin_vivas v
-                ON v.id = a.viva_id
-
+             JOIN admin_vivas v ON v.id = a.viva_id
              WHERE a.id = $1
-             AND a.student_id = $2
-             AND a.status = 'In Progress'
-             AND CURRENT_DATE <= v.end_date
-
-             FOR UPDATE OF a`,
-            [Number(attemptId), studentId]
+               AND a.student_id = $2
+               AND a.status = 'In Progress'
+               AND CURRENT_DATE <= v.end_date`,
+            [attemptId, studentId]
         );
 
         if (!result.rows.length) {
-            await rollback(client);
-            transactionStarted = false;
-
             return res.status(404).json({
                 success: false,
                 message: "Active attempt not found"
@@ -882,14 +936,13 @@ exports.getNextQuestion = async (req, res) => {
 
         const attempt = result.rows[0];
 
-        // Return existing question.
-        if (attempt.current_question) {
-            await client.query("COMMIT");
-            transactionStarted = false;
+        // If question already exists, resume it.
 
+        if (attempt.current_question) {
             return res.json({
                 success: true,
                 completed: false,
+                resumed: true,
                 question: attempt.current_question,
                 topic: attempt.current_topic,
                 questionNumber: attempt.current_question_number,
@@ -897,21 +950,12 @@ exports.getNextQuestion = async (req, res) => {
             });
         }
 
-        // Get previous answers.
-        const answers = await client.query(
-            `SELECT question, student_answer
-             FROM student_viva_answers
-             WHERE attempt_id = $1
-             ORDER BY question_number ASC`,
-            [attemptId]
-        );
+        const nextNumber =
+            Number(attempt.attempted_questions) + 1;
 
-        const nextNumber = answers.rows.length + 1;
+        // Check completion.
 
         if (nextNumber > Number(attempt.total_questions)) {
-            await client.query("COMMIT");
-            transactionStarted = false;
-
             return res.json({
                 success: true,
                 completed: true,
@@ -919,77 +963,135 @@ exports.getNextQuestion = async (req, res) => {
             });
         }
 
-        // Get allowed topics.
-        const topicsResult = await client.query(
-            `SELECT topic_name
-             FROM admin_viva_topics
-             WHERE viva_id = $1`,
-            [attempt.viva_id]
+        // Get admin topics.
+
+        const topics = await getVivaTopics(attempt.viva_id);
+
+        // Get complete previous conversation.
+
+        const historyResult = await db.query(
+            `SELECT
+                question_number,
+                topic_name,
+                question,
+                student_answer,
+                score,
+                feedback,
+                is_correct
+             FROM student_viva_answers
+             WHERE attempt_id = $1
+             ORDER BY question_number ASC`,
+            [attemptId]
         );
 
-        const topics = topicsResult.rows.map(
-            row => row.topic_name
-        );
+        const history = historyResult.rows;
 
-        if (!topics.length) {
-            throw new Error("No topics configured for viva");
+        if (!history.length) {
+            throw new Error("Previous answer history not found");
         }
 
-        const previousQuestions = answers.rows.map(
-            row => row.question
-        );
+        const lastAnswer = history[history.length - 1];
 
-        // Generate next question.
-        const generated = await generateQuestion(
+        // Ask Gemini to generate next question.
+
+        const generationStartedAt = Date.now();
+
+        const nextQuestion = await generateNextQuestion(
             attempt,
             topics,
-            previousQuestions
+            history,
+            lastAnswer.question,
+            lastAnswer.topic_name
         );
 
-        const updated = await client.query(
+        console.log(
+            `AI next question generated in ${
+                Date.now() - generationStartedAt
+            }ms`
+        );
+
+        // Save generated question.
+        // Conditional update prevents overwriting an already
+        // assigned question if another request arrived.
+
+        client = await db.connect();
+
+        await client.query("BEGIN");
+
+        const saved = await client.query(
             `UPDATE student_viva_attempts
              SET current_question = $1,
                  current_topic = $2,
                  current_question_number = $3
              WHERE id = $4
-             AND student_id = $5
-             AND status = 'In Progress'
-             AND current_question IS NULL`,
+               AND student_id = $5
+               AND status = 'In Progress'
+               AND current_question IS NULL
+               AND attempted_questions = $6
+             RETURNING *`,
             [
-                generated.question,
-                generated.topic,
+                nextQuestion.question,
+                nextQuestion.topic,
                 nextNumber,
                 attemptId,
-                studentId
+                studentId,
+                Number(attempt.attempted_questions)
             ]
         );
 
-        if (updated.rowCount !== 1) {
-            throw new Error("Next question could not be saved");
+        if (!saved.rows.length) {
+            // Another request may have assigned the question.
+
+            const latest = await client.query(
+                `SELECT *
+                 FROM student_viva_attempts
+                 WHERE id = $1
+                   AND student_id = $2`,
+                [attemptId, studentId]
+            );
+
+            await client.query("COMMIT");
+
+            const current = latest.rows[0];
+
+            if (!current) {
+                return res.status(404).json({
+                    success: false,
+                    message: "Attempt not found"
+                });
+            }
+
+            return res.json({
+                success: true,
+                completed: false,
+                resumed: true,
+                question: current.current_question,
+                topic: current.current_topic,
+                questionNumber: current.current_question_number,
+                totalQuestions: current.total_questions
+            });
         }
 
         await client.query("COMMIT");
-        transactionStarted = false;
 
         return res.json({
             success: true,
             completed: false,
-            question: generated.question,
-            topic: generated.topic,
+            resumed: false,
+            message: "New AI question generated",
+            question: nextQuestion.question,
+            topic: nextQuestion.topic,
             questionNumber: nextNumber,
             totalQuestions: attempt.total_questions
         });
 
     } catch (error) {
-        if (transactionStarted) {
+        if (client) {
             await rollback(client);
-            transactionStarted = false;
         }
 
         return handleControllerError(
-            res,
-            error,
-            "Unable to generate next question"
+            res, error, "Unable to generate next question"
         );
 
     } finally {
@@ -1004,40 +1106,30 @@ exports.getNextQuestion = async (req, res) => {
 exports.completeViva = async (req, res) => {
     try {
         const studentId = getStudentId(req);
-        const { attemptId } = req.params;
-
-        if (!studentId) {
-            return res.status(400).json({
-                success: false,
-                message: "Valid studentId is required"
-            });
-        }
+        const attemptId = Number(req.params.attemptId);
 
         if (
-            !attemptId ||
-            !Number.isInteger(Number(attemptId)) ||
-            Number(attemptId) <= 0
+            !studentId ||
+            !Number.isInteger(attemptId) ||
+            attemptId <= 0
         ) {
             return res.status(400).json({
                 success: false,
-                message: "Valid attempt ID is required"
+                message: "Invalid student or attempt ID"
             });
         }
 
         const result = await db.query(
-            `UPDATE student_viva_attempts a
-
+            `UPDATE student_viva_attempts
              SET status = 'Completed',
                  completed_at = NOW()
-
-             WHERE a.id = $1
-             AND a.student_id = $2
-             AND a.status = 'In Progress'
-             AND a.current_question IS NULL
-             AND a.attempted_questions = a.total_questions
-
+             WHERE id = $1
+               AND student_id = $2
+               AND status = 'In Progress'
+               AND current_question IS NULL
+               AND attempted_questions = total_questions
              RETURNING *`,
-            [Number(attemptId), studentId]
+            [attemptId, studentId]
         );
 
         if (!result.rows.length) {
@@ -1053,10 +1145,7 @@ exports.completeViva = async (req, res) => {
             Number(report.total_questions) * MAX_SCORE;
 
         const percentage = totalPossible > 0
-            ? (
-                Number(report.total_score) /
-                totalPossible
-            ) * 100
+            ? (Number(report.total_score) / totalPossible) * 100
             : 0;
 
         return res.json({
@@ -1070,9 +1159,7 @@ exports.completeViva = async (req, res) => {
 
     } catch (error) {
         return handleControllerError(
-            res,
-            error,
-            "Unable to complete viva"
+            res, error, "Unable to complete viva"
         );
     }
 };
@@ -1098,14 +1185,9 @@ exports.getVivaHistory = async (req, res) => {
                 v.title,
                 v.subject,
                 v.class_name
-
              FROM student_viva_attempts a
-
-             JOIN admin_vivas v
-                ON v.id = a.viva_id
-
+             JOIN admin_vivas v ON v.id = a.viva_id
              WHERE a.student_id = $1
-
              ORDER BY a.started_at DESC`,
             [studentId]
         );
@@ -1118,9 +1200,7 @@ exports.getVivaHistory = async (req, res) => {
 
     } catch (error) {
         return handleControllerError(
-            res,
-            error,
-            "Unable to fetch viva history"
+            res, error, "Unable to fetch viva history"
         );
     }
 };
@@ -1132,42 +1212,30 @@ exports.getVivaHistory = async (req, res) => {
 exports.getVivaReport = async (req, res) => {
     try {
         const studentId = getStudentId(req);
-        const { attemptId } = req.params;
-
-        if (!studentId) {
-            return res.status(400).json({
-                success: false,
-                message: "Valid studentId is required"
-            });
-        }
+        const attemptId = Number(req.params.attemptId);
 
         if (
-            !attemptId ||
-            !Number.isInteger(Number(attemptId)) ||
-            Number(attemptId) <= 0
+            !studentId ||
+            !Number.isInteger(attemptId) ||
+            attemptId <= 0
         ) {
             return res.status(400).json({
                 success: false,
-                message: "Valid attempt ID is required"
+                message: "Invalid student or attempt ID"
             });
         }
 
-        // Get attempt.
         const attempt = await db.query(
             `SELECT
                 a.*,
                 v.title,
                 v.subject,
                 v.class_name
-
              FROM student_viva_attempts a
-
-             JOIN admin_vivas v
-                ON v.id = a.viva_id
-
+             JOIN admin_vivas v ON v.id = a.viva_id
              WHERE a.id = $1
-             AND a.student_id = $2`,
-            [Number(attemptId), studentId]
+               AND a.student_id = $2`,
+            [attemptId, studentId]
         );
 
         if (!attempt.rows.length) {
@@ -1177,13 +1245,12 @@ exports.getVivaReport = async (req, res) => {
             });
         }
 
-        // Get answers.
         const answers = await db.query(
             `SELECT *
              FROM student_viva_answers
              WHERE attempt_id = $1
              ORDER BY question_number ASC`,
-            [Number(attemptId)]
+            [attemptId]
         );
 
         const report = attempt.rows[0];
@@ -1192,28 +1259,21 @@ exports.getVivaReport = async (req, res) => {
             Number(report.total_questions) * MAX_SCORE;
 
         const percentage = totalPossible > 0
-            ? (
-                Number(report.total_score) /
-                totalPossible
-            ) * 100
+            ? (Number(report.total_score) / totalPossible) * 100
             : 0;
 
         return res.json({
             success: true,
-
             report: {
                 ...report,
                 percentage: Math.round(percentage * 100) / 100
             },
-
             answers: answers.rows
         });
 
     } catch (error) {
         return handleControllerError(
-            res,
-            error,
-            "Unable to fetch viva report"
+            res, error, "Unable to fetch viva report"
         );
     }
 };

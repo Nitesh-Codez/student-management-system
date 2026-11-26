@@ -383,7 +383,7 @@ exports.startViva = async (req, res) => {
 
     try {
         const studentId = getStudentId(req);
-        const vivaId = req.params.id;
+        const vivaId = Number(req.params.id);
 
         if (!studentId) {
             return res.status(400).json({
@@ -392,7 +392,7 @@ exports.startViva = async (req, res) => {
             });
         }
 
-        if (!vivaId || !Number.isInteger(Number(vivaId)) || Number(vivaId) <= 0) {
+        if (!Number.isInteger(vivaId) || vivaId <= 0) {
             return res.status(400).json({
                 success: false,
                 message: "Valid viva ID is required"
@@ -408,26 +408,44 @@ exports.startViva = async (req, res) => {
             });
         }
 
-        client = await db.connect();
+        // 1. Check if an attempt already exists.
+        const existing = await db.query(
+            `SELECT *
+             FROM student_viva_attempts
+             WHERE viva_id = $1
+             AND student_id = $2
+             AND status = 'In Progress'
+             ORDER BY id DESC
+             LIMIT 1`,
+            [vivaId, studentId]
+        );
 
-        await client.query("BEGIN");
-        transactionStarted = true;
+        if (existing.rows.length) {
+            const attempt = existing.rows[0];
 
-        const vivaResult = await client.query(
+            return res.json({
+                success: true,
+                message: "Existing viva resumed",
+                attemptId: attempt.id,
+                question: attempt.current_question,
+                topic: attempt.current_topic,
+                questionNumber: attempt.current_question_number,
+                totalQuestions: attempt.total_questions
+            });
+        }
+
+        // 2. Fetch viva details.
+        const vivaResult = await db.query(
             `SELECT *
              FROM admin_vivas
              WHERE id = $1
              AND LOWER(TRIM(class_name)) = LOWER(TRIM($2))
              AND LOWER(TRIM(status)) = 'active'
-             AND CURRENT_DATE BETWEEN start_date AND end_date
-             FOR UPDATE`,
-            [Number(vivaId), className]
+             AND CURRENT_DATE BETWEEN start_date AND end_date`,
+            [vivaId, className]
         );
 
         if (!vivaResult.rows.length) {
-            await rollback(client);
-            transactionStarted = false;
-
             return res.status(404).json({
                 success: false,
                 message: "Viva is unavailable or expired"
@@ -436,8 +454,86 @@ exports.startViva = async (req, res) => {
 
         const viva = vivaResult.rows[0];
 
-        // Resume existing attempt.
-        const existing = await client.query(
+        // 3. Fetch configured topics.
+        const topicResult = await db.query(
+            `SELECT topic_name
+             FROM admin_viva_topics
+             WHERE viva_id = $1`,
+            [vivaId]
+        );
+
+        const topics = topicResult.rows
+            .map(row => row.topic_name)
+            .filter(Boolean);
+
+        if (!topics.length) {
+            return res.status(400).json({
+                success: false,
+                message: "No topics configured for this viva"
+            });
+        }
+
+        // 4. Select one topic for the first question.
+        const selectedTopic =
+            topics[Math.floor(Math.random() * topics.length)];
+
+        // 5. Generate question OUTSIDE database transaction.
+        let generated;
+
+        try {
+            generated = await generateQuestion(
+                viva,
+                [selectedTopic],
+                []
+            );
+        } catch (error) {
+            console.error("Gemini question generation failed:", error);
+
+            // Fallback question so the viva can still start.
+            generated = {
+                question: `Explain the important concepts of ${selectedTopic} with a suitable example.`,
+                topic: selectedTopic
+            };
+        }
+
+        const question =
+            generated?.question?.trim() ||
+            `Explain the important concepts of ${selectedTopic} with a suitable example.`;
+
+        const topic = topics.includes(generated?.topic)
+            ? generated.topic
+            : selectedTopic;
+
+        // 6. Create attempt with a short transaction.
+        client = await db.connect();
+
+        await client.query("BEGIN");
+        transactionStarted = true;
+
+        // Lock viva row to prevent simultaneous duplicate attempts.
+        const lockedViva = await client.query(
+            `SELECT *
+             FROM admin_vivas
+             WHERE id = $1
+             AND LOWER(TRIM(class_name)) = LOWER(TRIM($2))
+             AND LOWER(TRIM(status)) = 'active'
+             AND CURRENT_DATE BETWEEN start_date AND end_date
+             FOR UPDATE`,
+            [vivaId, className]
+        );
+
+        if (!lockedViva.rows.length) {
+            await client.query("ROLLBACK");
+            transactionStarted = false;
+
+            return res.status(404).json({
+                success: false,
+                message: "Viva is unavailable or expired"
+            });
+        }
+
+        // Recheck attempt after acquiring lock.
+        const recheck = await client.query(
             `SELECT *
              FROM student_viva_attempts
              WHERE viva_id = $1
@@ -449,8 +545,8 @@ exports.startViva = async (req, res) => {
             [vivaId, studentId]
         );
 
-        if (existing.rows.length) {
-            const attempt = existing.rows[0];
+        if (recheck.rows.length) {
+            const attempt = recheck.rows[0];
 
             await client.query("COMMIT");
             transactionStarted = false;
@@ -466,7 +562,7 @@ exports.startViva = async (req, res) => {
             });
         }
 
-        // Check attempt limit.
+        // 7. Check attempt limit.
         const countResult = await client.query(
             `SELECT COUNT(*)::INTEGER AS attempts
              FROM student_viva_attempts
@@ -477,9 +573,9 @@ exports.startViva = async (req, res) => {
 
         if (
             Number(countResult.rows[0].attempts) >=
-            Number(viva.attempt_limit)
+            Number(lockedViva.rows[0].attempt_limit)
         ) {
-            await rollback(client);
+            await client.query("ROLLBACK");
             transactionStarted = false;
 
             return res.status(403).json({
@@ -488,30 +584,7 @@ exports.startViva = async (req, res) => {
             });
         }
 
-        // Get allowed topics.
-        const topicResult = await client.query(
-            `SELECT topic_name
-             FROM admin_viva_topics
-             WHERE viva_id = $1`,
-            [vivaId]
-        );
-
-        const topics = topicResult.rows.map(
-            row => row.topic_name
-        );
-
-        if (!topics.length) {
-            throw new Error("No topics configured for viva");
-        }
-
-        // Generate first question.
-        const generated = await generateQuestion(
-            viva,
-            topics,
-            []
-        );
-
-        // Create attempt only after successful generation.
+        // 8. Insert attempt.
         const attempt = await client.query(
             `INSERT INTO student_viva_attempts
             (
@@ -527,9 +600,9 @@ exports.startViva = async (req, res) => {
             [
                 vivaId,
                 studentId,
-                viva.total_questions,
-                generated.question,
-                generated.topic
+                lockedViva.rows[0].total_questions,
+                question,
+                topic
             ]
         );
 
@@ -540,17 +613,18 @@ exports.startViva = async (req, res) => {
             success: true,
             message: "Viva started successfully",
             attemptId: attempt.rows[0].id,
-            question: generated.question,
-            topic: generated.topic,
+            question,
+            topic,
             questionNumber: 1,
-            totalQuestions: viva.total_questions
+            totalQuestions: lockedViva.rows[0].total_questions
         });
 
     } catch (error) {
-        if (transactionStarted) {
-            await rollback(client);
-            transactionStarted = false;
+        if (transactionStarted && client) {
+            await client.query("ROLLBACK");
         }
+
+        console.error("Start Viva Error:", error);
 
         return handleControllerError(
             res,

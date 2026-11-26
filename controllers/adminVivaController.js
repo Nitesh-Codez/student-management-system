@@ -6,32 +6,56 @@ const db = require("../db");
 // ======================================================
 
 // 1. CREATE VIVA
+
 exports.createViva = async (req, res) => {
-    const client = await db.connect();
+    let client;
 
     try {
+        client = await db.connect();
+
         const {
             title,
             className,
+            class_name,
             subject,
             description,
             topics,
             startDate,
+            start_date,
             endDate,
-            totalQuestions = 10,
-            durationMinutes = 10,
+            end_date,
+            totalQuestions,
+            total_questions,
+            durationMinutes,
+            duration_minutes,
             difficulty = "Mixed",
-            attemptLimit = 1
+            attemptLimit,
+            attempt_limit,
+            status = "Active"
         } = req.body;
+
+        // Support both camelCase and snake_case
+        const finalClassName = className || class_name;
+        const finalStartDate = startDate || start_date;
+        const finalEndDate = endDate || end_date;
+
+        const finalTotalQuestions =
+            Number(totalQuestions ?? total_questions ?? 10);
+
+        const finalDuration =
+            Number(durationMinutes ?? duration_minutes ?? 10);
+
+        const finalAttemptLimit =
+            Number(attemptLimit ?? attempt_limit ?? 1);
 
         if (
             !title?.trim() ||
-            !className ||
-            !subject ||
+            !finalClassName ||
+            !subject?.trim() ||
             !Array.isArray(topics) ||
             topics.length === 0 ||
-            !startDate ||
-            !endDate
+            !finalStartDate ||
+            !finalEndDate
         ) {
             return res.status(400).json({
                 success: false,
@@ -39,21 +63,26 @@ exports.createViva = async (req, res) => {
             });
         }
 
-        const cleanTopics = [...new Set(
-            topics
-                .filter(t => typeof t === "string")
-                .map(t => t.trim())
-                .filter(Boolean)
-        )];
+        const cleanTopics = [
+            ...new Set(
+                topics
+                    .filter(t => typeof t === "string")
+                    .map(t => t.trim())
+                    .filter(Boolean)
+            )
+        ];
 
-        if (!cleanTopics.length || cleanTopics.length !== topics.length) {
+        if (
+            !cleanTopics.length ||
+            cleanTopics.length !== topics.length
+        ) {
             return res.status(400).json({
                 success: false,
                 message: "Invalid or duplicate topics"
             });
         }
 
-        if (new Date(endDate) < new Date(startDate)) {
+        if (finalEndDate < finalStartDate) {
             return res.status(400).json({
                 success: false,
                 message: "End date cannot be before start date"
@@ -61,13 +90,13 @@ exports.createViva = async (req, res) => {
         }
 
         if (
-            !Number.isInteger(Number(totalQuestions)) ||
-            Number(totalQuestions) < 1 ||
-            Number(totalQuestions) > 50 ||
-            !Number.isInteger(Number(durationMinutes)) ||
-            Number(durationMinutes) < 1 ||
-            !Number.isInteger(Number(attemptLimit)) ||
-            Number(attemptLimit) < 1
+            !Number.isInteger(finalTotalQuestions) ||
+            finalTotalQuestions < 1 ||
+            finalTotalQuestions > 50 ||
+            !Number.isInteger(finalDuration) ||
+            finalDuration < 1 ||
+            !Number.isInteger(finalAttemptLimit) ||
+            finalAttemptLimit < 1
         ) {
             return res.status(400).json({
                 success: false,
@@ -82,30 +111,45 @@ exports.createViva = async (req, res) => {
             });
         }
 
+        if (!["Draft", "Active", "Inactive"].includes(status)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid status"
+            });
+        }
+
         await client.query("BEGIN");
 
         const vivaResult = await client.query(
-            `INSERT INTO admin_vivas
-            (
-                title, class_name, subject, description,
-                start_date, end_date, total_questions,
-                duration_minutes, difficulty, attempt_limit,
+            `INSERT INTO admin_vivas (
+                title,
+                class_name,
+                subject,
+                description,
+                start_date,
+                end_date,
+                total_questions,
+                duration_minutes,
+                difficulty,
+                attempt_limit,
+                status,
                 created_by
             )
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
             RETURNING *`,
             [
                 title.trim(),
-                className,
-                subject,
+                finalClassName,
+                subject.trim(),
                 description || null,
-                startDate,
-                endDate,
-                Number(totalQuestions),
-                Number(durationMinutes),
+                finalStartDate,
+                finalEndDate,
+                finalTotalQuestions,
+                finalDuration,
                 difficulty,
-                Number(attemptLimit),
-                req.user.id
+                finalAttemptLimit,
+                status,
+                req.user?.id ?? null
             ]
         );
 
@@ -115,7 +159,7 @@ exports.createViva = async (req, res) => {
             await client.query(
                 `INSERT INTO admin_viva_topics
                 (viva_id, topic_name)
-                VALUES ($1,$2)`,
+                VALUES ($1, $2)`,
                 [vivaId, topic]
             );
         }
@@ -130,18 +174,23 @@ exports.createViva = async (req, res) => {
         });
 
     } catch (error) {
-        await client.query("ROLLBACK");
+        if (client) {
+            await client.query("ROLLBACK").catch(() => {});
+        }
+
         console.error("Create Viva Error:", error);
 
         return res.status(500).json({
             success: false,
-            message: "Unable to create viva"
+            message: "Unable to create viva",
+            error: error.message
         });
 
     } finally {
-        client.release();
+        if (client) client.release();
     }
 };
+
 
 
 // ======================================================

@@ -6,7 +6,7 @@ const genAI = require("../config/gemini");
 // CONSTANTS
 // ======================================================
 
-const MODEL_NAME = "gemini-2.5-flash";
+const MODEL_NAME = process.env.GEMINI_MODEL || "gemini-3.8-flash";
 
 const ALLOWED_LEVELS = [
     "Beginner",

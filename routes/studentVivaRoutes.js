@@ -21,3 +21,5 @@ router.get("/history", student.getVivaHistory);
 
 // Report
 router.get("/report/:attemptId", student.getVivaReport);
+
+module.exports = router;

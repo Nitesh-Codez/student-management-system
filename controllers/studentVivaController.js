@@ -1285,3 +1285,76 @@ exports.getVivaHistory = async (req, res) => {
         );
     }
 };
+
+// ======================================================
+// 7. GET VIVA REPORT BY ATTEMPT ID
+// GET /api/student/viva/report/:attemptId
+// ======================================================
+
+exports.getVivaReport = async (req, res) => {
+    try {
+        const studentId = getStudentId(req);
+        const attemptId = Number(req.params.attemptId);
+
+        if (!studentId || !Number.isInteger(attemptId) || attemptId <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: "Valid studentId and attemptId are required"
+            });
+        }
+
+        const attemptRes = await db.query(
+            `SELECT
+                a.*,
+                v.title,
+                v.subject,
+                v.class_name,
+                v.difficulty
+             FROM student_viva_attempts a
+             LEFT JOIN admin_vivas v ON v.id = a.viva_id
+             WHERE a.id = $1
+               AND a.student_id = $2`,
+            [attemptId, studentId]
+        );
+
+        if (!attemptRes.rows.length) {
+            return res.status(404).json({
+                success: false,
+                message: "Viva attempt report not found"
+            });
+        }
+
+        const answersRes = await db.query(
+            `SELECT *
+             FROM student_viva_answers
+             WHERE attempt_id = $1
+             ORDER BY question_number ASC, id ASC`,
+            [attemptId]
+        );
+
+        const attempt = attemptRes.rows[0];
+        const totalQuestions =
+            Number(attempt.total_questions) || answersRes.rows.length || 0;
+        const totalScore = Number(attempt.total_score) || 0;
+        const maxPossible = totalQuestions * MAX_SCORE;
+        const percentage =
+            maxPossible > 0
+                ? Math.round((totalScore / maxPossible) * 10000) / 100
+                : 0;
+
+        return res.json({
+            success: true,
+            report: {
+                ...attempt,
+                percentage
+            },
+            answers: answersRes.rows
+        });
+    } catch (error) {
+        return handleControllerError(
+            res,
+            error,
+            "Unable to fetch viva report"
+        );
+    }
+};

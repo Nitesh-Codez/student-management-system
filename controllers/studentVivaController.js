@@ -1054,197 +1054,160 @@ exports.completeViva = async (req, res) => {
     let client;
 
     try {
-        const studentId = getStudentId(req);
-        const attemptId = Number(req.params.attemptId);
+        const studentId =
+            req.user?.id ||
+            req.user?.studentId ||
+            req.user?.student_id ||
+            req.body?.student_id ||
+            req.body?.studentId ||
+            null;
 
-        if (!studentId || !Number.isInteger(attemptId) || attemptId <= 0) {
-            return res.status(400).json({
+        if (!studentId) {
+            return res.status(401).json({
                 success: false,
-                message: "Invalid student or attempt ID"
+                message: "Student ID is required to submit viva",
             });
         }
 
-        const attemptRes = await db.query(
-            `SELECT
-                a.*,
-                v.subject,
-                v.class_name,
-                v.difficulty,
-                v.total_questions AS viva_total_questions
-             FROM student_viva_attempts a
-             JOIN admin_vivas v ON v.id = a.viva_id
-             WHERE a.id = $1
-               AND a.student_id = $2`,
-            [attemptId, studentId]
-        );
+        const paramAttemptId = req.params?.attemptId;
+        const vivaId = req.body?.viva_id ?? req.body?.vivaId ?? null;
 
-        if (!attemptRes.rows.length) {
-            return res.status(404).json({
-                success: false,
-                message: "Viva attempt not found"
+        const rawQa = Array.isArray(req.body?.qa)
+            ? req.body.qa
+            : Array.isArray(req.body?.answers)
+            ? req.body.answers
+            : [];
+
+        const normalizedQa = rawQa
+            .map((item, idx) => {
+                if (typeof item === "string") {
+                    return {
+                        question_number: idx + 1,
+                        topic: req.body?.subject || "General",
+                        question: req.body?.questions?.[idx] || `Question ${idx + 1}`,
+                        answer: item.trim() || "No spoken response",
+                    };
+                }
+                return {
+                    question_number: Number(item?.question_number ?? item?.questionNumber) || idx + 1,
+                    topic: String(item?.topic || req.body?.subject || "General").trim(),
+                    question: String(item?.question || `Question ${idx + 1}`).trim(),
+                    answer: String(item?.answer ?? item?.answer_text ?? "").trim() || "No spoken response",
+                };
             });
-        }
-
-        const attempt = attemptRes.rows[0];
-        if (attempt.status === "Completed") {
-            const existingAnswers = await db.query(
-                `SELECT *
-                 FROM student_viva_answers
-                 WHERE attempt_id = $1
-                 ORDER BY question_number ASC`,
-                [attemptId]
-            );
-
-            return res.json({
-                success: true,
-                message: "Viva already completed",
-                report: attempt,
-                answers: existingAnswers.rows
-            });
-        }
-
-        const defaultTopic =
-            attempt.current_topic ||
-            req.body?.topic ||
-            attempt.subject ||
-            "General";
-
-        const qaItems = normalizeSubmittedQa(req.body, defaultTopic).filter(
-            (item) => item.question && item.answer
-        );
-
-        if (!qaItems.length) {
-            return res.status(400).json({
-                success: false,
-                message: "Questions and answers are required to submit viva"
-            });
-        }
-
-        for (const item of qaItems) {
-            if (
-                item.question.length > MAX_QUESTION_LENGTH ||
-                item.answer.length > MAX_ANSWER_LENGTH
-            ) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Question or answer exceeds maximum length"
-                });
-            }
-        }
-
-        let configuredTopics = [];
-        try {
-            configuredTopics = await getVivaTopics(attempt.viva_id);
-        } catch {
-            configuredTopics = [];
-        }
-
-        const evaluations = await evaluateBatchAnswers(
-            qaItems,
-            attempt,
-            configuredTopics
-        );
-
-        const totalScore = Math.round(
-            evaluations.reduce((sum, ev) => sum + Number(ev.score || 0), 0) * 100
-        ) / 100;
-
-        const answeredCount = qaItems.length;
-        const totalQuestions =
-            Number(attempt.total_questions || attempt.viva_total_questions) ||
-            answeredCount;
 
         client = await db.connect();
         await client.query("BEGIN");
 
+        let attemptRow = null;
+
+        if (paramAttemptId && Number.isInteger(Number(paramAttemptId))) {
+            const byId = await client.query(
+                `SELECT *
+                 FROM student_viva_attempts
+                 WHERE id = $1
+                   AND student_id = $2
+                 FOR UPDATE`,
+                [Number(paramAttemptId), studentId]
+            );
+            attemptRow = byId.rows[0] || null;
+        }
+
+        if (!attemptRow && vivaId) {
+            const byViva = await client.query(
+                `SELECT *
+                 FROM student_viva_attempts
+                 WHERE viva_id = $1
+                   AND student_id = $2
+                 ORDER BY id DESC
+                 LIMIT 1
+                 FOR UPDATE`,
+                [vivaId, studentId]
+            );
+            attemptRow = byViva.rows[0] || null;
+        }
+
+        if (!attemptRow && vivaId) {
+            const createdAttempt = await client.query(
+                `INSERT INTO student_viva_attempts
+                 (viva_id, student_id, status, total_questions)
+                 VALUES ($1, $2, 'In Progress', $3)
+                 RETURNING *`,
+                [vivaId, studentId, normalizedQa.length || 5]
+            );
+            attemptRow = createdAttempt.rows[0];
+        }
+
+        if (!attemptRow) {
+            await client.query("ROLLBACK");
+            return res.status(404).json({
+                success: false,
+                message: "Viva attempt not found",
+            });
+        }
+
+        const targetAttemptId = attemptRow.id;
+
+        // Clear old rows for this attempt if re-submitting a clean set, then insert answers
         await client.query(
             `DELETE FROM student_viva_answers
              WHERE attempt_id = $1`,
-            [attemptId]
+            [targetAttemptId]
         );
 
-        const savedAnswers = [];
-        for (let i = 0; i < qaItems.length; i++) {
-            const qItem = qaItems[i];
-            const ev = evaluations[i];
-
-            const inserted = await client.query(
+        for (const item of normalizedQa) {
+            await client.query(
                 `INSERT INTO student_viva_answers
-                (
-                    attempt_id,
-                    question_number,
-                    topic_name,
-                    question,
-                    student_answer,
-                    score,
-                    max_score,
-                    feedback,
-                    is_correct
-                )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-                RETURNING *`,
+                 (attempt_id, question_number, question, answer_text)
+                 VALUES ($1, $2, $3, $4)`,
                 [
-                    attemptId,
-                    qItem.question_number,
-                    qItem.topic_name,
-                    qItem.question,
-                    qItem.answer,
-                    ev.score,
-                    MAX_SCORE,
-                    ev.feedback,
-                    ev.isCorrect
+                    targetAttemptId,
+                    item.question_number,
+                    item.question,
+                    item.answer,
                 ]
             );
-
-            savedAnswers.push(inserted.rows[0]);
         }
+
+        const totalQuestions =
+            Number(attemptRow.total_questions) || normalizedQa.length || 0;
 
         const updatedAttempt = await client.query(
             `UPDATE student_viva_attempts
              SET status = 'Completed',
-                 attempted_questions = $1,
-                 total_questions = $2,
-                 total_score = $3,
-                 current_question = NULL,
-                 current_topic = NULL,
-                 current_question_number = NULL,
-                 completed_at = NOW()
-             WHERE id = $4
-               AND student_id = $5
+                 total_questions = $1,
+                 completed_at = COALESCE(completed_at, NOW())
+             WHERE id = $2
+               AND student_id = $3
              RETURNING *`,
-            [answeredCount, totalQuestions, totalScore, attemptId, studentId]
+            [totalQuestions, targetAttemptId, studentId]
         );
 
         await client.query("COMMIT");
 
-        const report = updatedAttempt.rows[0];
-        const totalPossible = Number(report.total_questions) * MAX_SCORE;
-        const percentage =
-            totalPossible > 0
-                ? Math.round((Number(report.total_score) / totalPossible) * 10000) / 100
-                : 0;
-
         return res.json({
             success: true,
-            message: "Viva submitted, saved, and evaluated successfully",
-            report: {
-                ...report,
-                percentage
-            },
-            answers: savedAnswers
+            message: "Viva submitted successfully",
+            attemptId: targetAttemptId,
+            attempt: updatedAttempt.rows[0],
         });
     } catch (error) {
         if (client) {
-            await rollback(client);
+            try {
+                await client.query("ROLLBACK");
+            } catch {
+                // ignore rollback error
+            }
         }
-        return handleControllerError(
-            res, error, "Unable to complete and evaluate viva"
-        );
+        console.error("completeViva Error:", error);
+        return res.status(500).json({
+            success: false,
+            message: error.message || "Unable to submit viva",
+        });
     } finally {
-        if (client) client.release();
+        client?.release();
     }
 };
-
 // ======================================================
 // 6. STUDENT VIVA HISTORY
 // ======================================================

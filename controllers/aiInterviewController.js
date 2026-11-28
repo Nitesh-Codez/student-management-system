@@ -1,5 +1,7 @@
 const db = require("../db");
 const genAI = require("../config/gemini");
+const nodemailer = require("nodemailer");
+const crypto = require("crypto");
 
 // ======================================================
 // CONSTANTS
@@ -873,6 +875,157 @@ exports.getInterviewReport = async (req, res) => {
         return res.status(500).json({
             success: false,
             message: "Unable to fetch report"
+        });
+    }
+};
+
+exports.vivaEmailVerification = async (req, res) => {
+    try {
+        const { studentId, otp, action } = req.body;
+
+        if (!studentId || !action) {
+            return res.status(400).json({
+                success: false,
+                message: "Student ID and action required"
+            });
+        }
+
+        const studentResult = await pool.query(
+            `SELECT id, name, email
+             FROM students
+             WHERE id = $1
+             AND role = 'student'
+             AND COALESCE(is_banned, false) = false`,
+            [studentId]
+        );
+
+        if (!studentResult.rows.length) {
+            return res.status(404).json({
+                success: false,
+                message: "Student not found"
+            });
+        }
+
+        const student = studentResult.rows[0];
+
+        // SEND OTP
+        if (action === "send") {
+
+            if (!student.email) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Registered email not found"
+                });
+            }
+
+            const code = crypto.randomInt(100000, 1000000).toString();
+
+            const otpHash = crypto
+                .createHash("sha256")
+                .update(code)
+                .digest("hex");
+
+            const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+
+            const transporter = nodemailer.createTransport({
+                service: "gmail",
+                auth: {
+                    user: process.env.EMAIL_USER,
+                    pass: process.env.EMAIL_PASS
+                }
+            });
+
+            await transporter.sendMail({
+                from: `"Smart Students Classes" <${process.env.EMAIL_USER}>`,
+                to: student.email,
+                subject: "Viva Verification OTP",
+                html: `
+                    <h2>Smart Students Classes</h2>
+                    <p>Hello ${student.name},</p>
+                    <h1>${code}</h1>
+                    <p>Your verification code is valid for 5 minutes.</p>
+                `
+            });
+
+            await pool.query(
+                `INSERT INTO viva_email_verifications
+                (student_id, otp_hash, expires_at, is_verified)
+                VALUES ($1, $2, $3, false)
+                ON CONFLICT (student_id)
+                DO UPDATE SET
+                    otp_hash = EXCLUDED.otp_hash,
+                    expires_at = EXCLUDED.expires_at,
+                    is_verified = false,
+                    created_at = CURRENT_TIMESTAMP`,
+                [student.id, otpHash, expiresAt]
+            );
+
+            return res.json({
+                success: true,
+                message: "OTP sent successfully",
+                email: student.email.replace(
+                    /^(.{2}).*(@.*)$/,
+                    "$1*****$2"
+                )
+            });
+        }
+
+        // VERIFY OTP
+        if (action === "verify") {
+
+            if (!otp) {
+                return res.status(400).json({
+                    success: false,
+                    message: "OTP required"
+                });
+            }
+
+            const otpHash = crypto
+                .createHash("sha256")
+                .update(String(otp))
+                .digest("hex");
+
+            const verification = await pool.query(
+                `SELECT id FROM viva_email_verifications
+                 WHERE student_id = $1
+                 AND otp_hash = $2
+                 AND expires_at > NOW()
+                 AND is_verified = false`,
+                [student.id, otpHash]
+            );
+
+            if (!verification.rows.length) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid or expired OTP"
+                });
+            }
+
+            await pool.query(
+                `UPDATE viva_email_verifications
+                 SET is_verified = true
+                 WHERE id = $1`,
+                [verification.rows[0].id]
+            );
+
+            return res.json({
+                success: true,
+                verified: true,
+                message: "Email verified successfully"
+            });
+        }
+
+        return res.status(400).json({
+            success: false,
+            message: "Invalid action"
+        });
+
+    } catch (error) {
+        console.error("Viva Verification Error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Verification process failed"
         });
     }
 };

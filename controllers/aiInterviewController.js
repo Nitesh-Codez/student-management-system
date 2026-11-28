@@ -890,7 +890,8 @@ exports.vivaEmailVerification = async (req, res) => {
             });
         }
 
-        const studentResult = await pool.query(
+       // NEW
+const studentResult = await db.query(
             `SELECT id, name, email
              FROM students
              WHERE id = $1

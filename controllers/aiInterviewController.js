@@ -879,6 +879,7 @@ exports.getInterviewReport = async (req, res) => {
     }
 };
 
+
 exports.vivaEmailVerification = async (req, res) => {
     try {
         const { studentId, otp, action } = req.body;
@@ -890,8 +891,7 @@ exports.vivaEmailVerification = async (req, res) => {
             });
         }
 
-       
-    const studentResult = await db.query(
+        const studentResult = await db.query(
             `SELECT id, name, email
              FROM students
              WHERE id = $1
@@ -919,6 +919,10 @@ exports.vivaEmailVerification = async (req, res) => {
                 });
             }
 
+            if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+                throw new Error("Email configuration missing");
+            }
+
             const code = crypto.randomInt(100000, 1000000).toString();
 
             const otpHash = crypto
@@ -939,16 +943,94 @@ exports.vivaEmailVerification = async (req, res) => {
             await transporter.sendMail({
                 from: `"Smart Students Classes" <${process.env.EMAIL_USER}>`,
                 to: student.email,
-                subject: "Viva Verification OTP",
+                subject: "Viva Examination - Email Verification OTP",
+
                 html: `
-                    <h2>Smart Students Classes</h2>
-                    <p>Hello ${student.name},</p>
-                    <h1>${code}</h1>
-                    <p>Your verification code is valid for 5 minutes.</p>
+                <!DOCTYPE html>
+                <html>
+                <body style="margin:0; padding:25px; background:#f3f4f6; font-family:Arial,sans-serif;">
+
+                    <div style="max-width:550px; margin:auto; background:#ffffff; border-radius:12px; overflow:hidden; border:1px solid #e5e7eb;">
+
+                        <div style="background:#1e3a8a; padding:25px; text-align:center; color:white;">
+                            <h1 style="margin:0; font-size:25px;">
+                                Smart Students Classes
+                            </h1>
+                            <p style="margin:10px 0 0; font-size:14px;">
+                                Viva Examination 2026-27
+                            </p>
+                        </div>
+
+                        <div style="padding:30px; color:#333333;">
+
+                            <h2 style="color:#1e3a8a;">
+                                Hello ${student.name},
+                            </h2>
+
+                            <p style="font-size:15px; line-height:1.7;">
+                                You have requested email verification for your
+                                <strong>Viva Examination</strong> at
+                                Smart Students Classes.
+                            </p>
+
+                            <p style="font-size:15px; line-height:1.7;">
+                                Please use the following One-Time Password (OTP)
+                                to verify your registered email address and
+                                proceed with your viva examination.
+                            </p>
+
+                            <div style="background:#eff6ff; border:1px dashed #2563eb; border-radius:10px; padding:22px; text-align:center; margin:25px 0;">
+
+                                <p style="margin:0 0 12px; color:#1e40af; font-size:14px;">
+                                    YOUR VERIFICATION CODE
+                                </p>
+
+                                <h1 style="margin:0; color:#1e3a8a; letter-spacing:8px; font-size:34px;">
+                                    ${code}
+                                </h1>
+
+                            </div>
+
+                            <p style="font-size:14px; line-height:1.7;">
+                                <strong>Important:</strong>
+                            </p>
+
+                            <ul style="font-size:14px; line-height:1.8; color:#555;">
+                                <li>This OTP is valid for only 5 minutes.</li>
+                                <li>Do not share this OTP with anyone.</li>
+                                <li>This OTP is intended only for your viva email verification.</li>
+                                <li>If you did not request this verification, please ignore this email.</li>
+                            </ul>
+
+                            <p style="font-size:14px; line-height:1.7; margin-top:25px;">
+                                Best wishes for your Viva Examination!
+                            </p>
+
+                            <p style="font-size:14px; margin-bottom:0;">
+                                Regards,<br/>
+                                <strong>Smart Students Classes</strong><br/>
+                                Examination Department
+                            </p>
+
+                        </div>
+
+                        <div style="background:#f9fafb; padding:15px; text-align:center; border-top:1px solid #e5e7eb;">
+                            <p style="font-size:12px; color:#777; margin:0;">
+                                This is an automated email. Please do not reply.
+                            </p>
+                            <p style="font-size:12px; color:#777; margin:6px 0 0;">
+                                © 2026-27 Smart Students Classes. All rights reserved.
+                            </p>
+                        </div>
+
+                    </div>
+
+                </body>
+                </html>
                 `
             });
 
-            await pool.query(
+            await db.query(
                 `INSERT INTO viva_email_verifications
                 (student_id, otp_hash, expires_at, is_verified)
                 VALUES ($1, $2, $3, false)
@@ -986,7 +1068,7 @@ exports.vivaEmailVerification = async (req, res) => {
                 .update(String(otp))
                 .digest("hex");
 
-            const verification = await pool.query(
+            const verification = await db.query(
                 `SELECT id FROM viva_email_verifications
                  WHERE student_id = $1
                  AND otp_hash = $2
@@ -1002,7 +1084,7 @@ exports.vivaEmailVerification = async (req, res) => {
                 });
             }
 
-            await pool.query(
+            await db.query(
                 `UPDATE viva_email_verifications
                  SET is_verified = true
                  WHERE id = $1`,

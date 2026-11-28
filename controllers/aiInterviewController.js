@@ -890,8 +890,8 @@ exports.vivaEmailVerification = async (req, res) => {
             });
         }
 
-       // NEW
-const studentResult = await db.query(
+       
+    const studentResult = await db.query(
             `SELECT id, name, email
              FROM students
              WHERE id = $1
@@ -986,7 +986,7 @@ const studentResult = await db.query(
                 .update(String(otp))
                 .digest("hex");
 
-            const verification = await pool.query(
+            const verification = await db.query(
                 `SELECT id FROM viva_email_verifications
                  WHERE student_id = $1
                  AND otp_hash = $2
@@ -1002,7 +1002,7 @@ const studentResult = await db.query(
                 });
             }
 
-            await pool.query(
+            await db.query(
                 `UPDATE viva_email_verifications
                  SET is_verified = true
                  WHERE id = $1`,

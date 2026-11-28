@@ -335,6 +335,7 @@ const getStudentsBasic = async (req, res) => {
         batch,
         batch_time,
         session,
+        email,
         profile_photo,
         stream,
         joining_date,
